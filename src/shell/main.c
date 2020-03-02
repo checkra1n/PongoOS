@@ -58,7 +58,7 @@ void pongo_boot_hook() {
 /*
 
     Name: pongo_boot_raw
-    Description: command handler for bootx
+    Description: command handler for bootr
 
 */
 
@@ -72,6 +72,36 @@ void pongo_boot_raw() {
     task_yield();
 }
 
+/*
+
+    Name: pongo_copy_xnu
+    Description: command handler for copyx
+
+*/
+
+void pongo_copy_xnu() {
+    if (!loader_xfer_recv_count) {
+        iprintf("please upload a raw image before issuing this command\n");
+        return;
+    }
+
+    uint64_t entryp = (uint64_t) gEntryPoint;
+    uint64_t gImagePhys = entryp & (~0xFFF);
+    gImagePhys += 0x4000;
+#define DEVICE_TO_CACHEABLE(device) (device - 0x800000000 + kCacheableView)
+    gImagePhys = DEVICE_TO_CACHEABLE(gImagePhys);
+    while (1) {
+        if (*(uint32_t*)gImagePhys == 0xfeedfacf) {
+            break;
+        }
+        gImagePhys -= 0x1000;
+    }
+
+    memcpy(gImagePhys, loader_xfer_recv_data, loader_xfer_recv_count);
+    /* Note that we only do the copying over part here, you are expected to have to modify gEntryPoint
+     * TODO: parse Mach-O header and set gEntryPoint value
+     */
+}
 /*
 
     Name: pongo_boot_linux
@@ -395,6 +425,7 @@ void shell_main() {
     command_register("ps", "lists current tasks and irq handlers", task_list);
     command_register("xargs", "prints or sets xnu boot-args", pongo_boot_xargs);
     command_register("ramdisk", "loads a ramdisk for xnu", ramdisk_cmd);
+    command_register("loadx", "loads xnu", pongo_copy_xnu);
     command_register("bootx", "boots xnu (patched, if such a module is loaded)", pongo_boot_hook);
     command_register("bootux", "boots unpatched xnu", pongo_boot_hard);
     command_register("bootl", "boots linux", pongo_boot_linux);
