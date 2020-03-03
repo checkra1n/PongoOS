@@ -172,11 +172,7 @@ void linux_dtree_late(void) {
     fdt_appendprop_cell(fdt, node1, "width", gBootArgs->Video.v_width);
     fdt_appendprop_cell(fdt, node1, "height", gBootArgs->Video.v_height);
     fdt_appendprop_cell(fdt, node1, "stride", gBootArgs->Video.v_rowBytes);
-    if (gBootArgs->Video.v_depth == 0x1001e) {
-        fdt_appendprop_string(fdt, node1, "format", "a2r10g10b10");
-    } else {
-        fdt_appendprop_string(fdt, node1, "format", "a8r8g8b8");
-    }
+    fdt_appendprop_string(fdt, node1, "format", "a8b8g8r8");
     fdt_appendprop_string(fdt, node1, "status", "okay");
     fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
 }
@@ -269,7 +265,6 @@ void linux_prep_boot() {
 	    linux_dtree_overlay(NULL); // later we can pass bootargs
     }
 
-    //else if (socnum == 0x8010) {	
 #define pixfmt0 (&disp[0x402c/4])
 #define colormatrix_bypass (&disp[0x40b4/4])
 #define colormatrix_mul_31 (&disp[0x40cc/4])
@@ -284,10 +279,7 @@ void linux_prep_boot() {
     *colormatrix_mul_31 = 4095;
     *colormatrix_mul_32 = 4095;
     *colormatrix_mul_33 = 4095;
-    //}
-    //else {
-	puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
-    //}
+    puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
 
     gEntryPoint = (void*)(0x800080000);
     uint64_t image_size = loader_xfer_recv_count; 
