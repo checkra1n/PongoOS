@@ -1777,6 +1777,7 @@ void usb_init() {
             reg3 = 0x802B8;
         break;
         case 0x7000:
+        case 0x7001:
             reg1 = 0x20248;
             reg2 = 0x20250;
             reg3 = 0x20288;
