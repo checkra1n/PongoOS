@@ -232,7 +232,7 @@ extern char* command_tokenize(char* str, uint32_t strbufsz);
 extern volatile uint8_t get_el(void);
 #define STDOUT_BUFLEN 512
 extern void fetch_stdoutbuf(char* to, int* len);
-
+extern uint64_t vatophys(uint64_t kvaddr);
 extern void cache_invalidate(void *address, size_t size);
 extern void cache_clean_and_invalidate(void *address, size_t size);
 extern void cache_clean(void *address, size_t size);

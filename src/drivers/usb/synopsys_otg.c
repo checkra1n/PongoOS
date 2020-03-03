@@ -818,9 +818,9 @@ ep_out_recv(struct endpoint_state *ep) {
             dma_offset, hw_xfer_size, packet_count);
     // Also invalidate the cache for the DMA buffer before the DMA begins to avoid cached
     // writes overwriting DMA'd data.
-    if (dma_offset == 0 && hw_xfer_size > 0) {
+    uint32_t cache_length = hw_xfer_size;
+    if (hw_xfer_size > 0) {
         // In buffered DMA mode, invalidate the part of the cache we'll be receiving into.
-        uint32_t cache_length = hw_xfer_size;
         if (ep->xfer_dma_data == ep->transfer_data) {
             // In direct DMA mode, invalidate the cache for the whole buffer once at
             // the start.
@@ -829,8 +829,9 @@ ep_out_recv(struct endpoint_state *ep) {
                 cache_length = ep->max_packet_size;
             }
         }
-        cache_invalidate(ep->xfer_dma_data, cache_length);
     }
+    if (!cache_length) cache_length = ep->max_packet_size;
+    cache_invalidate(ep->xfer_dma_data + dma_offset, cache_length);
     // Set the registers.
     reg_write(rDOEPDMA(ep->n), ep->xfer_dma_phys + dma_offset);
     reg_write(rDOEPTSIZ(ep->n), (packet_count << 19) | hw_xfer_size);
@@ -1708,29 +1709,6 @@ void usb_main() {
 	else task_yield();
     }
 }
-static inline uint64_t
-bits64(uint64_t value, unsigned hi, unsigned lo, unsigned shift) {
-	return (((value << (63 - hi)) >> (63 - hi + lo)) << shift);
-}
-
-uint64_t vatophys(uint64_t kvaddr) {
-	uint64_t par_el1;
-	disable_interrupts();
-    if (get_el() == 1) {
-    	asm volatile("at s1e1r, %0" : : "r"(kvaddr));
-    	asm volatile("isb");
-    	asm volatile("mrs %0, PAR_EL1" : "=r"(par_el1));
-    } else {
-    	asm volatile("at S1E3R, %0" : : "r"(kvaddr));
-    	asm volatile("isb");
-    	asm volatile("mrs %0, PAR_EL1" : "=r"(par_el1));
-    }
-	enable_interrupts();
-	if (par_el1 & 0x1) {
-		return -1;
-	}
-	return (bits64(par_el1, 47, 12, 12) | bits64(kvaddr, 11, 0, 0));
-}
 
 static uint64_t reg1=0, reg2=0, reg3=0;
 
@@ -1743,8 +1721,13 @@ void usb_bringup() {
     clock_gate(clockGateBase + reg1, 1);
     clock_gate(clockGateBase + reg2, 1);
     clock_gate(clockGateBase + reg3, 1);
-    *(volatile uint32_t*)(gSynopsysComplexBase + 0x1c) = 0x108;
-    *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
+    extern int socnum;
+    if (socnum == 0x8011) {
+        *(volatile uint32_t*)(0x20C000024) = 0x3000088;
+    } else {
+        *(volatile uint32_t*)(gSynopsysComplexBase + 0x1c) = 0x108;
+        *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
+    }
     *(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = dt_get_u32_prop("otgphyctrl", "cfg0-device");
     *(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = dt_get_u32_prop("otgphyctrl", "cfg1-device");
     *(volatile uint32_t*)(gSynopsysOTGBase) |= 1;
@@ -1763,39 +1746,51 @@ void usb_init() {
     gSynopsysComplexBase = dt_get_u32_prop("usb-complex", "reg");
     gSynopsysComplexBase += gIOBase;
 
-
-    if (strcmp(gDevType, "t8010-io") == 0) {
-        reg1 = 0x80268;
-        reg2 = 0x80270;
-        reg3 = 0x80290;
-    } else if (strcmp(gDevType, "t8011-io") == 0) {
-        reg1 = 0x80288;
-        reg2 = 0x80290;
-        reg3 = 0x802a0;
-        if (gSynopsysComplexBase == gSynopsysOTGBase) 
-            gSynopsysOTGBase += 0x40;
-    } else if (strcmp(gDevType, "t8015-io") == 0) {
-        reg1 = 0x80270;
-        reg2 = 0x80278;
-        reg3 = 0x80270;
-        if (gSynopsysComplexBase == gSynopsysOTGBase) 
-            gSynopsysOTGBase += 0x60;
-    } else if (strcmp(gDevType, "s8000-io") == 0) {
-        reg1 = 0x80250;
-        reg2 = 0x80258;
-        reg3 = 0x80290;
-    }  else if (strcmp(gDevType, "s8001-io") == 0) {
-        reg1 = 0x80278;
-        reg2 = 0x80280;
-        reg3 = 0x802B8;
-    } else if (strcmp(gDevType, "t7000-io") == 0) {
-        reg1 = 0x20248;
-        reg2 = 0x20250;
-        reg3 = 0x20288;
-    } else {
-        iprintf("USB: unsupported platform\n");
-        return;
+    extern int socnum;
+    switch (socnum) {
+        case 0x8010:
+            reg1 = 0x80268;
+            reg2 = 0x80270;
+            reg3 = 0x80290;
+        break;
+        case 0x8011:
+            reg1 = 0x80288;
+            reg2 = 0x80290;
+            reg3 = 0x802a0;
+        break;
+        case 0x8015:
+            reg1 = 0x80270;
+            reg2 = 0x80278;
+            reg3 = 0x80270;
+            if (gSynopsysComplexBase == gSynopsysOTGBase) 
+                gSynopsysOTGBase += 0x60;
+        break;
+        case 0x8000:
+        case 0x8003:
+            reg1 = 0x80250;
+            reg2 = 0x80258;
+            reg3 = 0x80290;
+        break;
+        case 0x8001:
+            reg1 = 0x80278;
+            reg2 = 0x80280;
+            reg3 = 0x802B8;
+        break;
+        case 0x7000:
+            reg1 = 0x20248;
+            reg2 = 0x20250;
+            reg3 = 0x20288;
+        break;
+        case 0x8960:
+            reg1 = 0x20158;
+            reg2 = 0x20160;
+            reg3 = 0x20188;
+        break;
+        default:
+        iprintf("USB: unsupported platform: %x\nblame qwerty!\n", socnum);
+        break;
     }
+    
     disable_interrupts();
     usb_irq_mode = 1;
     usb_usbtask_handoff_mode = 0;

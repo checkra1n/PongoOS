@@ -107,5 +107,24 @@ void pongo_main_task() {
         }
     }
     iprintf("Running on: %s\n", soc_name);
+    uint64_t hid4=0;
+    uint64_t mpidr=0;
+	asm volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
+    
+    if (!(socnum == 0x8010 || socnum == 0x8011)) mpidr |= (1 << 16);
+    
+    if (mpidr & (1 << 16)) {
+    	// pcore
+        asm volatile("mrs %0, S3_0_c15_c4_0" : "=r"(hid4));
+        hid4 &= ~(1<<11);
+    	asm volatile("msr S3_0_c15_c4_0, %0" : : "r"(hid4));
+    } else {
+        // ecore
+    	asm volatile("mrs %0, S3_0_c15_c4_1" : "=r"(hid4));
+        hid4 &= ~(1<<11);
+    	asm volatile("msr S3_0_c15_c4_1, %0" : : "r"(hid4));
+    }
+    
+    
     shell_main();
 }
