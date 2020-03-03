@@ -129,6 +129,16 @@ void screen_mark_banner() {
     bannerHeight = y_cursor;
 }
 
+void screen_invert() {
+    for (int y = 0; y < gHeight; y++) {
+        for (int x = 0; x < gWidth; x++) {
+            gFramebuffer[x + y * gRowPixels] ^= 0x3fffffff;
+        }
+    }
+    basecolor ^= 0x3fffffff;
+    cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
+}
+
 uint32_t bitmap[] = { 0x0, 0xa00, 0x400, 0x5540, 0x7fc0, 0x3f80, 0x3f80, 0x1f00, 0x1f00, 0x1f00, 0x3f80, 0xffe0, 0x3f80, 0x3f80, 0x3f83, 0x103f9f, 0x18103ffb, 0xe3fffd5, 0x1beabfab, 0x480d7fd5, 0xf80abfab, 0x480d7fd5, 0x1beabfab, 0xe3fffd5, 0x18107ffb, 0x107fdf, 0x7fc3, 0xffe0, 0xffe0, 0xffe0, 0x1fff0, 0x1fff0 };
 
 void screen_init() {
@@ -171,5 +181,6 @@ void screen_init() {
     basecolor = gFramebuffer[0];
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
     command_register("fbclear", "clears the framebuffer output (minus banner)", screen_clear_all);
+    command_register("fbinvert", "inverts framebuffer contents", screen_invert);
     scale_factor = 1;
 }
