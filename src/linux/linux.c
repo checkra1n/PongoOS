@@ -165,7 +165,7 @@ void linux_dtree_late(void) {
     siprintf(cmdline, "debug earlycon=hx_uart,0x%llx console=tty0 console=ttyHX0", ((uint64_t)dt_get_u32_prop("uart0", "reg"))+ gIOBase);
     fdt_appendprop_string(fdt, node, "bootargs", cmdline);
 
-    /* simplefb */
+    /* simplefb dart-apcie3*/
     sprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_addrrange(fdt,0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
@@ -198,7 +198,7 @@ void linux_dtree_overlay(char *boot_args) {
         node = fdt_path_offset(fdt, "/chosen");
         if (node < 0) {
             iprintf("Failed to find /chosen");
-	    return;
+	        return;
         }
 
         if (fdt_delprop(fdt, node, "bootargs") < 0) {
@@ -208,6 +208,43 @@ void linux_dtree_overlay(char *boot_args) {
 
         fdt_appendprop_string(fdt, node, "bootargs", boot_args);
     }
+    
+    dt_node_t* dev = dt_find(gDeviceTree, "dart-apcie3");
+    if (dev) {
+        // this is d10
+        node = fdt_path_offset(fdt, "/soc");
+        fdt_for_each_subnode(node, fdt, node) {
+            const char* nm = fdt_get_name(fdt, node, NULL);
+            if (strncmp(nm, "dart-pcie3@", strlen("dart-pcie3@")) == 0) {
+                fdt_set_name(fdt, node, "disabled");
+            } 
+        };
+        fdt_for_each_subnode(node, fdt, node) {
+            const char* nm = fdt_get_name(fdt, node, NULL);
+            if (strncmp(nm, "dart-pcie2@", strlen("dart-pcie2@")) == 0) {
+                iprintf("found node: %s\n", nm);                
+                uint32_t tmp[3];
+                tmp[0] = 0;
+                tmp[1] = dt_get_u32_prop("dart-apcie3", "interrupts");
+                tmp[2] = 4;
+                uint32_t len = 0;
+                fdt_setprop_inplace(fdt, node, "interrupts", &tmp, 12);
+                uint64_t* dtr = (uint64_t*)dt_prop(dev, "reg", &len);
+                fdt_setprop_inplace(fdt, node, "reg", dtr, 16);   
+                if (len != 16) panic("invalid xnu dtre");  
+                char nodename[64];
+                siprintf(nodename, "dart-pcie3@%lx",dtr[0]);
+                fdt_set_name(fdt, node, nodename);           
+                iprintf("it's now %s\n", fdt_get_name(fdt, node, NULL));
+            } else if (strncmp(nm, "pcie@", strlen("pcie@")) == 0) {
+                iprintf("found node: %s\n", nm);
+                fdt_delprop(fdt, node, "devpwr-on-2");
+                uint32_t w[] = {0,0,1,0,0,1,1,1};
+                fdt_appendprop(fdt, node, "devpwr-on-3", &w, sizeof(w));
+            }
+        } 
+    }
+    
 
 }
 
@@ -229,16 +266,24 @@ void linux_prep_boot() {
         	iprintf("failed to apply overlay to fdt\n");
 	        return;
     	}
-	linux_dtree_overlay(NULL); // later we can pass bootargs
+	    linux_dtree_overlay(NULL); // later we can pass bootargs
     }
 
     //else if (socnum == 0x8010) {	
-        volatile uint32_t *pixfmt0 = (volatile uint32_t *)0x20620402Cul;
-        *pixfmt0 = (*pixfmt0 & 0xF00FFFFFu) | 0x05200000u;
-        *(volatile uint32_t *)0x2062040b4 = 0;
-        *(volatile uint32_t *)0x2062040cc = 4095;
-        *(volatile uint32_t *)0x2062040d4 = 4095;
-        *(volatile uint32_t *)0x2062040dc = 4095;
+#define pixfmt0 (&disp[0x402c/4])
+#define colormatrix_bypass (&disp[0x40b4/4])
+#define colormatrix_mul_31 (&disp[0x40cc/4])
+#define colormatrix_mul_32 (&disp[0x40d4/4])
+#define colormatrix_mul_33 (&disp[0x40dc/4])
+    
+    volatile uint32_t* disp = ((uint32_t*)(dt_get_u32_prop("disp0", "reg") + gIOBase));
+    
+    *pixfmt0 = (*pixfmt0 & 0xF00FFFFFu) | 0x05200000u;
+
+    *colormatrix_bypass = 0;
+    *colormatrix_mul_31 = 4095;
+    *colormatrix_mul_32 = 4095;
+    *colormatrix_mul_33 = 4095;
     //}
     //else {
 	puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");

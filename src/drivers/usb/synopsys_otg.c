@@ -1869,10 +1869,12 @@ void usb_teardown() {
     gSynopsysOTGBase = 0;
     uint64_t clockGateBase = dt_get_u32_prop("pmgr", "reg") + gIOBase;
     *(volatile uint32_t*)(gSynopsysOTGBase + 0x4) &= ~2;
-
-    clock_gate(clockGateBase + reg1, 0);
-    clock_gate(clockGateBase + reg2, 0);
+    usleep(10000);
     clock_gate(clockGateBase + reg3, 0);
+    usleep(10000);
+    clock_gate(clockGateBase + reg2, 0);
+    usleep(10000);
+    clock_gate(clockGateBase + reg1, 0);
 }
 
 

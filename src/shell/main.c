@@ -97,7 +97,7 @@ void pongo_copy_xnu() {
         gImagePhys -= 0x1000;
     }
 
-    memcpy(gImagePhys, loader_xfer_recv_data, loader_xfer_recv_count);
+    memcpy((void*)gImagePhys, loader_xfer_recv_data, loader_xfer_recv_count);
     /* Note that we only do the copying over part here, you are expected to have to modify gEntryPoint
      * TODO: parse Mach-O header and set gEntryPoint value
      */
