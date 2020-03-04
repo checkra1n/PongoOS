@@ -1705,8 +1705,8 @@ void usb_main() {
             enable_interrupts();
         }
 	if (usb_irq_mode)
-	        task_exit_irq();
-	else task_yield();
+        task_exit_irq();
+        else task_yield();
     }
 }
 
@@ -1798,18 +1798,8 @@ void usb_init() {
     gSynopsysBase = dt_get_u32_prop("usb-device", "reg");
     gSynopsysBase += (gSynopsysOTGBase & (~0xfff));
     usb_bringup();
-    reg_or(rGRSTCTL, 0x1);
-    while (1) {
-        if ((reg_read(rGRSTCTL) & 0x1) == 0) {
-            break;
-        }
-    }
+
     reg_or(rDCTL, 0x2);
-    while (1) {
-        if ((reg_read(rGRSTCTL) & 0x80000000) != 0) {
-            break;
-        }
-    }
     reg_write(rGAHBCFG, 0x2e | usb_irq_mode);
     reg_write(rGUSBCFG, 0x1408);
     reg_write(rDCFG, 0x4);
@@ -1829,6 +1819,7 @@ void usb_init() {
     uint64_t dma_page_p = vatophys(dma_page_v);
     bzero((void*)dma_page_v,4 * DMA_BUFFER_SIZE);
     cache_clean_and_invalidate((void*)dma_page_v, 4 * DMA_BUFFER_SIZE);
+
     ep0_out.default_xfer_dma_data = (void *)   (dma_page_v + 0 * DMA_BUFFER_SIZE);
     ep0_out.default_xfer_dma_phys = (uint32_t) (dma_page_p + 0 * DMA_BUFFER_SIZE);
     ep0_out.default_xfer_dma_size = DMA_BUFFER_SIZE;
@@ -1865,11 +1856,8 @@ void usb_teardown() {
     gSynopsysOTGBase = 0;
     uint64_t clockGateBase = dt_get_u32_prop("pmgr", "reg") + gIOBase;
     *(volatile uint32_t*)(gSynopsysOTGBase + 0x4) &= ~2;
-    usleep(10000);
     clock_gate(clockGateBase + reg3, 0);
-    usleep(10000);
     clock_gate(clockGateBase + reg2, 0);
-    usleep(10000);
     clock_gate(clockGateBase + reg1, 0);
 }
 

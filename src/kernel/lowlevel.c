@@ -266,13 +266,17 @@ int fiq_exc() {
 void spin(uint32_t usec)
 {
     disable_interrupts();
-    uint64_t eta_wen = get_ticks() + (24*usec);
-    enable_interrupts();
+    uint64_t eta_now = get_ticks();
+    uint64_t eta_wen = eta_now + (24*usec);
 	while (1) {
+        asm volatile("isb");
         uint32_t curtime = get_ticks();
+        if (eta_now > curtime)
+            break;
 		if (curtime > eta_wen)
 			break;
     }
+    enable_interrupts();
 }
 void usleep(uint32_t usec)
 {

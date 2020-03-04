@@ -205,43 +205,6 @@ void linux_dtree_overlay(char *boot_args) {
         fdt_appendprop_string(fdt, node, "bootargs", boot_args);
     }
     
-    dt_node_t* dev = dt_find(gDeviceTree, "dart-apcie3");
-    if (dev) {
-        // this is d10
-        node = fdt_path_offset(fdt, "/soc");
-        fdt_for_each_subnode(node, fdt, node) {
-            const char* nm = fdt_get_name(fdt, node, NULL);
-            if (strncmp(nm, "dart-pcie3@", strlen("dart-pcie3@")) == 0) {
-                fdt_set_name(fdt, node, "disabled");
-            } 
-        };
-        fdt_for_each_subnode(node, fdt, node) {
-            const char* nm = fdt_get_name(fdt, node, NULL);
-            if (strncmp(nm, "dart-pcie2@", strlen("dart-pcie2@")) == 0) {
-                iprintf("found node: %s\n", nm);                
-                uint32_t tmp[3];
-                tmp[0] = 0;
-                tmp[1] = dt_get_u32_prop("dart-apcie3", "interrupts");
-                tmp[2] = 4;
-                uint32_t len = 0;
-                fdt_setprop_inplace(fdt, node, "interrupts", &tmp, 12);
-                uint64_t* dtr = (uint64_t*)dt_prop(dev, "reg", &len);
-                fdt_setprop_inplace(fdt, node, "reg", dtr, 16);   
-                if (len != 16) panic("invalid xnu dtre");  
-                char nodename[64];
-                siprintf(nodename, "dart-pcie3@%lx",dtr[0]);
-                fdt_set_name(fdt, node, nodename);           
-                iprintf("it's now %s\n", fdt_get_name(fdt, node, NULL));
-            } else if (strncmp(nm, "pcie@", strlen("pcie@")) == 0) {
-                iprintf("found node: %s\n", nm);
-                fdt_delprop(fdt, node, "devpwr-on-2");
-                uint32_t w[] = {0,0,1,0,0,1,1,1};
-                fdt_appendprop(fdt, node, "devpwr-on-3", &w, sizeof(w));
-            }
-        } 
-    }
-    
-
 }
 
 bool linux_can_boot() {
@@ -252,17 +215,50 @@ bool linux_can_boot() {
 void* gLinuxStage;
 uint32_t gLinuxStageSize;
 
+void fdt_select_dtree(void *fdt)
+{
+    unsigned char *buf = fdt, *ebuf;
+    char *key;
+    unsigned len;
+
+    if(memcmp(buf, "Cows", 4)) // pack signature
+        return;
+    buf += 4;
+
+    key = dt_get_prop("device-tree", "target-type", NULL);
+    if(!key)
+        return;
+
+    while(buf[0]) {
+        ebuf = buf + strlen(buf) + 1;
+        len = ebuf[0];
+        len = (len << 8) | ebuf[1];
+        len = (len << 8) | ebuf[2];
+        len = (len << 8) | ebuf[3];
+        ebuf += 4;
+        if(!strcmp(key, buf)) {
+            iprintf("Found device tree for %s (%d bytes).\n", key, len);
+            memmove(fdt, ebuf, len);
+            return;
+        }
+        buf = ebuf + len;
+    }
+
+    iprintf("Device tree for %s not found.\n", key);
+}
+
 void linux_prep_boot() {
     // invoked in sched task with MMU on
     if (!fdt_initialized) {
         linux_dtree_init();
         linux_dtree_late();
     } else {
+        fdt_select_dtree(fdt);
     	if (fdt_open_into((void *)fdt, (void *)fdt, LINUX_DTREE_SIZE)) {
         	iprintf("failed to apply overlay to fdt\n");
 	        return;
     	}
-	    linux_dtree_overlay(NULL); // later we can pass bootargs
+        linux_dtree_overlay(NULL); // later we can pass bootargs
     }
 
 #define pixfmt0 (&disp[0x402c/4])
