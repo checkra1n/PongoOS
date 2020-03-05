@@ -27,5 +27,5 @@ typedef __gnuc_va_list va_list;
 #endif // va_arg
 #endif /* __va_funcs__ */
 
-void pongo_vsprintf(char *str, void (*putchar)(char), const char *fmt, va_list ap);
-void pongo_printf(const char *str, ...);
+void arm_abi_example_vsprintf(char *str, void (*putchar)(char), const char *fmt, va_list ap);
+void arm_abi_example_printf(const char *str, ...);

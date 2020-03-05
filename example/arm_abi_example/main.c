@@ -37,7 +37,7 @@ void m_preboot_hook()
 
 void hello() {
     puts("Hello world! And now continuing to XNU.");
-    pongo_printf("%s world! %d %#*llx\n", "Hello,", 1337, 16, 0x66642069); // vaargs!!!
+    arm_abi_example_printf("%s world! %d %#*llx\n", "Hello,", 1337, 16, 0x66642069); // vaargs!!!
     queue_rx_string("bootx\n"); // Adding boot XNU command to buffer
 }
 

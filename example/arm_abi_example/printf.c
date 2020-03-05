@@ -24,13 +24,13 @@
 #undef printf
 #endif
 
-void pongo_putc(char c){
+void arm_abi_example_putc(char c){
     char *str = "x";
     str[0] = c;
     puts(str);
 }
 
-void memswp(const char *m1, const char *m2, size_t size) {
+void arm_abi_example_memswp(const char *m1, const char *m2, size_t size) {
     char tmp;
     for (size_t i = 0; i < size; i++) {
         tmp = *((char *)((size_t)m1 + i));
@@ -39,15 +39,15 @@ void memswp(const char *m1, const char *m2, size_t size) {
     }
 }
 
-void reverse(char *str, size_t len) {
+void arm_abi_example_reverse(char *str, size_t len) {
     size_t start = 0;
     size_t end = len - 1;
     while (start < end)
-        memswp((char *)((size_t)str + (start++)),
+        arm_abi_example_memswp((char *)((size_t)str + (start++)),
                (char *)((size_t)str + (end--)), 1);
 }
 
-void do_itoa(size_t n, char *str, uint8_t base, uint8_t signed_int) {
+void arm_abi_example_do_itoa(size_t n, char *str, uint8_t base, uint8_t signed_int) {
     if (n == 0) {
         str[0] = '0';
         str[0] = '\0';
@@ -69,17 +69,17 @@ void do_itoa(size_t n, char *str, uint8_t base, uint8_t signed_int) {
     if (signed_int)
         if (sign < 0 && base == 10) str[i++] = '-';
     str[i] = '\0';
-    reverse(str, i);
+    arm_abi_example_reverse(str, i);
 }
 
-void pongo_printf(const char *str, ...){
+void arm_abi_example_printf(const char *str, ...){
     va_list(ap);
     va_start(ap, str);
-    pongo_vsprintf(NULL, command_putc, str, ap);
+    arm_abi_example_vsprintf(NULL, command_putc, str, ap);
     va_end(ap);
 }
 
-void pongo_vsprintf(__attribute__((unused)) char *str, void (*putchar)(char),
+void arm_abi_example_vsprintf(__attribute__((unused)) char *str, void (*putchar)(char),
               const char *fmt, va_list ap) {
     size_t i;
     size_t n;
@@ -205,7 +205,7 @@ void pongo_vsprintf(__attribute__((unused)) char *str, void (*putchar)(char),
                                                 ? va_arg(ap, size_t)
                                                 : (size_t)va_arg(ap, int);
                 /* Convert to string with signing enabled */
-                do_itoa(n, (char *)&nbuf, 10, 1);
+                arm_abi_example_do_itoa(n, (char *)&nbuf, 10, 1);
                 /* Handle padding bytes when padding amount
                     is greater than current length */
                 if (npad_bytes > strlen((char *)&nbuf)) {
@@ -242,7 +242,7 @@ void pongo_vsprintf(__attribute__((unused)) char *str, void (*putchar)(char),
                                                 ? va_arg(ap, size_t)
                                                 : (size_t)va_arg(ap, int);
                 /* Convert to string with signing disabled */
-                do_itoa(n, (char *)&nbuf, 10, 0);
+                arm_abi_example_do_itoa(n, (char *)&nbuf, 10, 0);
                 if (npad_bytes > strlen((char *)&nbuf)) {
                     npad_bytes -= strlen((char *)&nbuf);
                     if (flags & LEAD_ZERO)
@@ -278,7 +278,7 @@ void pongo_vsprintf(__attribute__((unused)) char *str, void (*putchar)(char),
                                                 ? va_arg(ap, size_t)
                                                 : (size_t)va_arg(ap,
                                                                  unsigned int);
-                do_itoa(n, (char *)&nbuf, 16, 0);
+                arm_abi_example_do_itoa(n, (char *)&nbuf, 16, 0);
                 /* Print prefix if ALT_FLAG is set */
                 if (flags & ALT_FLAG) {
                     putchar('0');
