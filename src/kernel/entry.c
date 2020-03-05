@@ -25,6 +25,7 @@
  * 
  */
 #include <pongo.h>
+#include "recfg_soc.h"
 
 boot_args * gBootArgs;
 void* gEntryPoint;
@@ -228,6 +229,11 @@ __attribute__((noinline)) void pongo_entry_cached()
             __asm__("wfe");
         }
     }
+
+    // Do this here once we decided to boot, so that we catch potentially modified
+    // AES/IORVBAR config, but still get the benefits of cached memory.
+    recfg_soc_update();
+
     timer_disable();
     usb_teardown();
     disable_interrupts();

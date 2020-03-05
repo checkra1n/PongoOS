@@ -296,21 +296,25 @@ The relevant addresses are:
 +------+---------------+--------------+---------------+---------------------+-------------------+
 | A10X |  0x210000100  |              |  0x210800008  |     0x21000011c     |    0x210000120    |
 +------+---------------+--------------+---------------+---------------------+-------------------+
-| A11  |  0x2352c0200  | 0x2352c0214  |  0x234800008  |     0x235000200     |    0x235000204    |
+| A11  |  0x2352c0200  | 0x2352c0214  |               |     0x235000200     |    0x235000204    |
 +------+---------------+--------------+---------------+---------------------+-------------------+
-| A12  |  0x23d2c0200  | 0x23d2c0214  |       ?       |     0x23d000200     |    0x23d000204    |
+| A12  |  0x23d2c0200  | 0x23d2c0214  |               |     0x23d000200     |    0x23d000204    |
 +------+---------------+--------------+---------------+---------------------+-------------------+
-| A12X |       ?       |              |       ?       |          ?          |         ?         |
+| A12X |       ?       |      ?       |               |          ?          |         ?         |
 +------+---------------+--------------+---------------+---------------------+-------------------+
-| A13  |       ?       |              |       ?       |          ?          |         ?         |
+| A13  |       ?       |      ?       |               |          ?          |         ?         |
 +------+---------------+--------------+---------------+---------------------+-------------------+
 
 - AOP_CFG_TABLE is a 32-bit offset from the SRAM base. Mask pre-A11 0x1fff80, A11+ 0xff80.
+  At the address it points to is an uint32_t[8] array of 36-bit physical addresses >> 4.
 - AOP_CFG_LOCK is a 1-bit register that locks down AOP_CFG_TABLE (A11+ only).
+  Before A11, AOP_CFG_TABLE is locked down by AOP_SRAM_LOCK_SET instead.
 - AOP_SRAM_BASE is the 32-bit physical address of AOP SRAM, minus 0x200000000.
+  On A11 and later, the AOP and the reconfig engine have separate SRAM, so this is irrelevant.
 - AOP_SRAM_LOCK_RANGE has two ranges, [14:0] and [30:16], which are the
   start and end numbers (inclusive) of 0x40-blocks to lock down.
-- AOP_SRAM_LOCK_SET is a 1-bit register that locks down AOP_SRAM_LOCK_RANGE.
+- AOP_SRAM_LOCK_SET is a 1-bit register that locks down AOP_SRAM_LOCK_RANGE,
+  and before A11 also AOP_CFG_TABLE.
 
 Here too iBoot issues a "dmb sy" after writing.
 

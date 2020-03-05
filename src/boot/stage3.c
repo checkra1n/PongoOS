@@ -31,8 +31,6 @@ extern uint32_t tramp_hook[5];
 
 volatile void jump_to_image(uint64_t image, uint64_t args);
 volatile void d$demote_patch(void * image);
-volatile void d$reset_vector_patch(void * image);
-//volatile void AES$patch(void * image);
 
 void iorvbar_yeet(const volatile void *ro, volatile void *rw) __asm__("iorvbar_yeet");
 void aes_keygen(const volatile void *ro, volatile void *rw) __asm__("aes_keygen");
@@ -91,26 +89,16 @@ void patch_bootloader(void* boot_image)
             tramp[i] = tramp_hook[i];
         }
     }
-//    invalidate_icache();
 //    d$demote_patch(boot_image);
-//    invalidate_icache();
-//    AES$patch(boot_image);
 
     iorvbar_yeet(boot_image, boot_image);
     aes_keygen(boot_image, boot_image);
     // Ultra yolo hack: 16K support = Reconfig Engine
-    uint64_t reg;
-    __asm__ volatile("mrs %0, id_aa64mmfr0_el1" : "=r"(reg));
-    if((reg & 0xf00000) == 0x100000)
+    if(is_16k())
     {
         recfg_yoink(boot_image, boot_image);
     }
 
-    // Do not touch this.
-    //if (get_el() == 1) {
-    //    invalidate_icache();
-    //    d$reset_vector_patch(boot_image);
-    //}
     invalidate_icache();
 }
 
