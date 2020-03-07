@@ -27,7 +27,7 @@ extern uint64_t gIOBase;
 extern int socnum;
 #include <libfdt.h>
 #include <lzma/lzmadec.h>
-#define LINUX_DTREE_SIZE 65536
+#define LINUX_DTREE_SIZE 262144
 
 void * fdt;
 bool fdt_initialized = false;
