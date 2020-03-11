@@ -29,7 +29,7 @@ _main:
         mov x30, x5
         cmp x4, x5
         b.eq _main$l0
-        adr x6, __bss_start
+        add x6, x4, #0x200000
 
 copyloop:
         ldr x3, [x4], #8

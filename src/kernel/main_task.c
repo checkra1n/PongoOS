@@ -81,31 +81,12 @@ void pongo_main_task() {
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
     strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
     iprintf("Built with: GCC %s\n", __VERSION__);
-    gDevType = dt_get_prop("arm-io", "device_type", NULL);
-    size_t len = strlen(gDevType) - 3;
+    
     char soc_name[9] = {};
+    size_t len = strlen(gDevType) - 3;
     len = len < 8 ? len : 8;
     strncpy(soc_name, gDevType, len);
-    if  (strcmp(soc_name, "s5l8960x") == 0) socnum = 0x8960;
-    else if(strcmp(soc_name, "t7000") == 0) socnum = 0x7000;
-    else if(strcmp(soc_name, "t7001") == 0) socnum = 0x7001;
-    else if(strcmp(soc_name, "s8001") == 0) socnum = 0x8001;
-    else if(strcmp(soc_name, "t8010") == 0) socnum = 0x8010;
-    else if(strcmp(soc_name, "t8011") == 0) socnum = 0x8011;
-    else if(strcmp(soc_name, "t8015") == 0) socnum = 0x8015;
-    else if(strcmp(soc_name, "s8000") == 0)
-    {
-        const char *sgx = dt_get_prop("sgx", "compatible", NULL);
-        if(strlen(sgx) > 4 && strcmp(sgx + 4, "s8003") == 0)
-        {
-            socnum = 0x8003;
-            soc_name[4] = '3';
-        }
-        else
-        {
-            socnum = 0x8000;
-        }
-    }
+
     iprintf("Running on: %s\n", soc_name);
     
     shell_main();

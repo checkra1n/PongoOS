@@ -153,8 +153,11 @@ void screen_init() {
         scale_factor = 3;
 
     if (width > height) scale_factor = 1;
-
+    
     uint32_t logo_scaler_factor = 2 * scale_factor;
+    extern int socnum;
+    if (socnum == 0x8012) logo_scaler_factor = 1;
+
     uint32_t logo_x_begin = (gRowPixels / 2) - (16 * logo_scaler_factor);
     uint32_t logo_y_begin = (height / 2) - (16 * logo_scaler_factor);
 

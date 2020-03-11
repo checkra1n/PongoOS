@@ -1749,6 +1749,7 @@ void usb_init() {
     extern int socnum;
     switch (socnum) {
         case 0x8010:
+        case 0x8012:
             reg1 = 0x80268;
             reg2 = 0x80270;
             reg3 = 0x80290;
