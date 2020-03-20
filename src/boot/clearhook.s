@@ -31,14 +31,14 @@ clear_hook:
 mov x16, x30
 mov x30, x5
 mov x3, #0x800000000
-movk x3, #0x2800, lsl#16
+movk x3, #0x1800, lsl#16
 cmp x0, x3
 b.hi clear_hook_orig_backing
 add x2, x1, x0
 cmp x2, x3
 b.lo clear_hook_orig_backing
 mov x3, #0x800000000
-movk x3, #0x2900, lsl#16
+movk x3, #0x1900, lsl#16
 cmp x0, x3
 b.hi clear_hook_orig_backing
 add x2, x1, x0

@@ -26,19 +26,12 @@
 boot_args * gBootArgs;
 void* gEntryPoint;
 
-#define BOOT_FLAG_DEFAULT 0
-#define BOOT_FLAG_HARD 1
-#define BOOT_FLAG_HOOK 2
-#define BOOT_FLAG_LINUX 3
-#define BOOT_FLAG_RAW 4
 
 volatile char gBootFlag = 0;
 dt_node_t *gDeviceTree;
 uint64_t gIOBase;
 char* gDevType;
 uint64_t gESTS;
-void (*preboot_hook)();
-void (*rdload_hook)();
 
 struct task sched_task = {.name = "sched"};
 struct task pongo_task = {.name = "main"};
@@ -126,9 +119,9 @@ __attribute__((noinline)) void pongo_entry_cached() {
     gDeviceTree = (void*)((uint64_t)gBootArgs->deviceTreeP - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000 + kCacheableView);
     gIOBase = dt_get_u64_prop_i("arm-io", "ranges", 1);
     uint64_t max_video_addr = gBootArgs->Video.v_baseAddr + gBootArgs->Video.v_rowBytes * gBootArgs->Video.v_height;
-    uint64_t max_mem_size = max_video_addr - 0x800000000;
+    uint64_t max_mem_size = max_video_addr - gBootArgs->physBase;
     if (gBootArgs->memSize > max_mem_size) max_mem_size = gBootArgs->memSize;
-    map_full_ram(0, max_mem_size);
+    map_full_ram(gBootArgs->physBase & 0xFFFFFFFF, max_mem_size - gBootArgs->physBase & 0xFFFFFFFF);
 
     extern int socnum;
     gDevType = dt_get_prop("arm-io", "device_type", NULL);
@@ -226,15 +219,14 @@ __attribute__((noinline)) void pongo_entry_cached() {
             screen_puts("Booting Linux...");
             return linux_prep_boot();
         }
-        if (gBootFlag == BOOT_FLAG_HOOK && preboot_hook) {
+        if (gBootFlag == BOOT_FLAG_HOOK) {
             // hook for kernel patching here
             screen_puts("Invoking preboot hook");
-            preboot_hook();
+            xnu_hook();
         }
         gBootFlag--;
     }
-
-    if (rdload_hook) rdload_hook();
+    xnu_loadrd();
     screen_puts("Booting");
 }
 
@@ -250,7 +242,7 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
 {
     gBootArgs = (boot_args*)kernel_args;
     gEntryPoint = entryp;
-    lowlevel_setup(0, 0x30000000);
+    lowlevel_setup(gBootArgs->physBase & 0xFFFFFFFF, 0x1f000000);
     rebase_pc(kCacheableView - 0x800000000);
     pongo_entry_cached();
     gFramebuffer = (uint32_t*)gBootArgs->Video.v_baseAddr;
@@ -263,12 +255,12 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
     else if(gBootFlag == BOOT_FLAG_LINUX)
     {
         linux_boot();
-        exit_to_el1_image((void*)gBootArgs, gEntryPoint);
     }
     else
     {
-        exit_to_el1_image((void*)gBootArgs, gEntryPoint);
+        xnu_boot();
     }
+    exit_to_el1_image((void*)gBootArgs, gEntryPoint);
     screen_puts("didn't boot?!");
     while(1)
     {}

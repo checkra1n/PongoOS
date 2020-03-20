@@ -25,7 +25,7 @@
 _main:
         adr x4, _main
         mov x5, #0x800000000
-        movk x5, #0x2800, lsl#16
+        movk x5, #0x1800, lsl#16
         mov x30, x5
         cmp x4, x5
         b.eq _main$l0
@@ -40,7 +40,7 @@ copyloop:
 #ifdef AUTOBOOT
         ldr x3, [x6]
         mov x4, #0x800000000
-        movk x4, #0x2900, lsl#16
+        movk x4, #0x1900, lsl#16
         mov x2, #0x7561
         movk x2, #0x6f74, lsl#16
         movk x2, #0x6f62, lsl#32
@@ -64,7 +64,7 @@ copyloop_3:
 #endif
         ret
 _main$l0:
-	sub x30, x30, #0x4000
+	sub x30, x30, #0x400
 	mov sp, x30
 	mov x1, x0
 	mov x0, x9

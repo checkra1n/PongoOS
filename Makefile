@@ -19,7 +19,7 @@ EMBEDDED_CC_FLAGS       ?= -Wunused-label -D'OBFUSCATE_C_FUNC(F)'='F' -DDEV_BUIL
 
 STAGE3_ENTRY_C          := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.s patches.s demote_patch.s jump_to_image.s main.c)
 PONGO_C                 := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.s) $(wildcard $(SRC)/shell/*.c)
-PONGO_DRIVERS_C         := $(wildcard $(SRC)/drivers/usb/*.c) $(wildcard $(SRC)/drivers/framebuffer/*.c)  $(wildcard $(SRC)/drivers/uart/*.c) $(wildcard $(SRC)/drivers/timer/*.c) $(wildcard $(SRC)/drivers/gpio/*.c) $(wildcard $(SRC)/linux/lzma/*.c) $(wildcard $(SRC)/linux/libfdt/*.c) $(wildcard $(SRC)/linux/*.c)
+PONGO_DRIVERS_C         := $(wildcard $(SRC)/drivers/usb/*.c) $(wildcard $(SRC)/drivers/framebuffer/*.c)  $(wildcard $(SRC)/drivers/uart/*.c) $(wildcard $(SRC)/drivers/timer/*.c) $(wildcard $(SRC)/drivers/gpio/*.c) $(wildcard $(SRC)/linux/lzma/*.c) $(wildcard $(SRC)/linux/libfdt/*.c) $(wildcard $(SRC)/linux/*.c) $(wildcard $(SRC)/drivers/xnu/*.c) $(wildcard $(SRC)/drivers/xnu/*.s)
 PONGO_FLAGS             := -ffreestanding -Iinclude -Iapple-include -Iinclude/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -Wl,-e,_main -I$(SRC)/linux/libfdt
 
 # CLANG_SPECIFIC should be $(BUILD)/entry.o, because of LLD builds.

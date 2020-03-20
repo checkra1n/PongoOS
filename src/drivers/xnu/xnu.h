@@ -17,43 +17,12 @@
 // SOFTWARE.
 // 
 //
-//  Copyright (c) 2019-2020 checkra1n team
+//  Copyright (c) 2020 checkra1n team
 //  This file is part of pongoOS.
 //
-.global jump_to_image
-jump_to_image:
-    mov x30, x0
-    mov x0, x1
-    isb
-    dsb sy
-    ic iallu
-    dsb sy
-    isb
-    mov x1, xzr
-    mov x2, xzr
-    mov x3, xzr
-    ret
 
-.global jump_to_image_extended
-jump_to_image_extended:
-    mov x30, x0
-    mov x0, x1
-    mov x8, x2
-    isb
-    dsb sy
-    ic iallu
-    dsb sy
-    isb
-    mov x1, xzr
-    mov x2, xzr
-    mov x3, xzr
-    ret
-
-.global tramp_hook
-tramp_hook:
-    mov x8, x27
-    mov x9, x29
-    mov x27, #0x800000000
-    movk x27, #0x1800, lsl#16
-    mov x29, x27
+extern void xnu_boot();
+extern void xnu_init();
+extern void xnu_loadrd();
+extern void xnu_hook();
 

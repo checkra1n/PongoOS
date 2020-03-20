@@ -21,6 +21,8 @@
 //  This file is part of pongoOS.
 //
 
+#ifndef PONGOH
+#define PONGOH
 #include <mach-o/loader.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -34,6 +36,7 @@
 #include "uart/uart.h"
 #include "gpio/gpio.h"
 #include "timer/timer.h"
+#include "xnu/xnu.h"
 
 #define DT_KEY_LEN 0x20
 
@@ -91,6 +94,13 @@ struct memmap {
     uint64_t addr;
     uint64_t size;
 };
+
+extern volatile char gBootFlag;
+#define BOOT_FLAG_DEFAULT 0
+#define BOOT_FLAG_HARD 1
+#define BOOT_FLAG_HOOK 2
+#define BOOT_FLAG_LINUX 3
+#define BOOT_FLAG_RAW 4
 
 typedef uint64_t lock;
 extern void lock_take(lock* lock); // takes a lock spinning initially but after being pre-empted once it will start yielding until it acquires it
@@ -155,8 +165,63 @@ extern char* gDevType;
 extern void* ramdisk_buf;
 extern uint32_t ramdisk_size;
 
+typedef struct xnu_pf_range {
+    uint64_t va;
+    uint64_t size;
+    uint8_t* cacheable_base;
+    uint8_t* device_base;
+} xnu_pf_range_t;
+
+
+typedef struct xnu_pf_patch {
+    bool (*pf_callback)(struct xnu_pf_patch* patch, void* cacheable_stream);
+    bool is_required;
+    bool has_fired;
+    bool should_match;
+    uint32_t pfjit_stolen_opcode;
+    uint32_t pfjit_max_emit_size;
+    uint32_t* (*pf_emit)(struct xnu_pf_patch* patch, uint32_t* insn);
+    void (*pf_match)(struct xnu_pf_patch* patch, uint8_t access_type, void* preread, void* cacheable_stream);
+    struct xnu_pf_patch* next_patch;
+    uint32_t* pfjit_entry;
+    uint32_t* pfjit_exit;
+    uint8_t pf_data[0];
+
+    //            patch->pf_match(XNU_PF_ACCESS_32BIT, reads, &stream[index], &dstream[index]);
+
+} xnu_pf_patch_t;
+
+#define XNU_PF_ACCESS_8BIT 0x8
+#define XNU_PF_ACCESS_16BIT 0x10
+#define XNU_PF_ACCESS_32BIT 0x20
+#define XNU_PF_ACCESS_64BIT 0x40
+#define TICKS_IN_1MS 24000
+extern uint64_t xnu_slide_value(struct mach_header_64* header);
+extern struct mach_header_64* xnu_header();
+extern xnu_pf_range_t* xnu_pf_range_from_va(uint64_t va, uint64_t size);
+extern xnu_pf_range_t* xnu_pf_segment(struct mach_header_64* header, char* segment_name);
+extern xnu_pf_range_t* xnu_pf_section(struct mach_header_64* header, void* segment, char* section_name);
+extern xnu_pf_range_t* xnu_pf_all(struct mach_header_64* header);
+extern xnu_pf_range_t* xnu_pf_all_x(struct mach_header_64* header);
+extern void xnu_pf_disable_patch(xnu_pf_patch_t* patch);
+extern void xnu_pf_enable_patch(xnu_pf_patch_t* patch);
+
+typedef struct xnu_pf_patchset {
+    xnu_pf_patch_t* patch_head;
+    void* jit_matcher;
+    uint8_t accesstype;
+} xnu_pf_patchset_t;
+extern xnu_pf_patch_t* xnu_pf_ptr_to_data(xnu_pf_patchset_t* patchset, uint64_t slide, xnu_pf_range_t* range, void* data, size_t datasz, bool required, bool (*callback)(struct xnu_pf_patch* patch, void* cacheable_stream));
+extern xnu_pf_patch_t* xnu_pf_maskmatch(xnu_pf_patchset_t* patchset, uint64_t* matches, uint64_t* masks, uint32_t entryc, bool required, bool (*callback)(struct xnu_pf_patch* patch, void* cacheable_stream));
+extern void xnu_pf_emit(xnu_pf_patchset_t* patchset); // converts a patchset to JIT
+extern void xnu_pf_apply(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset);
+extern xnu_pf_patchset_t* xnu_pf_patchset_create(uint8_t pf_accesstype);
+extern void xnu_pf_patchset_destroy(xnu_pf_patchset_t* patchset);
+extern void* xnu_va_to_ptr(uint64_t va);
+extern uint64_t xnu_ptr_to_va(void* ptr);
+
 #define kCacheableView 0x400000000ULL
-#define MAGIC_BASE 0x828000000ULL
+#define MAGIC_BASE 0x818000000ULL
 struct pongo_exports {
     const char* name;
     void * value;
@@ -270,4 +335,5 @@ extern volatile void disable_mmu_el3();
 extern void lowlevel_cleanup(void);
 extern void lowlevel_setup(uint64_t phys_off, uint64_t phys_size);
 extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
+#endif
 #endif

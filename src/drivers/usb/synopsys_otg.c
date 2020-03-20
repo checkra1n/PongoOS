@@ -1717,7 +1717,7 @@ void usb_bringup() {
     clock_gate(clockGateBase + reg1, 0);
     clock_gate(clockGateBase + reg2, 0);
     clock_gate(clockGateBase + reg3, 0);
-    usleep(1000);
+    spin(1000);
     clock_gate(clockGateBase + reg1, 1);
     clock_gate(clockGateBase + reg2, 1);
     clock_gate(clockGateBase + reg3, 1);
@@ -1731,13 +1731,13 @@ void usb_bringup() {
     *(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = dt_get_u32_prop("otgphyctrl", "cfg0-device");
     *(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = dt_get_u32_prop("otgphyctrl", "cfg1-device");
     *(volatile uint32_t*)(gSynopsysOTGBase) |= 1;
-    usleep(20);
+    spin(20);
     *(volatile uint32_t*)(gSynopsysOTGBase) &= 0xFFFFFFF3;
-    usleep(20);
+    spin(20);
     *(volatile uint32_t*)(gSynopsysOTGBase) &= 0xFFFFFFFE;
-    usleep(20);
+    spin(20);
     *(volatile uint32_t*)(gSynopsysOTGBase + 0x4) &= ~2;
-    usleep(1500);
+    spin(1500);
 }
 
 void usb_init() {

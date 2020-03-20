@@ -26,7 +26,7 @@
 
 void pongo_autoboot()
 {
-	uint64_t* autoboot_block = (uint64_t*)0x429000000;
+	uint64_t* autoboot_block = (uint64_t*)0x419000000;
 	if (autoboot_block[0] == 0x746F6F626F747561) {
                 memcpy(loader_xfer_recv_data, &autoboot_block[2], (uint32_t)autoboot_block[1]);
                 loader_xfer_recv_count = (uint32_t)autoboot_block[1];

@@ -174,9 +174,20 @@ precede the call to platform_disable_keys(). In assembly, this looks like this:
 | bl 0x(same)          |
 +----------------------+
 
+Or, on newer clang, like this:
+
++------------------+
+| mov w0, 0x40000  |
+| bl 0x(same)      |
+| mov x{19-28}, x0 |
+| mov w0, 0x80000  |
+| bl 0x(same)      |
++------------------+
+
 And again in r2 hexsearch:
 
 /x e0030e3200000094f00300aae0030d3200000094:ffffffff000000fcf0ffffffffffffff000000fc
+/x 8000a05200000094f00300aa0001a05200000094:ffffffff000000fcf0ffffffffffffff000000fc
 
 We find this sequence, seek to the next bl, then dereference it and write a "ret" there.
 We do this rather than nop'ing the branch because there is more than one call site.
@@ -190,21 +201,27 @@ aes_keygen:
     mov x2, x0 // instr
     movz w7, 0x320e, lsl 16 // orr w0, wzr, 0x40000
     movk w7, 0x03e0
-    movz w8, 0xaa00, lsl 16 // mov x{16-31}, x0
-    movk w8, 0x03f0
-    sub w9, w7, 0x10, lsl 12 // orr w0, wzr, 0x80000
+    movz w8, 0x52a0, lsl 16 // mov w0, 0x40000
+    movk w8, 0x0080
+    movz w9, 0xaa00, lsl 16 // mov x{16-31}, x0
+    movk w9, 0x03f0
+    sub w10, w7, 0x10, lsl 12 // orr w0, wzr, 0x80000
+    add w11, w8, 0x80 // mov w0, 0x80000
     // First loop: search for call site
 1:
     // +0x00: orr w0, wzr, 0x40000
     ldr w3, [x2], 0x4
     cmp w3, w7
+    ccmp w3, w8, 4, ne
     b.ne 1b
     // +0x08: mov x{16-31}, x0
     // +0x0c: orr w0, wzr, 0x80000
     ldp w3, w4, [x2, 0x4]
     and w3, w3, 0xfffffff0
-    cmp w3, w8
-    ccmp w4, w9, 0, eq
+    // if((w4 == w10 || w4 == w11) && w3 == w9)
+    cmp w4, w10
+    ccmp w4, w11, 4, ne
+    ccmp w3, w9, 0, eq
     b.ne 1b
     // +0x04: bl 0x(same)
     // +0x10: bl 0x(same)
@@ -306,9 +323,22 @@ one argument: BOOT_DARWIN (== 3). In assembly, it looks like this:
 | bl 0x...       |
 +----------------+
 
+Or on new clang:
+
++-----------+
+| mov w0, 3 |
+| bl 0x...  |
+| mov w0, 3 |
+| bl 0x...  |
+| mov w0, 3 |
+| bl 0x...  |
++-----------+
+
+
 In r2:
 
 /x e007003200000094e007003200000094e007003200000094:ffffffff000000fcffffffff000000fcffffffff000000fc
+/x 600080520000009460008052000000946000805200000094:ffffffff000000fcffffffff000000fcffffffff000000fc
 
 The last bl is the call to reconfig_lock(), so we just deref and turn it into
 a ret to nop the lock. Absolutely everything else is deferred to PongoOS.
@@ -324,11 +354,14 @@ recfg_yoink:
     mov x2, x0 // instr
     movz w8, 0x3200, lsl 16 // orr w0, wzr, 3
     movk w8, 0x07e0
-    movz w9, 0x25 // bl top bits
+    movz w9, 0x5280, lsl 16 // mov w0, 3
+    movk w9, 0x0060
+    movz w10, 0x25 // bl top bits
     // Loop: search for call site
 1:
     ldr w3, [x2], 0x4
     cmp w3, w8
+    ccmp w3, w9, 4, ne
     b.ne 1b
     ldp w3, w4, [x2]
     ldp w5, w6, [x2, 0x8]
@@ -336,11 +369,14 @@ recfg_yoink:
     ubfx w3, w3, 26, 6
     ubfx w5, w5, 26, 6
     cmp w4, w8
-    ccmp w6, w8, 0, eq
+    ccmp w4, w9, 4, ne
+    b.ne 1b
+    cmp w6, w8
+    ccmp w6, w9, 4, ne
     ubfx w4, w7, 26, 6
-    ccmp w3, w9, 0, eq
-    ccmp w5, w9, 0, eq
-    ccmp w4, w9, 0, eq
+    ccmp w3, w10, 0, eq
+    ccmp w5, w10, 0, eq
+    ccmp w4, w10, 0, eq
     b.ne 1b
 
     // Deref and patch

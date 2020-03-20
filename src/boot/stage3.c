@@ -134,7 +134,7 @@ OBFUSCATE_C_FUNC(void trampoline_entry(void* boot_image, void* boot_args))
     if (__bss_start == 0x746F6F626F747561) {
         uint32_t autoboot_sz = (uint32_t)((&__bss_start)[1]);
         extern volatile void smemcpy128(void*,void*,uint32_t);
-        smemcpy128 ((void*)0x829000000, &__bss_start, (autoboot_sz + 64)/16);
+        smemcpy128 ((void*)0x819000000, &__bss_start, (autoboot_sz + 64)/16);
         __bss_start = 0;
     }
 

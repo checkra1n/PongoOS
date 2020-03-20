@@ -452,76 +452,88 @@ uint64_t vatophys(uint64_t kvaddr) {
     }
 }
 
-
-OBFUSCATE_C_FUNC(void lowlevel_setup(uint64_t phys_off, uint64_t phys_size))
-{
-    uint64_t pgsz, blksz, tg0, t0sz;
-    if (is_16k()) {
-        pgsz = 0x4000;
-        blksz = 1ULL << 25;
-        tg0 = 0b10;
-        t0sz = 28;
-    } else {
-        pgsz = 0x4000;
-        blksz = 1ULL << 30;
-        tg0 = 0b00;
-        t0sz = 25;
-    }
-
-    volatile uint64_t* tt = (volatile uint64_t*)(MAGIC_BASE - pgsz);
-    uint64_t base = 0;
-    for (size_t i = 0; i < pgsz / 8; ++i) {
-        if (base >= (kCacheableView+phys_off) && base < (kCacheableView + phys_off + phys_size)) {
-            tt[i] = (base-kCacheableView+0x800000000) | 0x401 | (1 << 2);
-        } else if (base >= (0x800000000+phys_off) && base < (0x800000000+phys_size+phys_off)) {
-            tt[i] = base | 0x401 | 0x300;
-        } else if (base >= 0x200000000 && base < 0x300000000) {
-            tt[i] = base | 0x401 | 0x300;
-	} else tt[i] = 0;
-        base += blksz;
-    }
-
-    if (get_el() == 1) {
-        set_vbar_el1((uint64_t)&exception_vector);
-        enable_mmu_el1((uint64_t)tt, 0x130802a00 | (tg0 << 14) | t0sz, 0xff04, 5);
-    } else {
-        set_vbar_el3((uint64_t)&exception_vector);
-        enable_mmu_el3((uint64_t)tt, 0x12a00 | (tg0 << 14) | t0sz, 0xff04);
-    }
-}
 uint64_t ram_phys_off;
 uint64_t ram_phys_size;
 
-OBFUSCATE_C_FUNC(void map_full_ram(uint64_t phys_off, uint64_t phys_size)) {
-    uint64_t pgsz, blksz, tg0, t0sz;
-    if (is_16k()) {
-        pgsz = 0x4000;
-        blksz = 1ULL << 25;
-        tg0 = 0b10;
-        t0sz = 28;
-    } else {
-        pgsz = 0x4000;
-        blksz = 1ULL << 30;
-        tg0 = 0b00;
-        t0sz = 25;
-    }
+uint64_t pgsz, tg0, t0sz, l0b, l1b, l2b, pb;
+uint64_t ttb_alloc_base;
+uint64_t * ttbr0;
 
-    volatile uint64_t* tt = (volatile uint64_t*)(MAGIC_BASE - pgsz);
+uint64_t * ttb_alloc() {
+    ttb_alloc_base -= pgsz;
+    uint64_t* rv = (uint64_t*) ttb_alloc_base;
+    for (int i=0; i < (pgsz / 8); i++) {
+        rv[i] = 0;
+    }
+    return rv;
+}
+uint64_t ttlevels = 0;
+uint64_t level_mask = 0;
+uint64_t physmask = 0;
+uint64_t level_delta_bits = 0;
+
+OBFUSCATE_C_FUNC(void map_range(uint64_t va, uint64_t phys_off, uint64_t size, uint64_t flags)) {
+    uint64_t blksz = 1ULL << l0b;
     uint64_t base = 0;
-    ram_phys_off = 0;
-    ram_phys_size = 0;
+    uint64_t va_off = va & (blksz-1);
+    uint64_t va_end = va + size;
+    va -= va_off;
+    phys_off -= va_off;
+    
     for (size_t i = 0; i < pgsz / 8; ++i) {
-        if (!tt[i]) {
-            if (base >= (kCacheableView+phys_off) && base < (kCacheableView + phys_off + phys_size)) {
-                if (!ram_phys_off) ram_phys_off = base;
-                ram_phys_size += blksz;
-                tt[i] = (base-kCacheableView+0x800000000) | 0x401 | (1 << 2);
-            } else if (base >= (0x800000000+phys_off) && base < (0x800000000+phys_size+phys_off)) {
-                tt[i] = base | 0x401 | 0x300;
+        if (base >= va && (base < va_end)) {
+            uint64_t cur_alloc_sz = va_end - base;
+            if (cur_alloc_sz > blksz) cur_alloc_sz = blksz;
+            uint64_t offset_within = (base - va);
+            if (va_off || cur_alloc_sz != blksz) {
+                if (va_off & (pgsz - 1)) panic("invalid VA");
+                if ((phys_off + offset_within) & (pgsz - 1)) panic("invalid VA");
+
+                if ((ttbr0[i] & 3) != 3) {
+                    ttbr0[i] = (((uint64_t)ttb_alloc()) & physmask) | 3;
+                }
+                uint64_t* ttb = (uint64_t*)(ttbr0[i] & physmask);
+                uint64_t l1base = base;
+                uint64_t n_blksz = 1ULL << l1b;
+                bool has_l2 = !!l2b;
+                for (size_t i = 0; i < pgsz / 8; ++i) {
+                    if (l1base >= (base + va_off)) {
+                        ttb[i] = (phys_off + offset_within + i * n_blksz) | flags | (has_l2 ? 1 : 3);
+                    }
+                    l1base += n_blksz;
+                }
+                /*
+
+
+                uint64_t* ttb = (uint64_t*)(ttbr0[i] & physmask);
+                for (size_t i = 0; i < pgsz / 8; ++i) {
+                    ttb[i] = (phys_off + offset_within + n_blksz * i) | flags | 1;
+//                    map_range_l1(ttb, base, base + i, (phys_off + offset_within) + i, cur_alloc_sz, flags);
+                }
+                if ((ttbr0[i] & 3) != 3) {
+                    ttbr0[i] = (((uint64_t)ttb_alloc()) & physmask) | 3;
+                }
+                uint64_t* ttb = (uint64_t*)(ttbr0[i] & physmask);
+                for (size_t i = 0; i < pgsz / 8; ++i) {
+                    ttb[i] = (phys_off + offset_within + i * n_blksz) | flags | 1;
+                }
+                */
+                va_off = 0;
+            } else {
+                ttbr0[i] = (phys_off + offset_within) | flags | 1;
             }
+            
         }
         base += blksz;
     }
+
+}
+OBFUSCATE_C_FUNC(void map_full_ram(uint64_t phys_off, uint64_t phys_size)) {
+    map_range(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 0x300 | 0x400 | (1 << 2));
+    map_range(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 0x300 | 0x400);
+    ram_phys_off = kCacheableView + phys_off;
+    ram_phys_size = phys_size;
+
     asm volatile("dsb sy");
     if (get_el() == 1) {
          asm volatile("tlbi vmalle1\n");
@@ -530,10 +542,58 @@ OBFUSCATE_C_FUNC(void map_full_ram(uint64_t phys_off, uint64_t phys_size)) {
     }
     asm volatile("dsb sy");
 }
+OBFUSCATE_C_FUNC(void lowlevel_setup(uint64_t phys_off, uint64_t phys_size))
+{
+    if (is_16k()) {
+        pgsz = 0x4000;
+        l0b = 25;
+        pb = l1b = 14;
+        l2b = 0;
+        tg0 = 0b10;
+        t0sz = 28;
+        ttlevels = 2;
+        level_mask = 0x7ff;
+        physmask = 0xFFFFFFFFC000;
+    } else {
+        pgsz = 0x1000;
+        l0b = 30;
+        l1b = 21;
+        pb = l2b = 12;
+        tg0 = 0b00;
+        t0sz = 25;
+        ttlevels = 3;
+        level_mask = 0x1ff;
+        physmask = 0xFFFFFFFFF000;
+    }
+    level_delta_bits = pb - 3;
+
+    ttb_alloc_base = MAGIC_BASE - 0x4000;
+
+    ttbr0 = ttb_alloc();
+    map_range(0x200000000, 0x200000000, 0x100000000, 0x300 | 0x400);
+    phys_off += (pgsz-1);
+    phys_off &= ~(pgsz-1);
+    map_range(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 0x300 | 0x400 | (1 << 2));
+    map_range(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 0x300 | 0x400);
+
+    ram_phys_off = kCacheableView + phys_off;
+    ram_phys_size = phys_size;
+
+    //volatile uint64_t* tt = map_range(phys_off, phys_size);
+
+    if (get_el() == 1) {
+        set_vbar_el1((uint64_t)&exception_vector);
+        enable_mmu_el1((uint64_t)ttbr0, 0x130802a00 | (tg0 << 14) | t0sz, 0xff04, 5);
+    } else {
+        set_vbar_el3((uint64_t)&exception_vector);
+        enable_mmu_el3((uint64_t)ttbr0, 0x12a00 | (tg0 << 14) | t0sz, 0xff04);
+    }
+}
+
 
 OBFUSCATE_C_FUNC(void lowlevel_cleanup(void))
 {
-    cache_clean_and_invalidate((void*)kCacheableView, ram_phys_size);
+    cache_clean_and_invalidate((void*)ram_phys_off, ram_phys_size);
     if (get_el() == 1) {
         disable_mmu_el1();
     } else {

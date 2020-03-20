@@ -17,7 +17,7 @@ SECTIONS
    needs to have the same virtual/physical address. entry.S and start.c
    run in this initial setting.*/
   /* . = 0x10000; */
-  . = 0x428000000;
+  . = 0x418000000;
   
   .start_sec : {
     build/entry.o(.text)
