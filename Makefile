@@ -6,7 +6,7 @@ ifndef $(HOST_OS)
 	endif
 endif
 
-PONGO_VERSION           := 1.0.3-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
+PONGO_VERSION           := 1.1.0-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
 ROOT                    := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 SRC                     := $(ROOT)/src
 INC                     := $(ROOT)/include

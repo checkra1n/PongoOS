@@ -101,26 +101,24 @@ uint64_t topkd = 0;
 void alloc_init() {
     if (alloc_static_base) panic("alloc_init misuse");
     alloc_static_current = alloc_static_base = (kCacheableView - 0x800000000 + gBootArgs->topOfKernelData) & (~0x3fff);
-    alloc_static_end = alloc_heap_current = alloc_heap_base = alloc_static_base + (1024 * 1024 * 128);
-    alloc_heap_end = 0x417fe0000;
+    alloc_static_end = 0x417fe0000;
 
     extern uint64_t __bss_end;
-    uint64_t alt_alloc_heap_base = (((uint64_t)(&__bss_end)) + 0x3fff) & (~0x3fff);
-    alt_alloc_heap_base &= 0xFFFFFFFF;
-    alt_alloc_heap_base += kCacheableView;
-    uint64_t alt_alloc_heap_end = (((uint64_t)((kCacheableView - 0x800000000 + gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
-    bool is_alt_heap = false;
-    if (alt_alloc_heap_end > alt_alloc_heap_base) {
-        if ((alt_alloc_heap_end - alt_alloc_heap_base) > (alloc_heap_end - alloc_heap_base)) {
-            alloc_static_end = alloc_heap_end;
-            alloc_heap_base = alt_alloc_heap_base;
-            alloc_heap_end = alt_alloc_heap_end;
-            is_alt_heap = true;
+    alloc_heap_base = (((uint64_t)(&__bss_end)) + 0x7fff) & (~0x3fff);
+    alloc_heap_base &= 0xFFFFFFFF;
+    alloc_heap_base += kCacheableView;
+    alloc_heap_end = (((uint64_t)((kCacheableView - 0x800000000 + gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
+
+    uint64_t alloc_static_hardcap = alloc_static_base + (1024 * 1024 * 64);
+    if (alloc_static_end > alloc_static_hardcap) {
+        if ((alloc_static_end - alloc_static_hardcap) > (alloc_heap_end - alloc_heap_base)) {
+            alloc_heap_end = alloc_static_end;
+            alloc_static_end = alloc_static_hardcap;
+            alloc_heap_base = alloc_static_hardcap;
         }
     }
-    if (!is_alt_heap) {
-        alloc_static_end = alloc_heap_current = alloc_heap_base = alloc_static_base + (1024 * 1024 * 64);
-    }
+    
+    alloc_heap_current = alloc_heap_base;
 }
 void* alloc_static(uint32_t size) { // memory returned by this will be added to the xnu static region, thus will persist after xnu boot
     if (!alloc_static_base) {

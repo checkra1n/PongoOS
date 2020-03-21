@@ -172,6 +172,7 @@ typedef struct xnu_pf_range {
     uint8_t* device_base;
 } xnu_pf_range_t;
 
+struct xnu_pf_patchset;
 
 typedef struct xnu_pf_patch {
     bool (*pf_callback)(struct xnu_pf_patch* patch, void* cacheable_stream);
@@ -180,7 +181,7 @@ typedef struct xnu_pf_patch {
     bool should_match;
     uint32_t pfjit_stolen_opcode;
     uint32_t pfjit_max_emit_size;
-    uint32_t* (*pf_emit)(struct xnu_pf_patch* patch, uint32_t* insn);
+    uint32_t* (*pf_emit)(struct xnu_pf_patch* patch, struct xnu_pf_patchset *patchset,uint32_t* insn, uint32_t** insn_stream_end, uint8_t access_type);
     void (*pf_match)(struct xnu_pf_patch* patch, uint8_t access_type, void* preread, void* cacheable_stream);
     struct xnu_pf_patch* next_patch;
     uint32_t* pfjit_entry;
@@ -190,6 +191,13 @@ typedef struct xnu_pf_patch {
     //            patch->pf_match(XNU_PF_ACCESS_32BIT, reads, &stream[index], &dstream[index]);
 
 } xnu_pf_patch_t;
+
+typedef struct xnu_pf_patchset {
+    xnu_pf_patch_t* patch_head;
+    void* jit_matcher;
+    uint8_t accesstype;
+    uint64_t p0;
+} xnu_pf_patchset_t;
 
 #define XNU_PF_ACCESS_8BIT 0x8
 #define XNU_PF_ACCESS_16BIT 0x10
@@ -205,12 +213,10 @@ extern xnu_pf_range_t* xnu_pf_all(struct mach_header_64* header);
 extern xnu_pf_range_t* xnu_pf_all_x(struct mach_header_64* header);
 extern void xnu_pf_disable_patch(xnu_pf_patch_t* patch);
 extern void xnu_pf_enable_patch(xnu_pf_patch_t* patch);
+extern struct segment_command_64* macho_get_segment(struct mach_header_64* header, const char* segname);
+extern struct section_64 *macho_get_section(struct segment_command_64 *seg, const char *name);
+extern struct mach_header_64* xnu_pf_get_first_kext(struct mach_header_64* kheader);
 
-typedef struct xnu_pf_patchset {
-    xnu_pf_patch_t* patch_head;
-    void* jit_matcher;
-    uint8_t accesstype;
-} xnu_pf_patchset_t;
 extern xnu_pf_patch_t* xnu_pf_ptr_to_data(xnu_pf_patchset_t* patchset, uint64_t slide, xnu_pf_range_t* range, void* data, size_t datasz, bool required, bool (*callback)(struct xnu_pf_patch* patch, void* cacheable_stream));
 extern xnu_pf_patch_t* xnu_pf_maskmatch(xnu_pf_patchset_t* patchset, uint64_t* matches, uint64_t* masks, uint32_t entryc, bool required, bool (*callback)(struct xnu_pf_patch* patch, void* cacheable_stream));
 extern void xnu_pf_emit(xnu_pf_patchset_t* patchset); // converts a patchset to JIT
@@ -219,6 +225,8 @@ extern xnu_pf_patchset_t* xnu_pf_patchset_create(uint8_t pf_accesstype);
 extern void xnu_pf_patchset_destroy(xnu_pf_patchset_t* patchset);
 extern void* xnu_va_to_ptr(uint64_t va);
 extern uint64_t xnu_ptr_to_va(void* ptr);
+extern struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, const char* kext_bundle_id);
+extern void xnu_pf_apply_each_kext(struct mach_header_64* kheader, xnu_pf_patchset_t* patchset);
 
 #define kCacheableView 0x400000000ULL
 #define MAGIC_BASE 0x818000000ULL

@@ -44,7 +44,11 @@ void *__memcpy_chk (void *dest, const void * src, size_t n, size_t dest_len) {
 void printf32(const char* str, uint32_t val) {
      iprintf(str,val);
 }
+
 struct pongo_exports public_api[] = {
+    EXPORT_SYMBOL(xnu_pf_apply_each_kext),
+    EXPORT_SYMBOL(xnu_pf_get_first_kext),
+    EXPORT_SYMBOL(xnu_pf_get_kext_header),
     EXPORT_SYMBOL(xnu_pf_disable_patch),
     EXPORT_SYMBOL(xnu_pf_enable_patch),
     EXPORT_SYMBOL(xnu_pf_ptr_to_data),
@@ -63,6 +67,8 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(xnu_pf_maskmatch),
     EXPORT_SYMBOL(xnu_pf_emit),
     EXPORT_SYMBOL(xnu_pf_apply),
+    EXPORT_SYMBOL(macho_get_segment),
+    EXPORT_SYMBOL(macho_get_section),
     EXPORT_SYMBOL(dt_check),
     EXPORT_SYMBOL(dt_parse),
     EXPORT_SYMBOL(dt_find),

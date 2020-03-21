@@ -583,10 +583,10 @@ OBFUSCATE_C_FUNC(void lowlevel_setup(uint64_t phys_off, uint64_t phys_size))
 
     if (get_el() == 1) {
         set_vbar_el1((uint64_t)&exception_vector);
-        enable_mmu_el1((uint64_t)ttbr0, 0x130802a00 | (tg0 << 14) | t0sz, 0xff04, 5);
+        enable_mmu_el1((uint64_t)ttbr0, 0x130802a00 | (tg0 << 14) | t0sz, 0xbb04, 5);
     } else {
         set_vbar_el3((uint64_t)&exception_vector);
-        enable_mmu_el3((uint64_t)ttbr0, 0x12a00 | (tg0 << 14) | t0sz, 0xff04);
+        enable_mmu_el3((uint64_t)ttbr0, 0x12a00 | (tg0 << 14) | t0sz, 0xbb04);
     }
 }
 

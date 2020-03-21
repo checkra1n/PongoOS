@@ -92,7 +92,7 @@ pf_jit_iter_loop_iter_load8_start:
     mov w26, w27
     ldrb w27, [x19], #1
     cmp x19, x28
-    b.hi Lnext162
+    b.hi Lnext82
 pf_jit_iter_loop_iter_load8_end:
     nop
 Lnext82:
@@ -243,290 +243,31 @@ pf_jit_ptr_comparison_slowpath:
 pf_jit_ptr_comparison_next:
 
 
-.globl pf_jit_mask_comparison_1_start
-.globl pf_jit_mask_comparison_1_end
+.globl pf_jit_slowpath_start
+.globl pf_jit_slowpath_end
+.globl pf_jit_slowpath_next
 
 .align 3
-pf_jit_mask_comparison_1_start:
-    and x8, x20, x1
-    cmp x8, x0
-    b.ne pf_jit_mask_comparison_1_next
-    ldr x0, pf_jit_mask_comparison_1_patch
+pf_jit_slowpath_start:
+    ldr x0, pf_jit_slowpath_patch
     mov w1, w29
     sub x2, x19, x29
     mov x3, x2
-    ldr x4, pf_jit_mask_comparison_1_slowpath
+    ldr x4, pf_jit_slowpath_slowpath
     blr x4
-    b pf_jit_mask_comparison_1_next
+    nop
+    nop
+    nop
+    nop
+    b pf_jit_slowpath_next
     .align 3
-pf_jit_mask_comparison_1_end:
+pf_jit_slowpath_end:
 
-pf_jit_mask_comparison_1_patch:
+pf_jit_slowpath_patch:
 .quad 0x4141414142424200
-pf_jit_mask_comparison_1_slowpath:
+pf_jit_slowpath_slowpath:
 .quad 0x4141414142424201
-pf_jit_mask_comparison_1_next:
+pf_jit_slowpath_next:
 
 
-.globl pf_jit_mask_comparison_2_start
-.globl pf_jit_mask_comparison_2_end
-
-.align 3
-pf_jit_mask_comparison_2_start:
-    and x8, x20, x1
-    cmp x8, x0
-    b.ne pf_jit_mask_comparison_2_next
-    and x8, x21, x3
-    cmp x8, x2
-    b.ne pf_jit_mask_comparison_2_next
-    ldr x0, pf_jit_mask_comparison_2_patch
-    mov w1, w29
-    sub x2, x19, x29
-    mov x3, x2
-    ldr x4, pf_jit_mask_comparison_2_slowpath
-    blr x4
-    b pf_jit_mask_comparison_2_next
-pf_jit_mask_comparison_2_end:
-
-pf_jit_mask_comparison_2_patch:
-.quad 0x4141414142424200
-pf_jit_mask_comparison_2_slowpath:
-.quad 0x4141414142424201
-pf_jit_mask_comparison_2_next:
-
-.globl pf_jit_mask_comparison_3_start
-.globl pf_jit_mask_comparison_3_end
-
-.align 3
-pf_jit_mask_comparison_3_start:
-    and x8, x20, x1
-    cmp x8, x0
-    b.ne pf_jit_mask_comparison_3_next
-    and x8, x21, x3
-    cmp x8, x2
-    b.ne pf_jit_mask_comparison_3_next
-    and x8, x22, x5
-    cmp x8, x4
-    b.ne pf_jit_mask_comparison_3_next
-    ldr x0, pf_jit_mask_comparison_3_patch
-    mov w1, w29
-    sub x2, x19, x29
-    mov x3, x2
-    ldr x4, pf_jit_mask_comparison_3_slowpath
-    blr x4
-    b pf_jit_mask_comparison_3_next
-pf_jit_mask_comparison_3_end:
-
-pf_jit_mask_comparison_3_patch:
-.quad 0x4141414142424200
-pf_jit_mask_comparison_3_slowpath:
-.quad 0x4141414142424201
-pf_jit_mask_comparison_3_next:
-
-.globl pf_jit_mask_comparison_4_start
-.globl pf_jit_mask_comparison_4_end
-
-.align 3
-pf_jit_mask_comparison_4_start:
-    and x8, x20, x1
-    cmp x8, x0
-    b.ne pf_jit_mask_comparison_4_next
-    and x8, x21, x3
-    cmp x8, x2
-    b.ne pf_jit_mask_comparison_4_next
-    and x8, x22, x5
-    cmp x8, x4
-    b.ne pf_jit_mask_comparison_4_next
-    and x8, x23, x7
-    cmp x8, x6
-    b.ne pf_jit_mask_comparison_4_next
-    ldr x0, pf_jit_mask_comparison_4_patch
-    mov w1, w29
-    sub x2, x19, x29
-    mov x3, x2
-    ldr x4, pf_jit_mask_comparison_4_slowpath
-    blr x4
-    b pf_jit_mask_comparison_4_next
-    .align 3
-pf_jit_mask_comparison_4_end:
-
-pf_jit_mask_comparison_4_patch:
-.quad 0x4141414142424200
-pf_jit_mask_comparison_4_slowpath:
-.quad 0x4141414142424201
-pf_jit_mask_comparison_4_next:
-
-.globl pf_jit_mask_comparison_5_start
-.globl pf_jit_mask_comparison_5_end
-
-.align 3
-pf_jit_mask_comparison_5_start:
-    and x8, x20, x1
-    cmp x8, x0
-    b.ne pf_jit_mask_comparison_5_next
-    and x8, x21, x3
-    cmp x8, x2
-    b.ne pf_jit_mask_comparison_5_next
-    and x8, x22, x5
-    cmp x8, x4
-    b.ne pf_jit_mask_comparison_5_next
-    and x8, x23, x7
-    cmp x8, x6
-    b.ne pf_jit_mask_comparison_5_next
-    and x8, x24, x10
-    cmp x8, x9
-    b.ne pf_jit_mask_comparison_5_next
-    ldr x0, pf_jit_mask_comparison_5_patch
-    mov w1, w29
-    sub x2, x19, x29
-    mov x3, x2
-    ldr x4, pf_jit_mask_comparison_5_slowpath
-    blr x4
-    b pf_jit_mask_comparison_5_next
-    .align 3
-pf_jit_mask_comparison_5_end:
-
-pf_jit_mask_comparison_5_patch:
-.quad 0x4141414142424200
-pf_jit_mask_comparison_5_slowpath:
-.quad 0x4141414142424201
-pf_jit_mask_comparison_5_next:
-
-
-.globl pf_jit_mask_comparison_6_start
-.globl pf_jit_mask_comparison_6_end
-
-.align 3
-pf_jit_mask_comparison_6_start:
-    and x8, x20, x1
-    cmp x8, x0
-    b.ne pf_jit_mask_comparison_6_next
-    and x8, x21, x3
-    cmp x8, x2
-    b.ne pf_jit_mask_comparison_6_next
-    and x8, x22, x5
-    cmp x8, x4
-    b.ne pf_jit_mask_comparison_6_next
-    and x8, x23, x7
-    cmp x8, x6
-    b.ne pf_jit_mask_comparison_6_next
-    and x8, x24, x10
-    cmp x8, x9
-    b.ne pf_jit_mask_comparison_6_next
-    and x8, x25, x12
-    cmp x8, x11
-    b.ne pf_jit_mask_comparison_6_next
-    ldr x0, pf_jit_mask_comparison_6_patch
-    mov w1, w29
-    sub x2, x19, x29
-    mov x3, x2
-    ldr x4, pf_jit_mask_comparison_6_slowpath
-    blr x4
-    b pf_jit_mask_comparison_6_next
-    .align 3
-pf_jit_mask_comparison_6_end:
-
-pf_jit_mask_comparison_6_patch:
-.quad 0x4141414142424200
-pf_jit_mask_comparison_6_slowpath:
-.quad 0x4141414142424201
-pf_jit_mask_comparison_6_next:
-
-
-.globl pf_jit_mask_comparison_7_start
-.globl pf_jit_mask_comparison_7_end
-
-.align 3
-pf_jit_mask_comparison_7_start:
-    and x8, x20, x1
-    cmp x8, x0
-    b.ne pf_jit_mask_comparison_7_next
-    and x8, x21, x3
-    cmp x8, x2
-    b.ne pf_jit_mask_comparison_7_next
-    and x8, x22, x5
-    cmp x8, x4
-    b.ne pf_jit_mask_comparison_7_next
-    and x8, x23, x7
-    cmp x8, x6
-    b.ne pf_jit_mask_comparison_7_next
-    and x8, x24, x10
-    cmp x8, x9
-    b.ne pf_jit_mask_comparison_7_next
-    and x8, x25, x12
-    cmp x8, x11
-    b.ne pf_jit_mask_comparison_7_next
-    and x8, x26, x14
-    cmp x8, x13
-    b.ne pf_jit_mask_comparison_7_next
-    ldr x0, pf_jit_mask_comparison_7_patch
-    mov w1, w29
-    sub x2, x19, x29
-    mov x3, x2
-    ldr x4, pf_jit_mask_comparison_7_slowpath
-    blr x4
-    b pf_jit_mask_comparison_7_next
-    .align 3
-pf_jit_mask_comparison_7_end:
-
-pf_jit_mask_comparison_7_patch:
-.quad 0x4141414142424200
-pf_jit_mask_comparison_7_slowpath:
-.quad 0x4141414142424201
-pf_jit_mask_comparison_7_next:
-
-
-.globl pf_jit_mask_comparison_8_start
-.globl pf_jit_mask_comparison_8_end
-
-.align 3
-pf_jit_mask_comparison_8_start:
-    and x8, x20, x1
-    cmp x8, x0
-    b.ne pf_jit_mask_comparison_8_next
-    and x8, x21, x3
-    cmp x8, x2
-    b.ne pf_jit_mask_comparison_8_next
-    and x8, x22, x5
-    cmp x8, x4
-    b.ne pf_jit_mask_comparison_8_next
-    and x8, x23, x7
-    cmp x8, x6
-    b.ne pf_jit_mask_comparison_8_next
-    and x8, x24, x10
-    cmp x8, x9
-    b.ne pf_jit_mask_comparison_8_next
-    and x8, x25, x12
-    cmp x8, x11
-    b.ne pf_jit_mask_comparison_8_next
-    and x8, x26, x14
-    cmp x8, x13
-    b.ne pf_jit_mask_comparison_8_next
-    and x8, x27, x16
-    cmp x8, x15
-    b.ne pf_jit_mask_comparison_8_next
-    ldr x0, pf_jit_mask_comparison_8_patch
-    mov w1, w29
-    sub x2, x19, x29
-    mov x3, x2
-    ldr x4, pf_jit_mask_comparison_8_slowpath
-    blr x4
-    b pf_jit_mask_comparison_8_next
-    .align 3
-pf_jit_mask_comparison_8_end:
-
-pf_jit_mask_comparison_8_patch:
-.quad 0x4141414142424200
-pf_jit_mask_comparison_8_slowpath:
-.quad 0x4141414142424201
-pf_jit_mask_comparison_8_next:
-
-.globl pf_jit_mask_comparison_8_next
-.globl pf_jit_mask_comparison_7_next
-.globl pf_jit_mask_comparison_6_next
-.globl pf_jit_mask_comparison_5_next
-.globl pf_jit_mask_comparison_4_next
-.globl pf_jit_mask_comparison_3_next
-.globl pf_jit_mask_comparison_2_next
-.globl pf_jit_mask_comparison_1_next
 .globl pf_jit_ptr_comparison_next
