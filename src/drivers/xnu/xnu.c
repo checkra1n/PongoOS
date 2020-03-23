@@ -937,248 +937,102 @@ void xnu_pf_jit_dump(uint32_t* insn_start, uint32_t* insn_end) {
     }
     puts("==== KPFJIT DUMP END ====");
 }
-
-void xnu_pf_emit_8(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
-    if (patchset->accesstype != XNU_PF_ACCESS_8BIT) {
-        puts("xnu_pf_jit only supports 8 bit accesses for now");
-        return;
-    }
-    xnu_pf_patch_t* patch = patchset->patch_head;
-    uint32_t jit_size = 0x100;
-    
-    while (patch) {
-        if (!patch->pf_emit) {
-            puts("xnu_pf_jit doesn't support this patch");
-            return;
-        } else {
-            jit_size += patch->pfjit_max_emit_size;
-        }
-        patch = patch->next_patch;
-    }
-        
-    uint32_t* insn_stream = calloc(jit_size,1); 
-    uint32_t* insn_stream_end = &insn_stream[jit_size >> 2];   
-    uint32_t* insn_stream_end_real = insn_stream_end;
-    uint32_t* jit_entry = insn_stream;
-    
-    extern uint32_t pf_jit_iter_loop_head_start, pf_jit_iter_loop_head_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_start, &pf_jit_iter_loop_head_end);
-    
-    extern uint32_t pf_jit_iter_loop_head_load8_start, pf_jit_iter_loop_head_load8_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_load8_start, &pf_jit_iter_loop_head_load8_end);
-    uint32_t* bailout = insn_stream;
-    insn_stream++;
-
-    uint32_t* loop_head = insn_stream;
-    
-    patch = patchset->patch_head;
-    while (patch) {
-        uint64_t pre_emit = (uint64_t)insn_stream;
-        insn_stream = patch->pf_emit(patch, patchset, insn_stream, &insn_stream_end, patchset->accesstype);
-        uint64_t post_emit = (uint64_t)insn_stream;
-        if (post_emit - pre_emit > patch->pfjit_max_emit_size) {
-            panic("pf_jit: jit overflow");
-        }
-        patch = patch->next_patch;
-    }
-
-    extern uint32_t pf_jit_iter_loop_iter_load8_start, pf_jit_iter_loop_iter_load8_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_iter_load8_start, &pf_jit_iter_loop_iter_load8_end);
-    insn_stream = xnu_pf_b_emit(insn_stream, loop_head);
-    
-    xnu_pf_b_emit(bailout, insn_stream);
-    
-    extern uint32_t pf_jit_iter_loop_end_start, pf_jit_iter_loop_end_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_end_start, &pf_jit_iter_loop_end_end);
-    invalidate_icache();
-    xnu_pf_jit_dump(jit_entry, insn_stream_end_real);
-    patchset->jit_matcher = (void*) jit_entry;
-}
-void xnu_pf_emit_16(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
-    if (patchset->accesstype != XNU_PF_ACCESS_16BIT) {
-        puts("xnu_pf_jit only supports 16 bit accesses for now");
-        return;
-    }
-    xnu_pf_patch_t* patch = patchset->patch_head;
-    uint32_t jit_size = 0x100;
-    
-    while (patch) {
-        if (!patch->pf_emit) {
-            puts("xnu_pf_jit doesn't support this patch");
-            return;
-        } else {
-            jit_size += patch->pfjit_max_emit_size;
-        }
-        patch = patch->next_patch;
-    }
-        
-    uint32_t* insn_stream = calloc(jit_size,1);    
-    uint32_t* insn_stream_end = &insn_stream[jit_size >> 2];
-    uint32_t* insn_stream_end_real = insn_stream_end;
-    uint32_t* jit_entry = insn_stream;
-    
-    extern uint32_t pf_jit_iter_loop_head_start, pf_jit_iter_loop_head_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_start, &pf_jit_iter_loop_head_end);
-    
-    extern uint32_t pf_jit_iter_loop_head_load16_start, pf_jit_iter_loop_head_load16_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_load16_start, &pf_jit_iter_loop_head_load16_end);
-    uint32_t* bailout = insn_stream;
-    insn_stream++;
-
-    uint32_t* loop_head = insn_stream;
-    
-    patch = patchset->patch_head;
-    while (patch) {
-        uint64_t pre_emit = (uint64_t)insn_stream;
-        insn_stream = patch->pf_emit(patch, patchset, insn_stream, &insn_stream_end, patchset->accesstype);
-        uint64_t post_emit = (uint64_t)insn_stream;
-        if (post_emit - pre_emit > patch->pfjit_max_emit_size) {
-            panic("pf_jit: jit overflow");
-        }
-        patch = patch->next_patch;
-    }
-
-    extern uint32_t pf_jit_iter_loop_iter_load16_start, pf_jit_iter_loop_iter_load16_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_iter_load16_start, &pf_jit_iter_loop_iter_load16_end);
-    insn_stream = xnu_pf_b_emit(insn_stream, loop_head);
-    
-    xnu_pf_b_emit(bailout, insn_stream);
-    
-    extern uint32_t pf_jit_iter_loop_end_start, pf_jit_iter_loop_end_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_end_start, &pf_jit_iter_loop_end_end);
-    invalidate_icache();
-    xnu_pf_jit_dump(jit_entry, insn_stream_end_real);
-    patchset->jit_matcher = (void*) jit_entry;
-}
-
-void xnu_pf_emit_32(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
-    if (patchset->accesstype != XNU_PF_ACCESS_32BIT) {
-        puts("xnu_pf_jit only supports 32 bit accesses for now");
-        return;
-    }
-    xnu_pf_patch_t* patch = patchset->patch_head;
-    uint32_t jit_size = 0x100;
-    
-    while (patch) {
-        if (!patch->pf_emit) {
-            puts("xnu_pf_jit doesn't support this patch");
-            return;
-        } else {
-            jit_size += patch->pfjit_max_emit_size;
-        }
-        patch = patch->next_patch;
-    }
-        
-    uint32_t* insn_stream = calloc(jit_size,1);    
-    uint32_t* insn_stream_end = &insn_stream[jit_size >> 2];   
-    uint32_t* insn_stream_end_real = insn_stream_end;
-    uint32_t* jit_entry = insn_stream;
-    
-    extern uint32_t pf_jit_iter_loop_head_start, pf_jit_iter_loop_head_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_start, &pf_jit_iter_loop_head_end);
-    
-    extern uint32_t pf_jit_iter_loop_head_load32_start, pf_jit_iter_loop_head_load32_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_load32_start, &pf_jit_iter_loop_head_load32_end);
-    uint32_t* bailout = insn_stream;
-    insn_stream++;
-
-    uint32_t* loop_head = insn_stream;
-    
-    patch = patchset->patch_head;
-    while (patch) {
-        uint64_t pre_emit = (uint64_t)insn_stream;
-        insn_stream = patch->pf_emit(patch, patchset, insn_stream, &insn_stream_end, patchset->accesstype);
-        uint64_t post_emit = (uint64_t)insn_stream;
-        if (post_emit - pre_emit > patch->pfjit_max_emit_size) {
-            panic("pf_jit: jit overflow");
-        }
-        patch = patch->next_patch;
-    }
-
-    extern uint32_t pf_jit_iter_loop_iter_load32_start, pf_jit_iter_loop_iter_load32_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_iter_load32_start, &pf_jit_iter_loop_iter_load32_end);
-    insn_stream = xnu_pf_b_emit(insn_stream, loop_head);
-    
-    xnu_pf_b_emit(bailout, insn_stream);
-    
-    extern uint32_t pf_jit_iter_loop_end_start, pf_jit_iter_loop_end_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_end_start, &pf_jit_iter_loop_end_end);
-    invalidate_icache();
-    xnu_pf_jit_dump(jit_entry, insn_stream_end_real);
-    patchset->jit_matcher = (void*) jit_entry;
-}
-void xnu_pf_emit_64(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
-    if (patchset->accesstype != XNU_PF_ACCESS_64BIT) {
-        puts("xnu_pf_jit only supports 64 bit accesses for now");
-        return;
-    }
-    xnu_pf_patch_t* patch = patchset->patch_head;
-    uint32_t jit_size = 0x100;
-    
-    while (patch) {
-        if (!patch->pf_emit) {
-            puts("xnu_pf_jit doesn't support this patch");
-            return;
-        } else {
-            jit_size += patch->pfjit_max_emit_size;
-        }
-        patch = patch->next_patch;
-    }
-        
-    uint32_t* insn_stream = calloc(jit_size,1);    
-    uint32_t* insn_stream_end = &insn_stream[jit_size >> 2];   
-    uint32_t* insn_stream_end_real = insn_stream_end;
-    uint32_t* jit_entry = insn_stream;
-    
-    extern uint32_t pf_jit_iter_loop_head_start, pf_jit_iter_loop_head_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_start, &pf_jit_iter_loop_head_end);
-    
-    extern uint32_t pf_jit_iter_loop_head_load64_start, pf_jit_iter_loop_head_load64_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_load64_start, &pf_jit_iter_loop_head_load64_end);
-    uint32_t* bailout = insn_stream;
-    insn_stream++;
-
-    uint32_t* loop_head = insn_stream;
-    
-    patch = patchset->patch_head;
-    while (patch) {
-        uint64_t pre_emit = (uint64_t)insn_stream;
-        insn_stream = patch->pf_emit(patch, patchset, insn_stream, &insn_stream_end, patchset->accesstype);
-        uint64_t post_emit = (uint64_t)insn_stream;
-        if (post_emit - pre_emit > patch->pfjit_max_emit_size) {
-            panic("pf_jit: jit overflow");
-        }
-        patch = patch->next_patch;
-    }
-
-    extern uint32_t pf_jit_iter_loop_iter_load64_start, pf_jit_iter_loop_iter_load64_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_iter_load64_start, &pf_jit_iter_loop_iter_load64_end);
-    insn_stream = xnu_pf_b_emit(insn_stream, loop_head);
-    
-    xnu_pf_b_emit(bailout, insn_stream);
-    
-    extern uint32_t pf_jit_iter_loop_end_start, pf_jit_iter_loop_end_end;
-    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_end_start, &pf_jit_iter_loop_end_end);
-    invalidate_icache();
-    xnu_pf_jit_dump(jit_entry, insn_stream_end_real);
-    patchset->jit_matcher = (void*) jit_entry;
-}
-
 void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
+    uint32_t* pf_iter_loop_head_start, *pf_iter_loop_head_end;
+    uint32_t* pf_iter_loop_tail_start, *pf_iter_loop_tail_end;
+    
     if (patchset->accesstype == XNU_PF_ACCESS_8BIT) {
-        return xnu_pf_emit_8(patchset);
-    }
+        extern uint32_t pf_jit_iter_loop_iter_load8_start, pf_jit_iter_loop_iter_load8_end;
+        extern uint32_t pf_jit_iter_loop_head_load8_start, pf_jit_iter_loop_head_load8_end;
+
+        pf_iter_loop_head_start = &pf_jit_iter_loop_head_load8_start;
+        pf_iter_loop_head_end = &pf_jit_iter_loop_head_load8_end;
+
+        pf_iter_loop_tail_start = &pf_jit_iter_loop_iter_load8_start;
+        pf_iter_loop_tail_end = &pf_jit_iter_loop_iter_load8_end;
+    } else 
     if (patchset->accesstype == XNU_PF_ACCESS_16BIT) {
-        return xnu_pf_emit_16(patchset);
-    }
+        extern uint32_t pf_jit_iter_loop_iter_load16_start, pf_jit_iter_loop_iter_load16_end;
+        extern uint32_t pf_jit_iter_loop_head_load16_start, pf_jit_iter_loop_head_load16_end;
+
+        pf_iter_loop_head_start = &pf_jit_iter_loop_head_load16_start;
+        pf_iter_loop_head_end = &pf_jit_iter_loop_head_load16_end;
+
+        pf_iter_loop_tail_start = &pf_jit_iter_loop_iter_load16_start;
+        pf_iter_loop_tail_end = &pf_jit_iter_loop_iter_load16_end;
+    } else 
     if (patchset->accesstype == XNU_PF_ACCESS_32BIT) {
-        return xnu_pf_emit_32(patchset);
-    }
+        extern uint32_t pf_jit_iter_loop_iter_load32_start, pf_jit_iter_loop_iter_load32_end;
+        extern uint32_t pf_jit_iter_loop_head_load32_start, pf_jit_iter_loop_head_load32_end;
+
+        pf_iter_loop_head_start = &pf_jit_iter_loop_head_load32_start;
+        pf_iter_loop_head_end = &pf_jit_iter_loop_head_load32_end;
+
+        pf_iter_loop_tail_start = &pf_jit_iter_loop_iter_load32_start;
+        pf_iter_loop_tail_end = &pf_jit_iter_loop_iter_load32_end;
+    } else 
     if (patchset->accesstype == XNU_PF_ACCESS_64BIT) {
-        return xnu_pf_emit_64(patchset);
+        extern uint32_t pf_jit_iter_loop_iter_load64_start, pf_jit_iter_loop_iter_load64_end;
+        extern uint32_t pf_jit_iter_loop_head_load64_start, pf_jit_iter_loop_head_load64_end;
+
+        pf_iter_loop_head_start = &pf_jit_iter_loop_head_load64_start;
+        pf_iter_loop_head_end = &pf_jit_iter_loop_head_load64_end;
+
+        pf_iter_loop_tail_start = &pf_jit_iter_loop_iter_load64_start;
+        pf_iter_loop_tail_end = &pf_jit_iter_loop_iter_load64_end;
+    } else {
+        puts("xnu_pf_jit does not support this access type");
+        return;
     }
-    puts("xnu_pf_jit does not support this access type");
-    return;
+
+    xnu_pf_patch_t* patch = patchset->patch_head;
+    uint32_t jit_size = 0x100;
+    
+    while (patch) {
+        if (!patch->pf_emit) {
+            puts("xnu_pf_jit doesn't support this patch");
+            return;
+        } else {
+            jit_size += patch->pfjit_max_emit_size;
+        }
+        patch = patch->next_patch;
+    }
+        
+    uint32_t* insn_stream = calloc(jit_size,1);    
+    uint32_t* insn_stream_end = &insn_stream[jit_size >> 2];   
+    uint32_t* insn_stream_end_real = insn_stream_end;
+    uint32_t* jit_entry = insn_stream;
+    
+    extern uint32_t pf_jit_iter_loop_head_start, pf_jit_iter_loop_head_end;
+    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_start, &pf_jit_iter_loop_head_end);
+    
+    insn_stream = xnu_pf_emit_insns(insn_stream, pf_iter_loop_head_start, pf_iter_loop_head_end);
+    uint32_t* bailout = insn_stream;
+    insn_stream++;
+
+    uint32_t* loop_head = insn_stream;
+    
+    patch = patchset->patch_head;
+    while (patch) {
+        uint64_t pre_emit = (uint64_t)insn_stream;
+        insn_stream = patch->pf_emit(patch, patchset, insn_stream, &insn_stream_end, patchset->accesstype);
+        uint64_t post_emit = (uint64_t)insn_stream;
+        if (post_emit - pre_emit > patch->pfjit_max_emit_size) {
+            panic("pf_jit: jit overflow");
+        }
+        patch = patch->next_patch;
+    }
+
+    insn_stream = xnu_pf_emit_insns(insn_stream, pf_iter_loop_tail_start, pf_iter_loop_tail_end);
+    insn_stream = xnu_pf_b_emit(insn_stream, loop_head);
+    
+    xnu_pf_b_emit(bailout, insn_stream);
+    
+    extern uint32_t pf_jit_iter_loop_end_start, pf_jit_iter_loop_end_end;
+    insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_end_start, &pf_jit_iter_loop_end_end);
+    invalidate_icache();
+    xnu_pf_jit_dump(jit_entry, insn_stream_end_real);
+    patchset->jit_matcher = (void*) jit_entry;
 }
 
 void xnu_pf_apply_8(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
