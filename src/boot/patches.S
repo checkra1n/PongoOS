@@ -58,6 +58,8 @@ Per SoC:
 +------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
 | A10X | 0x202050000 | 0x202150000 | 0x202250000 |             |             |             |             |             |
 +------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
+| T2   | 0x202050000 | 0x202150000 |             |             |             |             |             |             |
++------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
 | A11  | 0x208450000 | 0x208550000 |             |             | 0x208050000 | 0x208150000 | 0x208250000 | 0x208350000 |
 +------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
 | A12  | 0x211050000 | 0x211150000 |             |             | 0x210050000 | 0x210150000 | 0x210250000 | 0x210350000 |
@@ -150,6 +152,8 @@ The following table shows the relevant MMIO addresses:
 +------+-------------+-------------+
 | A10X | 0x2102d0000 |             |
 +------+-------------+-------------+
+| T2   | 0x2112d0000 |             |
++------+-------------+-------------+
 | A11  | 0x2352d0000 |             |
 +------+-------------+-------------+
 | A12  | 0x23d2d0000 |             |
@@ -166,6 +170,8 @@ Before A9, devices go through ROM and LLB after deep sleep and relock, and
 there's nothing we can do about that, except not entering deep sleep, ever.
 On A9 and later this is handled by the AOP reconfig engine, which enables us to
 actually keep this patch persistent, but obviously needs a separate patch (see below).
+On a more curious note, on A11 and later (T2 unknown at this point), the AES_DISABLE
+will actually persist across deep sleep without the aid of the reconfig engine.
 
 
 The AES patch works by finding two calls to security_allow_modes(), which immediately
@@ -296,6 +302,8 @@ The relevant addresses are:
 +------+---------------+--------------+---------------+---------------------+-------------------+
 | A10X |  0x210000100  |              |  0x210800008  |     0x21000011c     |    0x210000120    |
 +------+---------------+--------------+---------------+---------------------+-------------------+
+| T2   |  0x2112c0200  | 0x2112c0214  |               |     0x211000200     |    0x211000204    |
++------+---------------+--------------+---------------+---------------------+-------------------+
 | A11  |  0x2352c0200  | 0x2352c0214  |               |     0x235000200     |    0x235000204    |
 +------+---------------+--------------+---------------+---------------------+-------------------+
 | A12  |  0x23d2c0200  | 0x23d2c0214  |               |     0x23d000200     |    0x23d000204    |
@@ -305,16 +313,16 @@ The relevant addresses are:
 | A13  |       ?       |      ?       |               |          ?          |         ?         |
 +------+---------------+--------------+---------------+---------------------+-------------------+
 
-- AOP_CFG_TABLE is a 32-bit offset from the SRAM base. Mask pre-A11 0x1fff80, A11+ 0xff80.
+- AOP_CFG_TABLE is a 32-bit offset from the SRAM base. Mask pre-A11 0x1fff80, T2/A11+ 0xff80.
   At the address it points to is an uint32_t[8] array of 36-bit physical addresses >> 4.
-- AOP_CFG_LOCK is a 1-bit register that locks down AOP_CFG_TABLE (A11+ only).
-  Before A11, AOP_CFG_TABLE is locked down by AOP_SRAM_LOCK_SET instead.
+- AOP_CFG_LOCK is a 1-bit register that locks down AOP_CFG_TABLE (T2/A11+ only).
+  Before T2/A11, AOP_CFG_TABLE is locked down by AOP_SRAM_LOCK_SET instead.
 - AOP_SRAM_BASE is the 32-bit physical address of AOP SRAM, minus 0x200000000.
-  On A11 and later, the AOP and the reconfig engine have separate SRAM, so this is irrelevant.
+  On T2/A11 and later, the AOP and the reconfig engine have separate SRAM, so this is irrelevant.
 - AOP_SRAM_LOCK_RANGE has two ranges, [14:0] and [30:16], which are the
   start and end numbers (inclusive) of 0x40-blocks to lock down.
 - AOP_SRAM_LOCK_SET is a 1-bit register that locks down AOP_SRAM_LOCK_RANGE,
-  and before A11 also AOP_CFG_TABLE.
+  and before T2/A11 also AOP_CFG_TABLE.
 
 Here too iBoot issues a "dmb sy" after writing.
 
@@ -342,7 +350,6 @@ Or on new clang:
 | mov w0, 3 |
 | bl 0x...  |
 +-----------+
-
 
 In r2:
 
