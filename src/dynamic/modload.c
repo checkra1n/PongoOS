@@ -55,6 +55,7 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(xnu_pf_patchset_destroy),
     EXPORT_SYMBOL(xnu_pf_patchset_create),
     EXPORT_SYMBOL(print_register),
+    EXPORT_SYMBOL(alloc_static),
     EXPORT_SYMBOL(xnu_slide_value),
     EXPORT_SYMBOL(xnu_header),
     EXPORT_SYMBOL(xnu_va_to_ptr),

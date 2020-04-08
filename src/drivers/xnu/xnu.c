@@ -870,13 +870,13 @@ uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_pa
         if (patch->pairs[hi_entropy][0] == patch->pairs[i][0]) {
         } else {
             reg0 = 2;
-            cmp_stub_stream = xnu_pf_imm64_load_emit(cmp_stub_stream, reg0, patch->pairs[i][0]);
+            cmp_stub_stream = xnu_pf_imm64_load_emit(cmp_stub_stream, reg0, patch->pairs[i][0] & and_nop);
         }
         if (patch->pairs[i][1] != and_nop) {
             if (patch->pairs[hi_entropy][1] != and_nop && patch->pairs[hi_entropy][1] == patch->pairs[i][1]) {
             } else {
                 reg1 = 3;
-                cmp_stub_stream = xnu_pf_imm64_load_emit(cmp_stub_stream, reg1, patch->pairs[i][1]);
+                cmp_stub_stream = xnu_pf_imm64_load_emit(cmp_stub_stream, reg1, patch->pairs[i][1] & and_nop);
             }
             cmp_stub_stream = xnu_pf_and_emit(cmp_stub_stream, 8, 20 + i, reg1);
             cmp_stub_stream = xnu_pf_cmp_emit(cmp_stub_stream, 8, reg0);
@@ -899,11 +899,11 @@ uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_pa
     
     if (cap) {
         if (!patchset->p0 || patchset->p0 != patch->pairs[hi_entropy][0]) {
-            insn_stream_insert = xnu_pf_imm64_load_emit(insn_stream_insert, 0, patch->pairs[hi_entropy][0]);
-            patchset->p0 = patch->pairs[hi_entropy][0];
+            insn_stream_insert = xnu_pf_imm64_load_emit(insn_stream_insert, 0, patch->pairs[hi_entropy][0] & and_nop);
+            patchset->p0 = patch->pairs[hi_entropy][0] & and_nop;
         }
         if (patch->pairs[hi_entropy][1] != and_nop) {
-            insn_stream_insert = xnu_pf_imm64_load_emit(insn_stream_insert, 1, patch->pairs[hi_entropy][1]);
+            insn_stream_insert = xnu_pf_imm64_load_emit(insn_stream_insert, 1, patch->pairs[hi_entropy][1] & and_nop);
             insn_stream_insert = xnu_pf_and_emit(insn_stream_insert, 8, 20 + hi_entropy, 1);
             insn_stream_insert = xnu_pf_cmp_emit(insn_stream_insert, 8, 0);
         } else {

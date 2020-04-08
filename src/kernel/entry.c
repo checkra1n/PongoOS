@@ -121,7 +121,7 @@ __attribute__((noinline)) void pongo_entry_cached() {
     uint64_t max_video_addr = gBootArgs->Video.v_baseAddr + gBootArgs->Video.v_rowBytes * gBootArgs->Video.v_height;
     uint64_t max_mem_size = max_video_addr - gBootArgs->physBase;
     if (gBootArgs->memSize > max_mem_size) max_mem_size = gBootArgs->memSize;
-    map_full_ram(gBootArgs->physBase & 0xFFFFFFFF, max_mem_size - gBootArgs->physBase & 0xFFFFFFFF);
+    map_full_ram(gBootArgs->physBase & 0xFFFFFFFF, max_mem_size);
 
     extern int socnum;
     gDevType = dt_get_prop("arm-io", "device_type", NULL);
@@ -150,7 +150,7 @@ __attribute__((noinline)) void pongo_entry_cached() {
             socnum = 0x8000;
         }
     }
-    
+
     /*
         Set up IRQ handling
     */

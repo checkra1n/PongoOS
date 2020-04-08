@@ -146,10 +146,10 @@ __asm__(
     "    dsb sy\n"
     "    isb sy\n"
     "    ret\n"
-    
+
     "get_ticks:\n"
-    "   isb	sy\n"
-    "   mrs	x0, cntpct_el0\n"
+    "   isb sy\n"
+    "   mrs x0, cntpct_el0\n"
     "   ret\n"
     );
 
@@ -204,7 +204,7 @@ int sync_exc(uint64_t* state) {
 }
 uint32_t interrupt_vector() {
     return (*(volatile uint32_t *)(gInterruptBase + 0x2004));
-} 
+}
 uint64_t interruptCount = 0, fiqCount = 0;
 uint32_t do_preempt = 1;
 void disable_preemption() {
@@ -233,7 +233,7 @@ int irq_exc() {
     if (dis_int_count != 1) panic("IRQ handler left interrupts disabled...");
     is_in_exception = 0;
     dis_int_count = 0;
-    timer_enable(); 
+    timer_enable();
     return 0;
 }
 int serror_exc(uint64_t* state) {
@@ -268,13 +268,13 @@ void spin(uint32_t usec)
     disable_interrupts();
     uint64_t eta_now = get_ticks();
     uint64_t eta_wen = eta_now + (24*usec);
-	while (1) {
+    while (1) {
         asm volatile("isb");
         uint32_t curtime = get_ticks();
         if (eta_now > curtime)
             break;
-		if (curtime > eta_wen)
-			break;
+        if (curtime > eta_wen)
+            break;
     }
     enable_interrupts();
 }
@@ -285,10 +285,10 @@ void usleep(uint32_t usec)
     uint64_t preempt_after = get_ticks() + 2400;
     task_current()->wait_until = eta_wen;
     enable_interrupts();
-	while (1) {
+    while (1) {
         uint32_t curtime = get_ticks();
-		if (curtime > eta_wen)
-			break;
+        if (curtime > eta_wen)
+            break;
         if (curtime > preempt_after)
             task_yield();
     }
@@ -307,9 +307,9 @@ static void interrupt_and_config(uint32_t bits) {
     *(volatile uint32_t*)(gInterruptBase + 0x10) &= bits;
 }
 uint32_t interrupt_masking_base = 0;
-void unmask_interrupt(uint32_t reg) {    
+void unmask_interrupt(uint32_t reg) {
     (*(volatile uint32_t *)(gInterruptBase + 0x4180 + ((reg >> 5) * 4))) = (1 << ((reg) & 0x1F));
-    
+
 }
 void mask_interrupt(uint32_t reg) {
     (*(volatile uint32_t *)(gInterruptBase + 0x4100 + ((reg >> 3) * 4))) = (1 << ((reg) & 0x1F));
@@ -356,10 +356,10 @@ void pmgr_init() {
 void interrupt_init() {
     gInterruptBase = dt_get_u32_prop("aic", "reg");
     gInterruptBase += gIOBase;
-    
+
     gAICVersion = dt_get_u32_prop("aic", "aic-version");
     iprintf("initializing AIC %d\n", gAICVersion);
-    
+
     interrupt_or_config(0xE0000000);
     interrupt_or_config(1); // enable interrupt
 }
@@ -375,7 +375,7 @@ void clock_gate(uint64_t addr, char val)
     } else {
         *(volatile uint32_t*)(addr) &= ~0xF;
     }
-    
+
     while (1) {
         volatile uint32_t a = *(volatile uint32_t*)(addr);
         volatile uint32_t b = *(volatile uint32_t*)(addr);
@@ -387,63 +387,63 @@ void clock_gate(uint64_t addr, char val)
 
 void
 cache_invalidate(void *address, size_t size) {
-	uint64_t cache_line_size = 64;
-	uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-	uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-	asm volatile("isb");
-	asm volatile("dsb sy");
-	for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-		asm volatile("dc ivac, %0" : : "r"(addr));
-	}
-	asm volatile("dsb sy");
-	asm volatile("isb");
+    uint64_t cache_line_size = 64;
+    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
+    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
+    asm volatile("isb");
+    asm volatile("dsb sy");
+    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
+        asm volatile("dc ivac, %0" : : "r"(addr));
+    }
+    asm volatile("dsb sy");
+    asm volatile("isb");
 }
 
 void
 cache_clean_and_invalidate(void *address, size_t size) {
-	uint64_t cache_line_size = 64;
-	uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-	uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-	asm volatile("isb");
-	asm volatile("dsb sy");
-	for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-		asm volatile("dc civac, %0" : : "r"(addr));
-	}
-	asm volatile("dsb sy");
-	asm volatile("isb");
+    uint64_t cache_line_size = 64;
+    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
+    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
+    asm volatile("isb");
+    asm volatile("dsb sy");
+    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
+        asm volatile("dc civac, %0" : : "r"(addr));
+    }
+    asm volatile("dsb sy");
+    asm volatile("isb");
 }
 
 
 void
 cache_clean(void *address, size_t size) { // invalidates too, because Apple
-	uint64_t cache_line_size = 64;
-	uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-	uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-	asm volatile("isb");
-	asm volatile("dsb sy");
-	for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-		asm volatile("dc civac, %0" : : "r"(addr));
-	}
-	asm volatile("dsb sy");
-	asm volatile("isb");
+    uint64_t cache_line_size = 64;
+    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
+    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
+    asm volatile("isb");
+    asm volatile("dsb sy");
+    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
+        asm volatile("dc civac, %0" : : "r"(addr));
+    }
+    asm volatile("dsb sy");
+    asm volatile("isb");
 }
 
 uint64_t vatophys(uint64_t kvaddr) {
-	uint64_t par_el1;
-	disable_interrupts();
+    uint64_t par_el1;
+    disable_interrupts();
     if (get_el() == 1) {
-    	asm volatile("at s1e1r, %0" : : "r"(kvaddr));
-    	asm volatile("isb");
-    	asm volatile("mrs %0, PAR_EL1" : "=r"(par_el1));
+        asm volatile("at s1e1r, %0" : : "r"(kvaddr));
+        asm volatile("isb");
+        asm volatile("mrs %0, PAR_EL1" : "=r"(par_el1));
     } else {
-    	asm volatile("at S1E3R, %0" : : "r"(kvaddr));
-    	asm volatile("isb");
-    	asm volatile("mrs %0, PAR_EL1" : "=r"(par_el1));
+        asm volatile("at S1E3R, %0" : : "r"(kvaddr));
+        asm volatile("isb");
+        asm volatile("mrs %0, PAR_EL1" : "=r"(par_el1));
     }
-	enable_interrupts();
-	if (par_el1 & 0x1) {
-		return -1;
-	}
+    enable_interrupts();
+    if (par_el1 & 0x1) {
+        return -1;
+    }
     par_el1 &= 0xFFFFFFFFFFFF;
     if (is_16k()) {
         return (kvaddr & 0x3FFF) | (par_el1 & (~0x3FFF));
@@ -455,82 +455,156 @@ uint64_t vatophys(uint64_t kvaddr) {
 uint64_t ram_phys_off;
 uint64_t ram_phys_size;
 
-uint64_t pgsz, tg0, t0sz, l0b, l1b, l2b, pb;
+uint64_t tt_bits, tg0, t0sz;
 uint64_t ttb_alloc_base;
-uint64_t * ttbr0;
+volatile uint64_t *ttbr0;
 
-uint64_t * ttb_alloc() {
+volatile uint64_t* ttb_alloc(void)
+{
+    uint64_t pgsz = 1ULL << (tt_bits + 3ULL);
     ttb_alloc_base -= pgsz;
-    uint64_t* rv = (uint64_t*) ttb_alloc_base;
-    for (int i=0; i < (pgsz / 8); i++) {
+    volatile uint64_t* rv = (volatile uint64_t*) ttb_alloc_base;
+    for(size_t i = 0; i < (pgsz / 8); i++)
+    {
         rv[i] = 0;
     }
     return rv;
 }
-uint64_t ttlevels = 0;
-uint64_t level_mask = 0;
-uint64_t physmask = 0;
-uint64_t level_delta_bits = 0;
 
-OBFUSCATE_C_FUNC(void map_range(uint64_t va, uint64_t phys_off, uint64_t size, uint64_t flags)) {
-    uint64_t blksz = 1ULL << l0b;
-    uint64_t base = 0;
-    uint64_t va_off = va & (blksz-1);
-    uint64_t va_end = va + size;
-    va -= va_off;
-    phys_off -= va_off;
-    
-    for (size_t i = 0; i < pgsz / 8; ++i) {
-        if (base >= va && (base < va_end)) {
-            uint64_t cur_alloc_sz = va_end - base;
-            if (cur_alloc_sz > blksz) cur_alloc_sz = blksz;
-            uint64_t offset_within = (base - va);
-            if (va_off || cur_alloc_sz != blksz) {
-                if (va_off & (pgsz - 1)) panic("invalid VA");
-                if ((phys_off + offset_within) & (pgsz - 1)) panic("invalid VA");
+void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite)
+{
+    // NOTE: Blind assumption that all TT levels support block mappings.
+    // Currently we configure TCR that way, we just need to ensure that we will continue to do so.
 
-                if ((ttbr0[i] & 3) != 3) {
-                    ttbr0[i] = (((uint64_t)ttb_alloc()) & physmask) | 3;
-                }
-                uint64_t* ttb = (uint64_t*)(ttbr0[i] & physmask);
-                uint64_t l1base = base;
-                uint64_t n_blksz = 1ULL << l1b;
-                bool has_l2 = !!l2b;
-                for (size_t i = 0; i < pgsz / 8; ++i) {
-                    if (l1base >= (base + va_off)) {
-                        ttb[i] = (phys_off + offset_within + i * n_blksz) | flags | (has_l2 ? 1 : 3);
-                    }
-                    l1base += n_blksz;
-                }
-                /*
-
-
-                uint64_t* ttb = (uint64_t*)(ttbr0[i] & physmask);
-                for (size_t i = 0; i < pgsz / 8; ++i) {
-                    ttb[i] = (phys_off + offset_within + n_blksz * i) | flags | 1;
-//                    map_range_l1(ttb, base, base + i, (phys_off + offset_within) + i, cur_alloc_sz, flags);
-                }
-                if ((ttbr0[i] & 3) != 3) {
-                    ttbr0[i] = (((uint64_t)ttb_alloc()) & physmask) | 3;
-                }
-                uint64_t* ttb = (uint64_t*)(ttbr0[i] & physmask);
-                for (size_t i = 0; i < pgsz / 8; ++i) {
-                    ttb[i] = (phys_off + offset_within + i * n_blksz) | flags | 1;
-                }
-                */
-                va_off = 0;
-            } else {
-                ttbr0[i] = (phys_off + offset_within) | flags | 1;
-            }
-            
-        }
-        base += blksz;
+    uint64_t pgsz = 1ULL << (tt_bits + 3ULL);
+    if((va & (pgsz - 1ULL)) || (pa & (pgsz - 1ULL)) || (size & (pgsz - 1ULL)) || size < pgsz || (va + size < va) || (pa + size < pa))
+    {
+        iprintf("map_range(0x%lx, 0x%lx, 0x%lx, ...)\n", va, pa, size);
+        panic("map_range: called with bad arguments");
     }
 
+    union
+    {
+        struct
+        {
+            uint64_t valid :  1,
+                     table :  1,
+                     attr  :  3,
+                     ns    :  1,
+                     ap    :  2,
+                     sh    :  2,
+                     af    :  1,
+                     nG    :  1,
+                     oa    : 36,
+                     res00 :  3,
+                     dbm   :  1,
+                     cont  :  1,
+                     pxn   :  1,
+                     uxn   :  1,
+                     ign0  :  4,
+                     pbha  :  4,
+                     ign1  :  1;
+        };
+        struct
+        {
+            uint64_t res01  : 12,
+                     oahigh :  4,
+                     nT     :  1,
+                     res02  : 42,
+                     pxntab :  1,
+                     uxntab :  1,
+                     aptab  :  2,
+                     nstab  :  1;
+        };
+        uint64_t u64;
+    } tte;
+
+    volatile uint64_t *tt = ttbr0;
+    uint64_t bits = 64ULL - t0sz;
+    if((bits - 3) % tt_bits != 0)
+    {
+        bits += tt_bits - ((bits - 3) % tt_bits);
+    }
+    while(true)
+    {
+        uint64_t blksz = 1ULL << (bits - tt_bits),
+                 lo = va & ~(blksz - 1ULL),
+                 hi = (va + size + (blksz - 1ULL)) & ~(blksz - 1ULL);
+
+        if(size < blksz && hi - lo == blksz) // Sub-block, but fits into single TT
+        {
+            uint64_t idx = (va >> (bits - tt_bits)) & ((1ULL << tt_bits) - 1ULL);
+            tte.u64 = tt[idx];
+            if(tte.valid && tte.table)
+            {
+                tt = (volatile uint64_t*)((uint64_t)tte.oa << 12);
+            }
+            else if(!tte.valid || overwrite)
+            {
+                volatile uint64_t *newtt = ttb_alloc();
+                tte.u64 = 0;
+                tte.valid = 1;
+                tte.table = 1;
+                tte.oa = (uint64_t)newtt >> 12;
+                tt[idx] = tte.u64;
+                tt = newtt;
+            }
+            else
+            {
+                panic("map_range: trying to map table over existing entry");
+            }
+            bits -= tt_bits;
+            continue;
+        }
+
+        while(lo < hi)
+        {
+            uint64_t sz = blksz;
+            if(lo < va)
+            {
+                sz -= va - lo;
+            }
+            if(sz > size)
+            {
+                sz = size;
+            }
+            if(sz < blksz || (pa & (blksz - 1ULL))) // Need to traverse anew
+            {
+                map_range(va, pa, sz, sh, attridx, overwrite);
+            }
+            else
+            {
+                uint64_t idx = (va >> (bits - tt_bits)) & ((1ULL << tt_bits) - 1);
+                tte.u64 = tt[idx];
+                if(tte.valid && !overwrite)
+                {
+                    panic("map_range: trying to map block over existing entry");
+                }
+                tte.u64 = 0;
+                tte.valid = 1;
+                tte.table = blksz == pgsz ? 1 : 0; // L3
+                tte.attr = attridx;
+                tte.sh = sh;
+                tte.af = 1;
+                tte.oa = pa >> 12;
+                tt[idx] = tte.u64;
+            }
+            lo += blksz;
+            va += sz;
+            pa += sz;
+            size -= sz;
+        }
+        break;
+    }
 }
+
 OBFUSCATE_C_FUNC(void map_full_ram(uint64_t phys_off, uint64_t phys_size)) {
-    map_range(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 0x300 | 0x400 | (1 << 2));
-    map_range(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 0x300 | 0x400);
+    // Round up to make sure the framebuffer is in range
+    uint64_t pgsz = 1ULL << (tt_bits + 3);
+    phys_size = (phys_size + pgsz - 1) & ~(pgsz - 1);
+
+    map_range(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 3, 1, true);
+    map_range(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 3, 0, true);
     ram_phys_off = kCacheableView + phys_off;
     ram_phys_size = phys_size;
 
@@ -542,44 +616,31 @@ OBFUSCATE_C_FUNC(void map_full_ram(uint64_t phys_off, uint64_t phys_size)) {
     }
     asm volatile("dsb sy");
 }
+
 OBFUSCATE_C_FUNC(void lowlevel_setup(uint64_t phys_off, uint64_t phys_size))
 {
     if (is_16k()) {
-        pgsz = 0x4000;
-        l0b = 25;
-        pb = l1b = 14;
-        l2b = 0;
+        tt_bits = 11;
         tg0 = 0b10;
         t0sz = 28;
-        ttlevels = 2;
-        level_mask = 0x7ff;
-        physmask = 0xFFFFFFFFC000;
     } else {
-        pgsz = 0x1000;
-        l0b = 30;
-        l1b = 21;
-        pb = l2b = 12;
+        tt_bits = 9;
         tg0 = 0b00;
         t0sz = 25;
-        ttlevels = 3;
-        level_mask = 0x1ff;
-        physmask = 0xFFFFFFFFF000;
     }
-    level_delta_bits = pb - 3;
+    uint64_t pgsz = 1ULL << (tt_bits + 3);
 
     ttb_alloc_base = MAGIC_BASE - 0x4000;
 
     ttbr0 = ttb_alloc();
-    map_range(0x200000000, 0x200000000, 0x100000000, 0x300 | 0x400);
+    map_range(0x200000000, 0x200000000, 0x100000000, 3, 0, false);
     phys_off += (pgsz-1);
     phys_off &= ~(pgsz-1);
-    map_range(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 0x300 | 0x400 | (1 << 2));
-    map_range(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 0x300 | 0x400);
+    map_range(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 3, 1, false);
+    map_range(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 3, 0, false);
 
     ram_phys_off = kCacheableView + phys_off;
     ram_phys_size = phys_size;
-
-    //volatile uint64_t* tt = map_range(phys_off, phys_size);
 
     if (get_el() == 1) {
         set_vbar_el1((uint64_t)&exception_vector);
@@ -590,7 +651,6 @@ OBFUSCATE_C_FUNC(void lowlevel_setup(uint64_t phys_off, uint64_t phys_size))
     }
 }
 
-
 OBFUSCATE_C_FUNC(void lowlevel_cleanup(void))
 {
     cache_clean_and_invalidate((void*)ram_phys_off, ram_phys_size);
@@ -600,4 +660,3 @@ OBFUSCATE_C_FUNC(void lowlevel_cleanup(void))
         disable_mmu_el3();
     }
 }
-
