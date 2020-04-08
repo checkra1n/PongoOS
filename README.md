@@ -3,13 +3,16 @@ pongoOS
 
 An experimental pre-boot execution environment for Apple boards built on top of checkra1n.
 
-Building os macOS
+Building on macOS
 -----------
 * macOS is built by using `docker build .`
 
 
 Building on Linux
 -----------
+
+Either use the Arm reference toolchain from arm.com (aarch64-none-elf), or:
+
     # binutils
     ./configure --prefix="$PREFIX" --target=aarch64-none-elf --program-prefix=aarch64-none-elf- --build=x86_64-apple-darwin19.3.0 --with-gmp="$PREFIX" --with-mpfr="$PREFIX" --with-mpc="$PREFIX" --enable-lto --enable-plugins --disable-gdb --disable-sim --disable-libdecnumber --with-newlib
     # GMP
