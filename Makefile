@@ -7,7 +7,7 @@ ifndef $(HOST_OS)
 endif
 
 PONGO_VERSION           := 1.2.0-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
-ROOT                    := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+ROOT                    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 SRC                     := $(ROOT)/src
 INC                     := $(ROOT)/include
 BUILD                   := $(ROOT)/build

@@ -5,8 +5,11 @@ An experimental pre-boot execution environment for Apple boards built on top of 
 
 Building on macOS
 -----------
-* macOS is built by using `docker build .`
-
+* Install Docker for macOS
+* Either build or pull the builder image
+  + `docker build --tag checkra1n/build-pongo .`
+  + `docker pull checkra1n/build-pongo`
+* Perform a build inside the container with `./build.sh`
 
 Building on Linux
 -----------
