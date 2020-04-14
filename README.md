@@ -8,7 +8,7 @@ Building on macOS
 * Install Docker for macOS
 * Either build or pull the builder image
   + `docker build --tag checkra1n/build-pongo .`
-  + `docker pull checkra1n/build-pongo`
+  + `docker pull docker.pkg.github.com/checkra1n/pongoos/build-pongo:latest`
 * Perform a build inside the container with `./build.sh`
 
 Building on Linux
