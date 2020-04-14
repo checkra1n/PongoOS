@@ -1,5 +1,7 @@
 pongoOS
 =======
+![Docker](https://github.com/checkra1n/pongoOS/workflows/Docker/badge.svg)
+![CI](https://github.com/checkra1n/pongoOS/workflows/CI/badge.svg)
 
 An experimental pre-boot execution environment for Apple boards built on top of checkra1n.
 
