@@ -5,7 +5,7 @@ pongoOS
 
 An experimental pre-boot execution environment for Apple boards built on top of checkra1n.
 
-Building on pongoOS
+Building pongoOS via Docker
 -----------
 * Install Docker
 * Either build or pull the builder image
