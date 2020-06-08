@@ -26,3 +26,5 @@ Kernel patchfinder
 ------------------
 
 Note that the checkra1n patchfinder is not currently open-source. However, the KPF JIT that will ship on checkra1n 0.10.0 onwards is part of this repository. That means that pongoOS builds from this repository will always boot to the shell by default instead of XNU.
+
+[![Run on Repl.it](https://repl.it/badge/github/checkra1n/pongoOS)](https://repl.it/github/checkra1n/pongoOS)
