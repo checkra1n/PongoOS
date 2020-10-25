@@ -17,12 +17,10 @@
 // SOFTWARE.
 // 
 //
-//  Copyright (c) 2020 checkra1n team
+//  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
-
-extern void xnu_boot();
-extern void xnu_init();
-extern void xnu_loadrd();
-extern void xnu_hook();
-
+extern void xnu_boot(void);
+extern void xnu_init(void);
+extern void xnu_loadrd(void);
+extern void xnu_hook(void);

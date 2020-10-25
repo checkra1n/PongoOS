@@ -42,8 +42,20 @@ void shell_main();
     Description: main task handler
 
 */
-int socnum = 0x0;
+
 void pongo_main_task() {
+    /*
+        Setup GPIO Base
+    */
+
+    gpio_early_init();
+
+    /*
+        Setup serial pinmux
+    */
+
+    serial_pinmux_init();
+
     /*
         Enable serial TX
     */
@@ -81,13 +93,7 @@ void pongo_main_task() {
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
     strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
     iprintf("Built with: GCC %s\n", __VERSION__);
-    
-    char soc_name[9] = {};
-    size_t len = strlen(gDevType) - 3;
-    len = len < 8 ? len : 8;
-    strncpy(soc_name, gDevType, len);
-
     iprintf("Running on: %s\n", soc_name);
-    
+
     shell_main();
 }

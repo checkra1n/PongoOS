@@ -21,7 +21,9 @@
 //  This file is part of pongoOS.
 //
 #define LL_KTRW_INTERNAL 1
+#include <errno.h>
 #include <pongo.h>
+#include <stdarg.h>
 
 OBFUSCATE_C_FUNC(void* memstr(const void* big, unsigned long blength, const char* little))
 {
@@ -32,23 +34,42 @@ OBFUSCATE_C_FUNC(void* memstr_partial(const void* big, unsigned long blength, co
     return memmem(big, blength, (void*)little, strlen(little));
 }
 
+#undef errno
+int errno;
+
+pid_t _getpid(void)
+{
+    return task_current()->pid;
+}
+
+int _kill(pid_t pid, int sig)
+{
+    return ENOTSUP;
+}
+
 char panic_did_enter = 0;
-void panic(const char* str) {
+void panic(const char* str, ...) {
     disable_interrupts();
-    
+
     if (panic_did_enter) {
         iprintf("\ndouble panic: %s\n", str);
         while(1) {}
-    }    
+    }
     panic_did_enter = 1;
-    
-    iprintf("\npanic: %s\ncrashed task: ", str);
+
+    va_list va;
+    va_start(va, str);
+    iprintf("\npanic: ");
+    viprintf(str, va);
+    va_end(va);
+
+    iprintf("\ncrashed task: ");
     if (task_current() && task_current()->name[0])
         puts(task_current()->name);
     else puts("unknown");
 
     puts("crashed in required task, resetting..");
-
+    sleep(5);
     wdt_reset();
 }
 char* conv = "0123456789abcdef";
@@ -103,8 +124,8 @@ void alloc_init() {
     alloc_static_current = alloc_static_base = (kCacheableView - 0x800000000 + gBootArgs->topOfKernelData) & (~0x3fff);
     alloc_static_end = 0x417fe0000;
 
-    extern uint64_t __bss_end;
-    alloc_heap_base = (((uint64_t)(&__bss_end)) + 0x7fff) & (~0x3fff);
+    extern uint64_t __bss_end[] __asm__("segment$end$__DATA");
+    alloc_heap_base = (((uint64_t)__bss_end) + 0x7fff) & (~0x3fff);
     alloc_heap_base &= 0xFFFFFFFF;
     alloc_heap_base += kCacheableView;
     alloc_heap_end = (((uint64_t)((kCacheableView - 0x800000000 + gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
@@ -117,7 +138,7 @@ void alloc_init() {
             alloc_heap_base = alloc_static_hardcap;
         }
     }
-    
+
     alloc_heap_current = alloc_heap_base;
 }
 void* alloc_static(uint32_t size) { // memory returned by this will be added to the xnu static region, thus will persist after xnu boot
@@ -172,11 +193,10 @@ uint64_t dt_get_u64_prop_i(const char* device, const char* prop, uint32_t idx) {
     return rval;
 }
 void* dt_get_prop(const char* device, const char* prop, uint32_t* size) {
-    uint64_t rval = 0;
     uint32_t len = 0;
     dt_node_t* dev = dt_find(gDeviceTree, device);
     if (!dev) panic("invalid devicetree: no device!");
-    uint64_t* val = dt_prop(dev, prop, &len);
+    void* val = dt_prop(dev, prop, &len);
     if (!val) panic("invalid devicetree: no prop!");
     if (size) *size = len;
     return val;
@@ -228,8 +248,8 @@ void lock_take(lock* _lock) {
         }
         task_yield();
     }
-} 
-void lock_take_spin(lock* _lock) { 
+}
+void lock_take_spin(lock* _lock) {
     // takes a lock spinning until it acquires it
     while (1) {
         if (!IS_LOCK_HELD(_lock)) {
@@ -259,5 +279,3 @@ void lock_release(lock* _lock) {
     SET_LOCK_LAST_OWNER(_lock, task_current());
     enable_interrupts();
 }
-
-

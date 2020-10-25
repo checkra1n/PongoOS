@@ -30,9 +30,9 @@ volatile void d$demote_patch(void * image);
 volatile void d$reset_vector_patch(void * image);
 //volatile void AES$patch(void * image);
 
-void iorvbar_yeet(const volatile void *ro, volatile void *rw);
-void aes_keygen(const volatile void *ro, volatile void *rw);
-void recfg_yoink(const volatile void *ro, volatile void *rw);
+void iorvbar_yeet(const volatile void *ro, volatile void *rw) __asm__("iorvbar_yeet");
+void aes_keygen(const volatile void *ro, volatile void *rw) __asm__("aes_keygen");
+void recfg_yoink(const volatile void *ro, volatile void *rw) __asm__("recfg_yoink");
 
 OBFUSCATE_C_FUNC(uint32_t* find_next_insn(uint32_t* from, uint32_t size, uint32_t insn, uint32_t mask))
 {
@@ -130,12 +130,13 @@ void stage3_exit_to_el1_image(void* boot_args, void* boot_entry_point) {
 
 OBFUSCATE_C_FUNC(void trampoline_entry(void* boot_image, void* boot_args))
 {
-    extern uint64_t __bss_start,__bss_end;
-    if (__bss_start == 0x746F6F626F747561) {
-        uint32_t autoboot_sz = (uint32_t)((&__bss_start)[1]);
+    extern uint64_t __bss_start[] __asm__("section$start$__DATA$__common"),
+                    __bss_end[] __asm__("segment$end$__DATA");
+    if (__bss_start[0] == 0x746F6F626F747561) {
+        uint32_t autoboot_sz = (uint32_t)(__bss_start[1]);
         extern volatile void smemcpy128(void*,void*,uint32_t);
-        smemcpy128 ((void*)0x819000000, &__bss_start, (autoboot_sz + 64)/16);
-        __bss_start = 0;
+        smemcpy128 ((void*)0x819000000, __bss_start, (autoboot_sz + 64)/16);
+        __bss_start[0] = 0;
     }
 
     if (!boot_args) {
@@ -146,7 +147,7 @@ OBFUSCATE_C_FUNC(void trampoline_entry(void* boot_image, void* boot_args))
         gboot_args = boot_args;
         gboot_entry_point = boot_image;
         extern volatile void smemset(void*, uint8_t, uint64_t);
-        smemset(&__bss_start, 0, ((uint64_t)&__bss_end) - ((uint64_t)&__bss_start));
+        smemset(&__bss_start, 0, ((uint64_t)__bss_end) - ((uint64_t)__bss_start));
         void main (void);
         main();
     }

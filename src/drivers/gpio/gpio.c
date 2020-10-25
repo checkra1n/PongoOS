@@ -31,6 +31,12 @@ void gpio_main() {
 }
 struct task gpio_task = {.name = "gpio"};
 
+uint64_t gGpioBase;
+void gpio_early_init() {
+    gGpioBase = dt_get_u32_prop("gpio", "reg");
+    gGpioBase += gIOBase;
+}
+
 void gpio_init() {
     /*
     uint32_t len = 0;

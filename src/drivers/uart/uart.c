@@ -61,10 +61,10 @@ extern void queue_rx_char(char inch);
 void uart_main() {
     while(1) {
         disable_interrupts();
-        volatile uint32_t utrst = rUTRSTAT0;
+        uint32_t utrst = rUTRSTAT0;
         rUTRSTAT0 = utrst;
         if (utrst & 0x40) {
-            volatile uint32_t noop = rURXH0;
+            (void)rURXH0; // force read
         } else
         if (utrst & 1) {
             int rxh0 = rURXH0;
@@ -75,7 +75,7 @@ void uart_main() {
                 disable_interrupts();
             }
         }
-        volatile uint32_t uerst = rUERSTAT0;
+        uint32_t uerst = rUERSTAT0;
         rUERSTAT0 = uerst;
         uart_update_tx_irq();
         enable_interrupts();
@@ -94,6 +94,15 @@ void serial_early_init() {
     rUFCON0 = 0;
     rUMCON0 = 0;
     enable_interrupts();
+}
+
+void serial_pinmux_init() {
+    // Pinmux debug UART on ATV4K
+    // This will also pinmux uart0 on iPad Pro 2G
+    if((strcmp(soc_name, "t8011") == 0)) {
+        rT8011TX = UART_TX_MUX;
+        rT8011RX = UART_RX_MUX;
+    }
 }
 
 uint16_t uart_irq;

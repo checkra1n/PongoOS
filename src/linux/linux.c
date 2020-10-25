@@ -24,14 +24,15 @@
 #include <pongo.h>
 extern dt_node_t *gDeviceTree;
 extern uint64_t gIOBase;
-extern int socnum;
 #include <libfdt.h>
 #include <lzma/lzmadec.h>
 #define LINUX_DTREE_SIZE 262144
 
 void * fdt;
 bool fdt_initialized = false;
-void linux_dtree_init(void) {
+void linux_dtree_init(void)
+{
+    // TODO: TONS of error handling
     char compatible_apple[64];
     char * arm_io_type = dt_get_prop("arm-io", "device_type", NULL);
     char soc_name[64];
@@ -44,7 +45,7 @@ void linux_dtree_init(void) {
     if (fdt_initialized)
         free(fdt);
     fdt = malloc(LINUX_DTREE_SIZE);
-    int status = fdt_create_empty_tree(fdt, LINUX_DTREE_SIZE);
+    fdt_create_empty_tree(fdt, LINUX_DTREE_SIZE);
 
     int node = 0, node1 = 0;
     fdt_appendprop_string(fdt, node, "compatible", compatible_apple);
@@ -61,7 +62,7 @@ void linux_dtree_init(void) {
     /* Alias */
     node = fdt_add_subnode(fdt, 0, "/aliases");
     char serials[64];
-    siprintf(serials, "/soc/serial@%lx",((uint64_t)dt_get_u32_prop("uart0", "reg"))+ gIOBase);
+    siprintf(serials, "/soc/serial@%llx",((uint64_t)dt_get_u32_prop("uart0", "reg"))+ gIOBase);
     fdt_appendprop_string(fdt, node, "serial0", serials);
 
     /* CPU */
@@ -108,7 +109,7 @@ void linux_dtree_init(void) {
     fdt_appendprop(fdt, node, "ranges", "", 0);
 
     /* Interrupt controller: Apple AIC */
-    siprintf(fdt_nodename, "/interrupt-controller@%lx", (uint64_t)dt_get_u32_prop("aic", "reg") + gIOBase);
+    siprintf(fdt_nodename, "/interrupt-controller@%llx", (uint64_t)dt_get_u32_prop("aic", "reg") + gIOBase);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_string(fdt, node1, "name", "interrupt_controller");
     fdt_appendprop_string(fdt, node1, "device_type", "interrupt_controller");
@@ -122,7 +123,7 @@ void linux_dtree_init(void) {
     fdt_appendprop(fdt, node1, "interrupt-controller", "", 0);
 
     /* UART */
-    siprintf(fdt_nodename, "/serial@%lx", (uint64_t)dt_get_u32_prop("uart0", "reg") + gIOBase);
+    siprintf(fdt_nodename, "/serial@%llx", (uint64_t)dt_get_u32_prop("uart0", "reg") + gIOBase);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_string(fdt, node1, "compatible", "hx,uart");
     fdt_appendprop_addrrange(fdt,0, node1, "reg",
@@ -147,7 +148,7 @@ void linux_dtree_init(void) {
     fdt_appendprop(fdt, node, "ranges", "", 0);
 
     uint64_t nomap_area = 0x800000000 + gBootArgs->memSize - 0x02000000;
-    siprintf(fdt_nodename, "/fw_area@%lx", nomap_area);
+    siprintf(fdt_nodename, "/fw_area@%llx", nomap_area);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_addrrange(fdt, 0, node1, "reg", nomap_area, 0x04000000);
     fdt_appendprop(fdt, node1, "no-map", "", 0);
@@ -189,7 +190,7 @@ void linux_dtree_overlay(char *boot_args) {
     fdt_appendprop_string(fdt, node1, "format", "a8b8g8r8");
     fdt_appendprop_string(fdt, node1, "status", "okay");
     fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
- 
+
     if(boot_args) {
         node = fdt_path_offset(fdt, "/chosen");
         if (node < 0) {
@@ -204,7 +205,7 @@ void linux_dtree_overlay(char *boot_args) {
 
         fdt_appendprop_string(fdt, node, "bootargs", boot_args);
     }
-    
+
 }
 
 bool linux_can_boot() {
@@ -230,13 +231,13 @@ void fdt_select_dtree(void *fdt)
         return;
 
     while(buf[0]) {
-        ebuf = buf + strlen(buf) + 1;
+        ebuf = buf + strlen((char*)buf) + 1;
         len = ebuf[0];
         len = (len << 8) | ebuf[1];
         len = (len << 8) | ebuf[2];
         len = (len << 8) | ebuf[3];
         ebuf += 4;
-        if(!strcmp(key, buf)) {
+        if(!strcmp(key, (char*)buf)) {
             iprintf("Found device tree for %s (%d bytes).\n", key, len);
             memmove(fdt, ebuf, len);
             return;
@@ -266,9 +267,9 @@ void linux_prep_boot() {
 #define colormatrix_mul_31 (&disp[0x40cc/4])
 #define colormatrix_mul_32 (&disp[0x40d4/4])
 #define colormatrix_mul_33 (&disp[0x40dc/4])
-    
+
     volatile uint32_t* disp = ((uint32_t*)(dt_get_u32_prop("disp0", "reg") + gIOBase));
-    
+
     *pixfmt0 = (*pixfmt0 & 0xF00FFFFFu) | 0x05200000u;
 
     *colormatrix_bypass = 0;
@@ -278,7 +279,7 @@ void linux_prep_boot() {
     puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
 
     gEntryPoint = (void*)(0x800080000);
-    uint64_t image_size = loader_xfer_recv_count; 
+    uint64_t image_size = loader_xfer_recv_count;
     gLinuxStage = (void*)alloc_contig(image_size+LINUX_DTREE_SIZE);
     size_t dest_size = 0x10000000;
     int res = unlzma_decompress((uint8_t *)gLinuxStage, &dest_size, loader_xfer_recv_data, image_size);

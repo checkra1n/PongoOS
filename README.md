@@ -1,17 +1,21 @@
 pongoOS
 =======
-![Docker](https://github.com/checkra1n/pongoOS/workflows/Docker/badge.svg)
-![CI](https://github.com/checkra1n/pongoOS/workflows/CI/badge.svg)
 
-An experimental pre-boot execution environment for Apple boards built on top of checkra1n.
+A pre-boot execution environment for Apple boards built on top of checkra1n.
 
-Building pongoOS via Docker
+Building on macOS
 -----------
-* Install Docker
-* Either build or pull the builder image
-  + `docker build --tag checkra1n/build-pongo .`
-  + `docker pull docker.pkg.github.com/checkra1n/pongoos/build-pongo:latest`
-* Perform a build inside the container with `./build.sh`
+
+- Install Xcode + command-line utilities
+- `make clean all`
+
+Building on Linux
+-----------
+
+- Download [Sam Bingner's iOS Toolchain](https://github.com/sbingner/llvm-project/releases/download/v10.0.0-1/linux-ios-arm64e-clang-toolchain.tar.lzma)
+- Copy `scripts/arm64-apple-ios12.0.0-clang` to a directory in `$PATH`
+- Adjust the `TOOLCHAIN` variable to point to the downloaded toolchain
+- `make clean all`
 
 Contributions
 -------------

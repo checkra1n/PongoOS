@@ -115,7 +115,11 @@ out:
 
 */
 
-__attribute__((noinline)) void pongo_entry_cached() {
+char soc_name[9] = {};
+uint32_t socnum = 0x0;
+
+__attribute__((noinline)) void pongo_entry_cached()
+{
     gDeviceTree = (void*)((uint64_t)gBootArgs->deviceTreeP - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000 + kCacheableView);
     gIOBase = dt_get_u64_prop_i("arm-io", "ranges", 1);
     uint64_t max_video_addr = gBootArgs->Video.v_baseAddr + gBootArgs->Video.v_rowBytes * gBootArgs->Video.v_height;
@@ -123,10 +127,8 @@ __attribute__((noinline)) void pongo_entry_cached() {
     if (gBootArgs->memSize > max_mem_size) max_mem_size = gBootArgs->memSize;
     map_full_ram(gBootArgs->physBase & 0xFFFFFFFF, max_mem_size);
 
-    extern int socnum;
     gDevType = dt_get_prop("arm-io", "device_type", NULL);
     size_t len = strlen(gDevType) - 3;
-    char soc_name[9] = {};
     len = len < 8 ? len : 8;
     strncpy(soc_name, gDevType, len);
     if  (strcmp(soc_name, "s5l8960x") == 0) socnum = 0x8960;

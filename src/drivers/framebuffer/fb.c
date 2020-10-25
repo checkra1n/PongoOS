@@ -146,16 +146,15 @@ void screen_init() {
     gRowPixels = gBootArgs->Video.v_rowBytes >> 2;
     uint16_t width = gWidth = gBootArgs->Video.v_width;
     uint16_t height = gHeight = gBootArgs->Video.v_height;
-    
+
     height &= 0xfff0;
     scale_factor = 2;
     if (width > 800)
         scale_factor = 3;
 
     if (width > height) scale_factor = 1;
-    
+
     uint32_t logo_scaler_factor = 2 * scale_factor;
-    extern int socnum;
     if (socnum == 0x8012) logo_scaler_factor = 1;
 
     uint32_t logo_x_begin = (gRowPixels / 2) - (16 * logo_scaler_factor);

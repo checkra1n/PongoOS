@@ -1,0 +1,33 @@
+#!/bin/bash -x
+TOOLCHAIN=/opt/ios-arm64e-clang-toolchain
+REALNAME="$(realpath "$0")"
+DIR="$(dirname "${REALNAME}")"
+BASENAME="$(basename "${REALNAME}")"
+TARGET="${BASENAME%-*}"
+EXE="${BASENAME##*-}"
+ARCH="${TARGET%%-*}"
+export SDKROOT="$TOOLCHAIN/sdks/MacOSX.sdk"
+export PATH="${TOOLCHAIN}/bin:$PATH"
+TOOL="clang"
+case $EXE in
+clang++|g++|c++)
+    TOOL="clang++" # -isystem $TOOLCHAIN/libc++/include/c++/v1"
+    ;;
+as)
+#    TOOL="as"
+esac
+case $ARCH in
+x86_64|x86_64h)
+    export SDKROOT="$TOOLCHAIN/sdks/MacOSX.sdk"
+    #LINKER="-Xlinker $TOOLCHAIN/clangrt/lib/darwin/libclang_rt.osx.a"
+    ;;
+i386)
+    #LINKER="-Xlinker $TOOLCHAIN/clangrt/lib/darwin/libclang_rt.osx.a
+        export SDKROOT="$TOOLCHAIN/sdks/MacOSX.sdk"
+    ;;
+arm64)
+    #LINKER="-Xlinker $TOOLCHAIN/clangrt/lib/darwin/libclang_rt.ios.a
+    export SDKROOT="$TOOLCHAIN/sdks/iPhoneOS.sdk"
+    ;;
+esac
+"${TOOLCHAIN}/bin/${EXE}" -Wno-unused-command-line-argument -fuse-ld="${TOOLCHAIN}/bin/ld" -isysroot "${SDKROOT}" -target $TARGET $LINKER "$@"

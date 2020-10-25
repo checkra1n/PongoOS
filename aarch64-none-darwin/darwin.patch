@@ -1,0 +1,634 @@
+diff --git a/libc/machine/aarch64/memchr.S b/libc/machine/aarch64/memchr.S
+index 53f5d6b..741e9a6 100644
+--- a/libc/machine/aarch64/memchr.S
++++ b/libc/machine/aarch64/memchr.S
+@@ -70,15 +70,15 @@
+  * identify exactly which byte has matched.
+  */
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+-def_fn memchr
++def_fn _memchr
+ 	/* Do not dereference srcin if no bytes to compare.  */
+ 	cbz	cntin, .Lzero_length
+ 	/*
+@@ -110,7 +110,7 @@ def_fn memchr
+ 	and	vhas_chr2.16b, vhas_chr2.16b, vrepmask.16b
+ 	addp	vend.16b, vhas_chr1.16b, vhas_chr2.16b		/* 256->128 */
+ 	addp	vend.16b, vend.16b, vend.16b			/* 128->64 */
+-	mov	synd, vend.2d[0]
++	mov	synd, vend.d[0]
+ 	/* Clear the soff*2 lower bits */
+ 	lsl	tmp, soff, #1
+ 	lsr	synd, synd, tmp
+@@ -130,7 +130,7 @@ def_fn memchr
+ 	/* Use a fast check for the termination condition */
+ 	orr	vend.16b, vhas_chr1.16b, vhas_chr2.16b
+ 	addp	vend.2d, vend.2d, vend.2d
+-	mov	synd, vend.2d[0]
++	mov	synd, vend.d[0]
+ 	/* We're not out of data, loop if we haven't found the character */
+ 	cbz	synd, .Lloop
+
+@@ -140,7 +140,7 @@ def_fn memchr
+ 	and	vhas_chr2.16b, vhas_chr2.16b, vrepmask.16b
+ 	addp	vend.16b, vhas_chr1.16b, vhas_chr2.16b		/* 256->128 */
+ 	addp	vend.16b, vend.16b, vend.16b			/* 128->64 */
+-	mov	synd, vend.2d[0]
++	mov	synd, vend.d[0]
+ 	/* Only do the clear for the last possible block */
+ 	b.hi	.Ltail
+
+@@ -172,5 +172,5 @@ def_fn memchr
+ 	mov	result, #0
+ 	ret
+
+-	.size	memchr, . - memchr
++	.8byte	_memchr, . - _memchr
+ #endif
+diff --git a/libc/machine/aarch64/memcmp.S b/libc/machine/aarch64/memcmp.S
+index 605d993..72c5e0d 100644
+--- a/libc/machine/aarch64/memcmp.S
++++ b/libc/machine/aarch64/memcmp.S
+@@ -81,15 +81,15 @@
+ #define tmp1		x7
+ #define tmp2		x8
+
+-        .macro def_fn f p2align=0
++        .macro def_fn f p2align=2
+         .text
+         .p2align \p2align
+         .global \f
+-        .type \f, %function
++//        .type \f, %function
+ \f:
+         .endm
+
+-def_fn memcmp p2align=6
++def_fn _memcmp, 6
+ 	subs	limit, limit, 8
+ 	b.lo	L(less8)
+
+@@ -192,5 +192,5 @@ L(byte_loop):
+ 	sub	result, data1w, data2w
+ 	ret
+
+-	.size	memcmp, . - memcmp
++	.8byte	_memcmp, . - _memcmp
+ #endif
+diff --git a/libc/machine/aarch64/memcpy.S b/libc/machine/aarch64/memcpy.S
+index 463bad0..fc62648 100644
+--- a/libc/machine/aarch64/memcpy.S
++++ b/libc/machine/aarch64/memcpy.S
+@@ -87,11 +87,11 @@
+
+ #define L(l) .L ## l
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+@@ -104,7 +104,7 @@
+    well as non-overlapping copies.
+ */
+
+-def_fn memcpy p2align=6
++def_fn _memcpy, 6
+ 	prfm	PLDL1KEEP, [src]
+ 	add	srcend, src, count
+ 	add	dstend, dstin, count
+@@ -226,5 +226,5 @@ L(copy_long):
+ 	stp	C_l, C_h, [dstend, -16]
+ 	ret
+
+-	.size	memcpy, . - memcpy
++	.8byte	_memcpy, . - _memcpy
+ #endif
+diff --git a/libc/machine/aarch64/memmove.S b/libc/machine/aarch64/memmove.S
+index 597a8c8..8f69c53 100644
+--- a/libc/machine/aarch64/memmove.S
++++ b/libc/machine/aarch64/memmove.S
+@@ -61,11 +61,11 @@
+ /* See memmove-stub.c  */
+ #else
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+@@ -93,12 +93,14 @@
+    unrolled loop processes 64 bytes per iteration.
+ */
+
+-def_fn memmove, 6
++def_fn _memmove, 6
+ 	sub	tmp1, dstin, src
+ 	cmp	count, 96
+ 	ccmp	tmp1, count, 2, hi
+-	b.hs	memcpy
++	b.lo	0f
++	b	_memcpy
+
++0:
+ 	cbz	tmp1, 3f
+ 	add	dstend, dstin, count
+ 	add	srcend, src, count
+@@ -151,5 +153,5 @@ def_fn memmove, 6
+ 	stp	C_l, C_h, [dstin]
+ 3:	ret
+
+-	.size	memmove, . - memmove
++	.8byte	_memmove, . - _memmove
+ #endif
+diff --git a/libc/machine/aarch64/memset.S b/libc/machine/aarch64/memset.S
+index 103e3f8..1a6fcbf 100644
+--- a/libc/machine/aarch64/memset.S
++++ b/libc/machine/aarch64/memset.S
+@@ -77,15 +77,15 @@
+
+ #define L(l) .L ## l
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+-def_fn memset p2align=6
++def_fn _memset, 6
+
+ 	dup	v0.16B, valw
+ 	add	dstend, dstin, count
+@@ -236,5 +236,5 @@ L(zva_other):
+ 	sub	dst, dst, 32		/* Bias dst for tail loop.  */
+ 	b	L(tail64)
+
+-	.size	memset, . - memset
++	.8byte	_memset, . - _memset
+ #endif
+diff --git a/libc/machine/aarch64/rawmemchr.S b/libc/machine/aarch64/rawmemchr.S
+index 26da810..9e23068 100644
+--- a/libc/machine/aarch64/rawmemchr.S
++++ b/libc/machine/aarch64/rawmemchr.S
+@@ -36,11 +36,11 @@
+
+ #define L(l) .L ## l
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+@@ -48,21 +48,20 @@
+    Call strlen without setting up a full frame - it preserves x14/x15.
+ */
+
+-def_fn rawmemchr p2align=5
++def_fn _rawmemchr, 5
+ 	.cfi_startproc
+ 	cbz	w1, L(do_strlen)
+ 	mov	x2, -1
+-	b	memchr
++	b	_memchr
+
+ L(do_strlen):
+ 	mov	x15, x30
+ 	.cfi_return_column x15
+ 	mov	x14, x0
+-	bl	strlen
++	bl	_strlen
+ 	add	x0, x14, x0
+ 	ret	x15
+ 	.cfi_endproc
+
+-	.size   rawmemchr, . - rawmemchr
++	.8byte   _rawmemchr, . - _rawmemchr
+ #endif
+-
+diff --git a/libc/machine/aarch64/setjmp.S b/libc/machine/aarch64/setjmp.S
+index 0856145..4505846 100644
+--- a/libc/machine/aarch64/setjmp.S
++++ b/libc/machine/aarch64/setjmp.S
+@@ -42,9 +42,10 @@
+ 	REG_PAIR (d14, d15, 160);
+
+ // int setjmp (jmp_buf)
+-	.global	setjmp
+-	.type	setjmp, %function
+-setjmp:
++	.global	_setjmp
++	.p2align	2
++//	.type	setjmp, %function
++_setjmp:
+ 	mov	x16, sp
+ #define REG_PAIR(REG1, REG2, OFFS)	stp REG1, REG2, [x0, OFFS]
+ #define REG_ONE(REG1, OFFS)		str REG1, [x0, OFFS]
+@@ -54,12 +55,13 @@ setjmp:
+ #undef REG_ONE
+ 	mov	w0, #0
+ 	ret
+-	.size	setjmp, .-setjmp
++	.8byte	_setjmp, .-_setjmp
+
+ // void longjmp (jmp_buf, int) __attribute__ ((noreturn))
+-	.global	longjmp
+-	.type	longjmp, %function
+-longjmp:
++	.global	_longjmp
++	.p2align	2
++//	.type	_longjmp, %function
++_longjmp:
+ #define REG_PAIR(REG1, REG2, OFFS)	ldp REG1, REG2, [x0, OFFS]
+ #define REG_ONE(REG1, OFFS)		ldr REG1, [x0, OFFS]
+ 	GPR_LAYOUT
+@@ -71,4 +73,4 @@ longjmp:
+ 	cinc	w0, w1, eq
+ 	// use br not ret, as ret is guaranteed to mispredict
+ 	br	x30
+-	.size	longjmp, .-longjmp
++	.8byte	_longjmp, .-_longjmp
+diff --git a/libc/machine/aarch64/strchr.S b/libc/machine/aarch64/strchr.S
+index 2448dbc..120f838 100644
+--- a/libc/machine/aarch64/strchr.S
++++ b/libc/machine/aarch64/strchr.S
+@@ -74,15 +74,15 @@
+
+ /* Locals and temporaries.  */
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+-def_fn strchr
++def_fn _strchr
+ 	/* Magic constant 0x40100401 to allow us to identify which lane
+ 	   matches the requested byte.  Magic constant 0x80200802 used
+ 	   similarly for NUL termination.  */
+@@ -117,7 +117,7 @@ def_fn strchr
+ 	addp	vend1.16b, vend1.16b, vend2.16b		// 128->64
+ 	lsr	tmp1, tmp3, tmp1
+
+-	mov	tmp3, vend1.2d[0]
++	mov	tmp3, vend1.d[0]
+ 	bic	tmp1, tmp3, tmp1	// Mask padding bits.
+ 	cbnz	tmp1, .Ltail
+
+@@ -132,7 +132,7 @@ def_fn strchr
+ 	orr	vend2.16b, vhas_nul2.16b, vhas_chr2.16b
+ 	orr	vend1.16b, vend1.16b, vend2.16b
+ 	addp	vend1.2d, vend1.2d, vend1.2d
+-	mov	tmp1, vend1.2d[0]
++	mov	tmp1, vend1.d[0]
+ 	cbz	tmp1, .Lloop
+
+ 	/* Termination condition found.  Now need to establish exactly why
+@@ -146,7 +146,7 @@ def_fn strchr
+ 	addp	vend1.16b, vend1.16b, vend2.16b		// 256->128
+ 	addp	vend1.16b, vend1.16b, vend2.16b		// 128->64
+
+-	mov	tmp1, vend1.2d[0]
++	mov	tmp1, vend1.d[0]
+ .Ltail:
+ 	/* Count the trailing zeros, by bit reversing...  */
+ 	rbit	tmp1, tmp1
+@@ -160,5 +160,5 @@ def_fn strchr
+ 	csel	result, result, xzr, eq
+ 	ret
+
+-	.size	strchr, . - strchr
++	.8byte	_strchr, . - _strchr
+ #endif
+diff --git a/libc/machine/aarch64/strchrnul.S b/libc/machine/aarch64/strchrnul.S
+index a0ac13b..c7013e1 100644
+--- a/libc/machine/aarch64/strchrnul.S
++++ b/libc/machine/aarch64/strchrnul.S
+@@ -70,15 +70,15 @@
+
+ /* Locals and temporaries.  */
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+-def_fn strchrnul
++def_fn _strchrnul
+ 	/* Magic constant 0x40100401 to allow us to identify which lane
+ 	   matches the termination condition.  */
+ 	mov	wtmp2, #0x0401
+@@ -109,7 +109,7 @@ def_fn strchrnul
+ 	addp	vend1.16b, vend1.16b, vend1.16b		// 128->64
+ 	lsr	tmp1, tmp3, tmp1
+
+-	mov	tmp3, vend1.2d[0]
++	mov	tmp3, vend1.d[0]
+ 	bic	tmp1, tmp3, tmp1	// Mask padding bits.
+ 	cbnz	tmp1, .Ltail
+
+@@ -124,7 +124,7 @@ def_fn strchrnul
+ 	orr	vhas_chr2.16b, vhas_nul2.16b, vhas_chr2.16b
+ 	orr	vend1.16b, vhas_chr1.16b, vhas_chr2.16b
+ 	addp	vend1.2d, vend1.2d, vend1.2d
+-	mov	tmp1, vend1.2d[0]
++	mov	tmp1, vend1.d[0]
+ 	cbz	tmp1, .Lloop
+
+ 	/* Termination condition found.  Now need to establish exactly why
+@@ -134,7 +134,7 @@ def_fn strchrnul
+ 	addp	vend1.16b, vhas_chr1.16b, vhas_chr2.16b		// 256->128
+ 	addp	vend1.16b, vend1.16b, vend1.16b		// 128->64
+
+-	mov	tmp1, vend1.2d[0]
++	mov	tmp1, vend1.d[0]
+ .Ltail:
+ 	/* Count the trailing zeros, by bit reversing...  */
+ 	rbit	tmp1, tmp1
+@@ -145,5 +145,5 @@ def_fn strchrnul
+ 	add	result, src, tmp1, lsr #1
+ 	ret
+
+-	.size	strchrnul, . - strchrnul
++	.8byte	_strchrnul, . - _strchrnul
+ #endif
+diff --git a/libc/machine/aarch64/strcmp.S b/libc/machine/aarch64/strcmp.S
+index e2bef2d..a311837 100644
+--- a/libc/machine/aarch64/strcmp.S
++++ b/libc/machine/aarch64/strcmp.S
+@@ -33,11 +33,11 @@
+ /* See strcmp-stub.c  */
+ #else
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+@@ -67,7 +67,7 @@
+ #define pos		x11
+
+ 	/* Start of performance-critical section  -- one 64B cache line.  */
+-def_fn strcmp p2align=6
++def_fn _strcmp, 6
+ 	eor	tmp1, src1, src2
+ 	mov	zeroones, #REP8_01
+ 	tst	tmp1, #7
+@@ -197,6 +197,6 @@ L(loop_misaligned):
+ L(done):
+ 	sub	result, data1, data2
+ 	ret
+-	.size	strcmp, .-strcmp
++	.8byte	_strcmp, .-_strcmp
+
+ #endif
+diff --git a/libc/machine/aarch64/strcpy.S b/libc/machine/aarch64/strcpy.S
+index e5405f2..02f9849 100644
+--- a/libc/machine/aarch64/strcpy.S
++++ b/libc/machine/aarch64/strcpy.S
+@@ -67,16 +67,16 @@
+ #define to_align	x17
+
+ #ifdef BUILD_STPCPY
+-#define STRCPY stpcpy
++#define STRCPY _stpcpy
+ #else
+-#define STRCPY strcpy
++#define STRCPY _strcpy
+ #endif
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+@@ -111,7 +111,7 @@
+
+ #define MIN_PAGE_SIZE (1 << MIN_PAGE_P2)
+
+-def_fn STRCPY p2align=6
++def_fn STRCPY, 6
+ 	/* For moderately short strings, the fastest way to do the copy is to
+ 	   calculate the length of the string in the same way as strlen, then
+ 	   essentially do a memcpy of the result.  This avoids the need for
+@@ -337,5 +337,5 @@ def_fn STRCPY p2align=6
+ 	bic	has_nul2, tmp3, tmp4
+ 	b	.Lfp_gt8
+
+-	.size	STRCPY, . - STRCPY
++	.8byte	STRCPY, . - STRCPY
+ #endif
+diff --git a/libc/machine/aarch64/strlen.S b/libc/machine/aarch64/strlen.S
+index 872d136..dc063be 100644
+--- a/libc/machine/aarch64/strlen.S
++++ b/libc/machine/aarch64/strlen.S
+@@ -55,11 +55,11 @@
+
+ #define L(l) .L ## l
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+@@ -104,7 +104,7 @@
+ 	   whether the first fetch, which may be misaligned, crosses a page
+ 	   boundary.  */
+
+-def_fn strlen p2align=6
++def_fn _strlen, 6
+ 	and	tmp1, srcin, MIN_PAGE_SIZE - 1
+ 	mov	zeroones, REP8_01
+ 	cmp	tmp1, MIN_PAGE_SIZE - 16
+@@ -234,5 +234,5 @@ L(page_cross):
+ 	csel	data2, data2, tmp2, eq
+ 	b	L(page_cross_entry)
+
+-	.size	strlen, . - strlen
++	.8byte	_strlen, . - _strlen
+ #endif
+diff --git a/libc/machine/aarch64/strncmp.S b/libc/machine/aarch64/strncmp.S
+index ffdabc2..bc56d5d 100644
+--- a/libc/machine/aarch64/strncmp.S
++++ b/libc/machine/aarch64/strncmp.S
+@@ -33,11 +33,11 @@
+  * ARMv8-a, AArch64
+  */
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+@@ -74,7 +74,7 @@
+ 	.rep 7
+ 	nop	/* Pad so that the loop below fits a cache line.  */
+ 	.endr
+-def_fn strncmp
++def_fn _strncmp
+ 	cbz	limit, .Lret0
+ 	eor	tmp1, src1, src2
+ 	mov	zeroones, #REP8_01
+@@ -286,5 +286,5 @@ def_fn strncmp
+ .Lret0:
+ 	mov	result, #0
+ 	ret
+-	.size strncmp, . - strncmp
++	.8byte _strncmp, . - _strncmp
+ #endif
+diff --git a/libc/machine/aarch64/strnlen.S b/libc/machine/aarch64/strnlen.S
+index c255c3f..164c733 100644
+--- a/libc/machine/aarch64/strnlen.S
++++ b/libc/machine/aarch64/strnlen.S
+@@ -55,11 +55,11 @@
+ #define pos		x13
+ #define limit_wd	x14
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+@@ -79,7 +79,7 @@
+ 	mov	len, limit
+ 	ret
+
+-def_fn strnlen
++def_fn _strnlen
+ 	cbz	limit, .Lhit_limit
+ 	mov	zeroones, #REP8_01
+ 	bic	src, srcin, #15
+@@ -182,6 +182,6 @@ def_fn strnlen
+ 	csinv	data1, data1, xzr, le
+ 	csel	data2, data2, data2a, le
+ 	b	.Lrealigned
+-	.size	strnlen, . - .Lstart	/* Include pre-padding in size.  */
++	.8byte	_strnlen, . - .Lstart	/* Include pre-padding in size.  */
+
+ #endif
+diff --git a/libc/machine/aarch64/strrchr.S b/libc/machine/aarch64/strrchr.S
+index d64fc09..55d8f63 100644
+--- a/libc/machine/aarch64/strrchr.S
++++ b/libc/machine/aarch64/strrchr.S
+@@ -80,15 +80,15 @@
+
+ /* Locals and temporaries.  */
+
+-	.macro def_fn f p2align=0
++	.macro def_fn f p2align=2
+ 	.text
+ 	.p2align \p2align
+ 	.global \f
+-	.type \f, %function
++//	.type \f, %function
+ \f:
+ 	.endm
+
+-def_fn strrchr
++def_fn _strrchr
+ 	/* Magic constant 0x40100401 to allow us to identify which lane
+ 	   matches the requested byte.  Magic constant 0x80200802 used
+ 	   similarly for NUL termination.  */
+@@ -120,10 +120,10 @@ def_fn strrchr
+ 	addp	vhas_chr1.16b, vhas_chr1.16b, vhas_chr2.16b	// 256->128
+ 	addp	vhas_nul1.16b, vhas_nul1.16b, vhas_nul1.16b	// 128->64
+ 	addp	vhas_chr1.16b, vhas_chr1.16b, vhas_chr1.16b	// 128->64
+-	mov	nul_match, vhas_nul1.2d[0]
++	mov	nul_match, vhas_nul1.d[0]
+ 	lsl	tmp1, tmp1, #1
+ 	mov	const_m1, #~0
+-	mov	chr_match, vhas_chr1.2d[0]
++	mov	chr_match, vhas_chr1.d[0]
+ 	lsr	tmp3, const_m1, tmp1
+
+ 	bic	nul_match, nul_match, tmp3	// Mask padding bits.
+@@ -146,15 +146,15 @@ def_fn strrchr
+ 	addp	vhas_chr1.16b, vhas_chr1.16b, vhas_chr2.16b	// 256->128
+ 	addp	vend1.16b, vend1.16b, vend1.16b	// 128->64
+ 	addp	vhas_chr1.16b, vhas_chr1.16b, vhas_chr1.16b	// 128->64
+-	mov	nul_match, vend1.2d[0]
+-	mov	chr_match, vhas_chr1.2d[0]
++	mov	nul_match, vend1.d[0]
++	mov	chr_match, vhas_chr1.d[0]
+ 	cbz	nul_match, .Lloop
+
+ 	and	vhas_nul1.16b, vhas_nul1.16b, vrepmask_0.16b
+ 	and	vhas_nul2.16b, vhas_nul2.16b, vrepmask_0.16b
+ 	addp	vhas_nul1.16b, vhas_nul1.16b, vhas_nul2.16b
+ 	addp	vhas_nul1.16b, vhas_nul1.16b, vhas_nul1.16b
+-	mov	nul_match, vhas_nul1.2d[0]
++	mov	nul_match, vhas_nul1.d[0]
+
+ .Ltail:
+ 	/* Work out exactly where the string ends.  */
+@@ -178,5 +178,5 @@ def_fn strrchr
+
+ 	ret
+
+-	.size	strrchr, . - strrchr
++	.8byte	_strrchr, . - _strrchr
+ #endif

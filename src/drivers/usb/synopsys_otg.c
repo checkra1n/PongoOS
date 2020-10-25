@@ -1046,7 +1046,7 @@ ep_out_recv_data_done(struct endpoint_state *ep) {
 // The maximum number of iterations we'll loop for when waiting for a USB register write to take
 // effect.
 
-static void
+__attribute__((used)) static void
 ep_in_activate(struct endpoint_state *ep, uint8_t n, uint8_t type, uint16_t max_packet_size,
 		uint8_t txfifo) {
 	USB_DEBUG(USB_DEBUG_FUNC, "EP%u IN activate", n);
@@ -1068,7 +1068,7 @@ ep_in_activate(struct endpoint_state *ep, uint8_t n, uint8_t type, uint16_t max_
     // Start receiving interrupts.
     reg_or(rDAINTMSK, (1 << n));
 }
-static void
+__attribute__((used))static void
 ep_out_activate(struct endpoint_state *ep, uint8_t n, uint8_t type, uint16_t max_packet_size) {
     USB_DEBUG(USB_DEBUG_FUNC, "EP%u OUT activate", n);
     ep->n = n;
@@ -1090,7 +1090,7 @@ ep_out_activate(struct endpoint_state *ep, uint8_t n, uint8_t type, uint16_t max
     reg_or(rDAINTMSK, (1 << (n + 16)));
 }
 
-static void
+__attribute__((used))static void
 ep_in_abort(struct endpoint_state *ep) {
 	USB_DEBUG(USB_DEBUG_FUNC, "EP%u IN abort", ep->n);
 	ep->transfer_size = 0;
@@ -1107,7 +1107,7 @@ ep_in_abort(struct endpoint_state *ep) {
 	reg_write(rDIEPINT(ep->n), reg_read(rDIEPINT(ep->n)));
 }
 
-static void
+__attribute__((used))static void
 ep_out_abort(struct endpoint_state *ep) {
     USB_DEBUG(USB_DEBUG_FUNC, "EP%u OUT abort", ep->n);
     ep->transfer_size = 0;
@@ -1133,7 +1133,7 @@ ep_out_abort(struct endpoint_state *ep) {
     reg_write(rDOEPINT(ep->n), reg_read(rDOEPINT(ep->n)));
 }
 
-static void
+__attribute__((used)) static void
 ep_stall(struct endpoint_state *ep) {
     USB_DEBUG(USB_DEBUG_FUNC, "EP%u %s stall", ep->n, (ep->dir_in ? "IN" : "OUT"));
     if (ep->dir_in) {
@@ -1143,14 +1143,14 @@ ep_stall(struct endpoint_state *ep) {
     }
 }
 
-static void
+__attribute__((used)) static void
 usb_set_address(uint8_t address) {
 	USB_DEBUG(USB_DEBUG_FUNC, "Set address %u", address);
 	uint32_t dcfg = reg_read(rDCFG);
 	dcfg = (dcfg & ~0x7f0) | (((uint32_t) address << 4) & 0x7f0);
 	reg_write(rDCFG, dcfg);
 }
-static void
+__attribute__((used)) static void
 usb_reset() {
     USB_DEBUG(USB_DEBUG_FUNC, "Reset");
     ep_in_abort(&ep0_in);
@@ -1453,7 +1453,7 @@ ep0_out_interrupt() {
 		// transfer. We could break down the layering to allow even bigger contiguous
 		// transfers, but this works fine for me.
 		if (ep0.setup_packet.wLength <= DMA_BUFFER_SIZE) {
-			
+
 			success = ep0_setup_stage(&ep0.setup_packet);
 		}
 		if (success) {
@@ -1721,7 +1721,6 @@ void usb_bringup() {
     clock_gate(clockGateBase + reg1, 1);
     clock_gate(clockGateBase + reg2, 1);
     clock_gate(clockGateBase + reg3, 1);
-    extern int socnum;
     if (socnum == 0x8011) {
         *(volatile uint32_t*)(0x20C000024) = 0x3000088;
     } else {
@@ -1746,7 +1745,6 @@ void usb_init() {
     gSynopsysComplexBase = dt_get_u32_prop("usb-complex", "reg");
     gSynopsysComplexBase += gIOBase;
 
-    extern int socnum;
     switch (socnum) {
         case 0x8010:
         case 0x8012:
@@ -1763,7 +1761,7 @@ void usb_init() {
             reg1 = 0x80270;
             reg2 = 0x80278;
             reg3 = 0x80270;
-            if (gSynopsysComplexBase == gSynopsysOTGBase) 
+            if (gSynopsysComplexBase == gSynopsysOTGBase)
                 gSynopsysOTGBase += 0x60;
         break;
         case 0x8000:
@@ -1792,7 +1790,7 @@ void usb_init() {
         iprintf("USB: unsupported platform: %x\nblame qwerty!\n", socnum);
         break;
     }
-    
+
     disable_interrupts();
     usb_irq_mode = 1;
     usb_usbtask_handoff_mode = 0;
@@ -1861,5 +1859,3 @@ void usb_teardown() {
     clock_gate(clockGateBase + reg2, 0);
     clock_gate(clockGateBase + reg1, 0);
 }
-
-

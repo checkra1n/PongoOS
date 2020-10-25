@@ -6,37 +6,53 @@ ifndef $(HOST_OS)
 	endif
 endif
 
-PONGO_VERSION           := 1.2.0-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
+ifeq ($(HOST_OS),Darwin)
+	EMBEDDED_CC         ?= xcrun -sdk iphoneos clang -arch arm64
+	STRIP               ?= strip
+	STAT                ?= stat -L -f %z
+else
+ifeq ($(HOST_OS),Linux)
+	EMBEDDED_CC         ?= arm64-apple-ios12.0.0-clang -arch arm64
+	STRIP               ?= cctools-strip
+	STAT                ?= stat -L -c %s
+endif
+endif
+
+PONGO_VERSION           := 1.3.0-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
 ROOT                    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 SRC                     := $(ROOT)/src
+LIB                     := $(ROOT)/aarch64-none-darwin
 INC                     := $(ROOT)/include
 BUILD                   := $(ROOT)/build
+RA1N                    := $(ROOT)/checkra1n-kpf
 
-EMBEDDED_CC             ?= aarch64-none-elf-gcc
-EMBEDDED_OBJCOPY        ?= aarch64-none-elf-objcopy
-EMBEDDED_LDFLAGS        ?= -static -lc -lm -lg -Xlinker -T -Xlinker Pongo.ld -Wl,--gc-sections -Wl,--build-id=none
-EMBEDDED_CC_FLAGS       ?= -Wunused-label -D'OBFUSCATE_C_FUNC(F)'='F' -DDEV_BUILD=1 -DPONGO_VERSION='"$(PONGO_VERSION)"' $(EMBEDDED_LDFLAGS) -pie -O2 -flto -ffunction-sections -fdata-sections -mcpu=cortex-a57 -mtune=cortex-a57 -DAUTOBOOT
+# General options
+EMBEDDED_LDFLAGS        ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z
+EMBEDDED_CC_FLAGS       ?= -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -I$(LIB)/include $(EMBEDDED_LDFLAGS)
 
-STAGE3_ENTRY_C          := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.s patches.s demote_patch.s jump_to_image.s main.c)
-PONGO_C                 := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.s) $(wildcard $(SRC)/shell/*.c)
-PONGO_DRIVERS_C         := $(wildcard $(SRC)/drivers/usb/*.c) $(wildcard $(SRC)/drivers/framebuffer/*.c)  $(wildcard $(SRC)/drivers/uart/*.c) $(wildcard $(SRC)/drivers/timer/*.c) $(wildcard $(SRC)/drivers/gpio/*.c) $(wildcard $(SRC)/linux/lzma/*.c) $(wildcard $(SRC)/linux/libfdt/*.c) $(wildcard $(SRC)/linux/*.c) $(wildcard $(SRC)/drivers/xnu/*.c) $(wildcard $(SRC)/drivers/xnu/*.s)
-PONGO_FLAGS             := -ffreestanding -Iinclude -Iapple-include -Iinclude/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -Wl,-e,_main -I$(SRC)/linux/libfdt
+# Pongo options
+PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -lg -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x418000000 -Wl,-sectalign,__DATA,__common,0x8
+PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -Djit_alloc=calloc -Djit_free=free -D'OBFUSCATE_C_FUNC(F)'='F' -I$(INC) -Iapple-include -I$(INC)/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/linux/libfdt $(PONGO_LDFLAGS) $(CFLAGS)
 
-# CLANG_SPECIFIC should be $(BUILD)/entry.o, because of LLD builds.
-# Note that we do not officially support building pongoOS with Clang for this early release.
+STAGE3_ENTRY_C          := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.S patches.S demote_patch.S jump_to_image.S main.c)
+PONGO_C                 := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.S) $(wildcard $(SRC)/shell/*.c)
+PONGO_DRIVERS_C         := $(wildcard $(SRC)/drivers/usb/*.c) $(wildcard $(SRC)/drivers/framebuffer/*.c)  $(wildcard $(SRC)/drivers/uart/*.c) $(wildcard $(SRC)/drivers/timer/*.c) $(wildcard $(SRC)/drivers/gpio/*.c) $(wildcard $(SRC)/linux/lzma/*.c) $(wildcard $(SRC)/linux/libfdt/*.c) $(wildcard $(SRC)/linux/*.c) $(wildcard $(SRC)/drivers/xnu/*.c) $(wildcard $(SRC)/drivers/xnu/*.S)
+
+CHECKRA1N_CC            ?= $(EMBEDDED_CC)
+
 
 .PHONY: all clean
 
 all: $(BUILD)/Pongo.bin | $(BUILD)
 
-$(BUILD)/Pongo.bin: $(BUILD)/Pongo.elf | $(BUILD)
-	$(EMBEDDED_OBJCOPY) -O binary  $(BUILD)/Pongo.elf $@
+$(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
+	$(BUILD)/vmacho -f $(BUILD)/Pongo $@
 
-$(BUILD)/Pongo.elf: $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(BUILD)/entry.o | $(BUILD)
-	$(EMBEDDED_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(PONGO_FLAGS) $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(CLANG_SPECIFIC)
+$(BUILD)/Pongo: $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) | $(BUILD)
+	$(EMBEDDED_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS) $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C)
 
-$(BUILD)/entry.o: $(SRC)/boot/entry.s | $(BUILD)
-	$(EMBEDDED_CC) -c -o $@ $(SRC)/boot/entry.s -pie -flto
+$(BUILD)/vmacho: $(SRC)/vmacho.c | $(BUILD)
+	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
 
 $(BUILD):
 	mkdir -p $@

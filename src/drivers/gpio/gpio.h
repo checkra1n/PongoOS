@@ -21,3 +21,6 @@
 //  This file is part of pongoOS.
 //
 void gpio_init();
+void gpio_early_init();
+
+extern uint64_t gGpioBase;

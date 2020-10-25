@@ -71,13 +71,13 @@ void register_irq_handler(uint16_t irq_v, struct task* irq_handler)
 
 void task_list(const char* cmd, char* arg) {
     disable_interrupts();
-    iprintf("served irqs: %lx, caught fiqs: %lx, preempt: %lx, sched: %lx\n", served_irqs, fiqCount, preemption_counter, scheduler_ticks);
+    iprintf("served irqs: %llx, caught fiqs: %llx, preempt: %llx, sched: %llx\n", served_irqs, fiqCount, preemption_counter, scheduler_ticks);
     extern struct task sched_task;
     struct task* cur_task = &sched_task;
     do {
         if (!(cur_task->flags & (TASK_HAS_EXITED|TASK_IRQ_HANDLER))) {
             char* nm = cur_task->name[0] ? cur_task->name : "unknown";
-            iprintf("%10s | task %d | runcnt = %lx | flags = %s, %s\n", nm, cur_task->pid, cur_task->runcnt, cur_task->flags & TASK_PREEMPT ? "preempt" : "coop", cur_task->flags & TASK_LINKED ? "run" : "wait");
+            iprintf("%10s | task %d | runcnt = %llx | flags = %s, %s\n", nm, cur_task->pid, cur_task->runcnt, cur_task->flags & TASK_PREEMPT ? "preempt" : "coop", cur_task->flags & TASK_LINKED ? "run" : "wait");
 	}
         cur_task = cur_task->next;
     } while (cur_task != &sched_task);
@@ -85,7 +85,7 @@ void task_list(const char* cmd, char* arg) {
     for (int i=0; i<0x1ff; i++) {
         if (irqvecs[i]) {
             char* nm = irqvecs[i]->name[0] ? irqvecs[i]->name : "unknown";
-            iprintf("%10s | irq: %d, irq_count: %lx, flags: %s\n", nm, i, irqvecs[i]->irq_count, irqvecs[i]->flags & TASK_PREEMPT ? "preempt" : "sync");	
+            iprintf("%10s | irq: %d, irq_count: %llx, flags: %s\n", nm, i, irqvecs[i]->irq_count, irqvecs[i]->flags & TASK_PREEMPT ? "preempt" : "sync");
 	}
     }
     enable_interrupts();
@@ -142,7 +142,7 @@ void task_yield_preemption() {
     }
     preempt_ctr++;
     _task_switch_asserted(&sched_task);
-    disable_interrupts();  
+    disable_interrupts();
     if (dis_int_count != 1) {
         panic("sched returned with interrupts held");
     }
@@ -154,7 +154,7 @@ void task_wait() {
     if (dis_int_count != 1) {
         panic("task yielded with interrupts held");
     }
-    _task_switch_asserted(&sched_task);    
+    _task_switch_asserted(&sched_task);
 }
 void task_exit() {
     disable_interrupts();
@@ -180,7 +180,7 @@ void task_register_unlinked(struct task* task, void (*entry)()) {
     task->flags |= TASK_PREEMPT;
     disable_interrupts();
     task->pid = gPid++;
-    enable_interrupts(); 
+    enable_interrupts();
 }
 void task_register_irq(struct task* task, void (*entry)(), int irq_id) {
     disable_interrupts();
@@ -189,7 +189,7 @@ void task_register_irq(struct task* task, void (*entry)(), int irq_id) {
     task->flags &= ~TASK_PREEMPT;
     register_irq_handler(irq_id, task);
     unmask_interrupt(irq_id);
-    enable_interrupts(); 
+    enable_interrupts();
 }
 void task_register_preempt_irq(struct task* task, void (*entry)(), int irq_id) {
     disable_interrupts();
@@ -218,7 +218,7 @@ void task_exit_irq()
 {
     if (task_current()->flags & TASK_PREEMPT) {
         disable_interrupts();
-        if (!(task_current()->flags & TASK_LINKED)) panic("task_exit_irq on unlinked preempt irq handler?");    
+        if (!(task_current()->flags & TASK_LINKED)) panic("task_exit_irq on unlinked preempt irq handler?");
 	task_unlink(task_current());
         if (task_current()->flags & TASK_MASK_NEXT_IRQ) task_current()->flags &= ~TASK_MASK_NEXT_IRQ;
         else unmask_interrupt(task_current()->irq_type); // re-arm IRQ
@@ -228,7 +228,7 @@ void task_exit_irq()
         return _task_switch_asserted(&sched_task);
     }
     if (!(task_current()->flags & TASK_IRQ_HANDLER))  return task_yield();
-    if (!task_current()->irq_ret) panic("task_exit_irq must be invoked from enabled irq context");     
+    if (!task_current()->irq_ret) panic("task_exit_irq must be invoked from enabled irq context");
     _task_switch(task_current()->irq_ret);
 }
 extern uint64_t dis_int_count;
@@ -333,4 +333,3 @@ void event_fire(struct event* ev) {
     ev->task_head = NULL;
     enable_interrupts();
 }
-

@@ -17,14 +17,17 @@
 // SOFTWARE.
 // 
 //
-//  Copyright (c) 2020 checkra1n team
+//  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
 //#define XNU_PF_DUMP_JIT
 
 #define LL_KTRW_INTERNAL 1
 #include <pongo.h>
-void (*preboot_hook)();
+void (*preboot_hook)(void);
+
+extern void* jit_alloc(size_t count, size_t size);
+extern void jit_free(void *mem);
 
 /*
 
@@ -33,7 +36,7 @@ void (*preboot_hook)();
 
 */
 
-void pongo_boot_hard() {
+void pongo_boot_hard(const char *cmd, char *args) {
     gBootFlag = BOOT_FLAG_HARD;
     task_yield();
 }
@@ -45,7 +48,7 @@ void pongo_boot_hard() {
 
 */
 
-void pongo_boot_hook() {
+void pongo_boot_hook(const char *cmd, char *args) {
     gBootFlag = BOOT_FLAG_HOOK;
     task_yield();
 }
@@ -57,7 +60,7 @@ void pongo_boot_hook() {
 
 */
 
-void pongo_copy_xnu() {
+void pongo_copy_xnu(const char *cmd, char *args) {
     if (!loader_xfer_recv_count) {
         iprintf("please upload a raw image before issuing this command\n");
         return;
@@ -265,15 +268,15 @@ static int dt_cbp(void *a, dt_node_t *node, int depth, const char *key, void *va
     }
     return retval;
 }
-void log_bootargs() 
+void log_bootargs(const char *cmd, char *args)
 {
     struct boot_args* cBootArgs = (struct boot_args*)((uint64_t)gBootArgs - 0x800000000 + kCacheableView);
-    iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, &cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
+    iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
 }
-void log_dtree()
+void log_dtree(const char *cmd, char *args)
 {
     struct boot_args* cBootArgs = (struct boot_args*)((uint64_t)gBootArgs - 0x800000000 + kCacheableView);
-    iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, &cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
+    iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
     dt_arg_t arg =
     {
         .name = NULL,
@@ -284,7 +287,7 @@ void log_dtree()
     dt_parse(gDeviceTree, 0, NULL, &dt_cbn, gDeviceTree, &dt_cbp, &arg);
 }
 
-void flip_video_display() {
+void flip_video_display(const char *cmd, char *args) {
     gBootArgs->Video.v_display = !gBootArgs->Video.v_display;
     if (!gBootArgs->Video.v_display) {
         iprintf("xnu now owns the framebuffer\n");
@@ -297,7 +300,7 @@ extern void* ramdisk_buf;
 extern uint32_t ramdisk_size;
 
 struct mach_header_64* xnu_header_cached;
-struct mach_header_64* xnu_header() {
+struct mach_header_64* xnu_header(void) {
     if (xnu_header_cached) return xnu_header_cached;
     uint64_t entryp = (uint64_t) gEntryPoint;
     entryp -= 0x800000000 - kCacheableView;
@@ -349,7 +352,7 @@ bool xnu_is_slid(struct mach_header_64* header) {
 }
 uint64_t xnu_slide_hdr_va(struct mach_header_64* header, uint64_t hdr_va) {
     if (xnu_is_slid(header)) return hdr_va;
-    
+
     uint64_t text_va_base = ((uint64_t) header) - kCacheableView + 0x800000000ULL - gBootArgs->physBase + gBootArgs->virtBase;
     uint64_t slide = text_va_base - 0xFFFFFFF007004000ULL;
     return hdr_va + slide;
@@ -365,12 +368,50 @@ void* xnu_va_to_ptr(uint64_t va) {
 uint64_t xnu_ptr_to_va(void* ptr) {
     return ((uint64_t)ptr) - kCacheableView + 0x800000000ULL - gBootArgs->physBase + gBootArgs->virtBase;
 }
+
+// NOTE: iBoot-based rebase only applies to main XNU.
+//       Kexts will never ever have been rebased when Pongo runs.
+static bool has_been_rebased(void) {
+    static int8_t rebase_status = -1;
+    // First, determine whether we've been rebased. his feels really hacky, but it correctly covers all cases:
+    //
+    // 1. New-style kernels rebase themselves, so this is always false.
+    // 2. Old-style kernels on a live device will always have been rebased.
+    // 3. Old-style kernels on kpf-test will not have been rebase, but we use a slide of 0x0 there
+    //    and the pointers are valid by themselves, so they can be treated as correctly rebased.
+    //
+    if(rebase_status == -1)
+    {
+        struct segment_command_64 *seg = macho_get_segment(xnu_header(), "__TEXT");
+        struct section_64 *sec = seg ? macho_get_section(seg, "__thread_starts") : NULL;
+        rebase_status = sec->size == 0 ? 1 : 0;
+    }
+
+    return rebase_status == 1;
+}
+
+uint64_t xnu_rebase_va(uint64_t va) {
+    if(!has_been_rebased())
+    {
+        va = (uint64_t)(((int64_t)va << 13) >> 13) + xnu_slide_value(xnu_header());
+    }
+    return va;
+}
+
+uint64_t kext_rebase_va(uint64_t va) {
+    if(!has_been_rebased())
+    {
+        va = (uint64_t)(((int64_t)va << 13) >> 13);
+    }
+    return va + xnu_slide_value(xnu_header());
+}
+
 xnu_pf_range_t* xnu_pf_range_from_va(uint64_t va, uint64_t size) {
     xnu_pf_range_t* range = malloc(sizeof(xnu_pf_range_t));
     range->va = va;
     range->size = size;
     range->cacheable_base = ((uint8_t*)(va - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000ULL + kCacheableView));
-    range->device_base = ((uint8_t*)(va - gBootArgs->virtBase + gBootArgs->physBase));        
+    range->device_base = ((uint8_t*)(va - gBootArgs->virtBase + gBootArgs->physBase));
     return range;
 }
 xnu_pf_range_t* xnu_pf_segment(struct mach_header_64* header, char* segment_name) {
@@ -387,10 +428,10 @@ xnu_pf_range_t* xnu_pf_section(struct mach_header_64* header, void* segment_name
     if (!seg) return NULL;
     struct section_64* sec = macho_get_section(seg, section_name);
     if (!sec) return NULL;
-    
+
     if (header != xnu_header())
         return xnu_pf_range_from_va(xnu_slide_value(xnu_header()) + (0xffff000000000000 | sec->addr), sec->size);
-        
+
     return xnu_pf_range_from_va(xnu_slide_hdr_va(header, sec->addr), sec->size);
 }
 struct mach_header_64* xnu_pf_get_first_kext(struct mach_header_64* kheader) {
@@ -402,10 +443,10 @@ struct mach_header_64* xnu_pf_get_first_kext(struct mach_header_64* kheader) {
         free(kmod_start_range);
         return rv;
     }
-    
+
     uint64_t* start = (uint64_t*)(kmod_start_range->cacheable_base);
-    uint64_t kextb = 0xffff000000000000 | (xnu_slide_value(kheader) + start[0]);
-    
+    uint64_t kextb = xnu_slide_value(kheader) + (0xffff000000000000 | start[0]);
+
     free(kmod_start_range);
     return (struct mach_header_64*)xnu_va_to_ptr(kextb);
 }
@@ -415,35 +456,35 @@ struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, co
         char kname[256];
         xnu_pf_range_t* kext_info_range = xnu_pf_section(kheader, "__PRELINK_INFO", "__info");
         if (!kext_info_range) panic("unsupported xnu");
-        
-        const char* prelinkinfo = strstr(kext_info_range->cacheable_base, "PrelinkInfoDictionary");
+
+        const char* prelinkinfo = strstr((const char*)kext_info_range->cacheable_base, "PrelinkInfoDictionary");
         const char* last_dict = strstr(prelinkinfo, "<array>") + 7;
         while (last_dict) {
             const char* end_dict = strstr(last_dict, "</dict>");
             if (!end_dict) break;
-            
+
             const char* nested_dict = strstr(last_dict+1, "<dict>");
             while (nested_dict) {
                 if (nested_dict > end_dict) break;
-                
+
                 nested_dict = strstr(nested_dict+1, "<dict>");
                 end_dict = strstr(end_dict+1, "</dict>");
             }
-            
-            
+
+
             const char* ident = memmem(last_dict, end_dict - last_dict, "CFBundleIdentifier", strlen("CFBundleIdentifier"));
             if (ident) {
-                const char* value = strstr(ident, "<string>");  
+                const char* value = strstr(ident, "<string>");
                 if (value) {
                     value += strlen("<string>");
-                    const char* value_end = strstr(value, "</string>");  
+                    const char* value_end = strstr(value, "</string>");
                     if (value_end) {
                         memcpy(kname, value, value_end - value);
                         kname[value_end - value] = 0;
                         if (strcmp(kname, kext_bundle_id) == 0) {
                             const char* addr = memmem(last_dict, end_dict - last_dict, "_PrelinkExecutableLoadAddr", strlen("_PrelinkExecutableLoadAddr"));
                             if (addr) {
-                                const char* avalue = strstr(addr, "<integer");  
+                                const char* avalue = strstr(addr, "<integer");
                                 if (avalue) {
                                     avalue = strstr(avalue, ">");
                                     if (avalue) {
@@ -455,35 +496,36 @@ struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, co
                             }
                         }
                     }
-                }              
+                }
             }
-            
+
             last_dict = strstr(end_dict, "<dict>");
         }
-        
+
         free(kext_info_range);
         return NULL;
     }
     xnu_pf_range_t* kmod_start_range = xnu_pf_section(kheader, "__PRELINK_INFO", "__kmod_start");
     if (!kmod_start_range) return NULL;
-    
+
     uint64_t* info = (uint64_t*)(kmod_info_range->cacheable_base);
     uint64_t* start = (uint64_t*)(kmod_start_range->cacheable_base);
     uint32_t count = kmod_info_range->size / 8;
     for (uint32_t i=0; i<count; i++) {
-        const char* kext_name = (const char*)xnu_va_to_ptr(0xffff000000000000 | (xnu_slide_value(kheader) + info[i])) + 0x10;
+        const char* kext_name = (const char*)xnu_va_to_ptr(xnu_slide_value(kheader) + (0xffff000000000000 | info[i])) + 0x10;
         if (strcmp(kext_name, kext_bundle_id) == 0) {
             free(kmod_info_range);
             free(kmod_start_range);
-            return (struct mach_header_64*) xnu_va_to_ptr(0xffff000000000000 | (xnu_slide_value(kheader) + start[i]));
+            return (struct mach_header_64*) xnu_va_to_ptr(xnu_slide_value(kheader) + (0xffff000000000000 | start[i]));
         }
     }
-    
+
     free(kmod_info_range);
-    free(kmod_start_range);    
+    free(kmod_start_range);
     return NULL;
 }
-void xnu_pf_apply_each_kext(struct mach_header_64* kheader, xnu_pf_patchset_t* patchset) {
+void xnu_pf_apply_each_kext(struct mach_header_64* kheader, xnu_pf_patchset_t* patchset)
+{
     xnu_pf_range_t* kmod_start_range = xnu_pf_section(kheader, "__PRELINK_INFO", "__kmod_start");
     if (!kmod_start_range) {
         xnu_pf_range_t* kext_text_exec_range = xnu_pf_section(kheader, "__PLK_TEXT_EXEC", "__text");
@@ -492,11 +534,14 @@ void xnu_pf_apply_each_kext(struct mach_header_64* kheader, xnu_pf_patchset_t* p
         free(kext_text_exec_range);
         return;
     }
-    
+
+    bool is_required = patchset->is_required;
+    patchset->is_required = false;
+
     uint64_t* start = (uint64_t*)(kmod_start_range->cacheable_base);
     uint32_t count = kmod_start_range->size / 8;
     for (uint32_t i=0; i<count; i++) {
-        struct mach_header_64* kexth = (struct mach_header_64*)xnu_va_to_ptr(0xffff000000000000 | (xnu_slide_value(kheader) + start[i]));
+        struct mach_header_64* kexth = (struct mach_header_64*)xnu_va_to_ptr(xnu_slide_value(kheader) + (0xffff000000000000 | start[i]));
         xnu_pf_range_t* apply_range = xnu_pf_section(kexth, "__TEXT_EXEC", "__text");
         if (apply_range) {
             xnu_pf_apply(apply_range, patchset);
@@ -504,9 +549,21 @@ void xnu_pf_apply_each_kext(struct mach_header_64* kheader, xnu_pf_patchset_t* p
         }
     }
     free(kmod_start_range);
+
+    patchset->is_required = is_required;
+    if(is_required)
+    {
+        for(xnu_pf_patch_t* patch = patchset->patch_head; patch; patch = patch->next_patch)
+        {
+            if(patch->is_required && !patch->has_fired)
+            {
+                panic("Missing patch: %s", patch->name);
+            }
+        }
+    }
 }
 xnu_pf_range_t* xnu_pf_all(struct mach_header_64* header) {
-    return NULL;    
+    return NULL;
 }
 xnu_pf_range_t* xnu_pf_all_x(struct mach_header_64* header) {
     return NULL;
@@ -516,6 +573,7 @@ xnu_pf_patchset_t* xnu_pf_patchset_create(uint8_t pf_accesstype) {
     r->patch_head = NULL;
     r->jit_matcher = NULL;
     r->accesstype = pf_accesstype;
+    r->is_required = true;
     return r;
 }
 struct xnu_pf_maskmatch {
@@ -620,7 +678,7 @@ void xnu_pf_ptr_to_data_match(struct xnu_pf_ptr_to_datamatch* patch, uint8_t acc
     uint64_t pointer = *(uint64_t*)preread;
     pointer |= 0xffff000000000000;
     pointer += patch->slide;
-    
+
     if (pointer >= patch->range->va && pointer < (patch->range->va + patch->range->size)) {
         if (memcmp(patch->data, (void*)(pointer - patch->range->va + patch->range->cacheable_base), patch->datasz) == 0) {
             if (patch->patch.pf_callback((struct xnu_pf_patch *)patch, cacheable_stream)) {
@@ -630,7 +688,17 @@ void xnu_pf_ptr_to_data_match(struct xnu_pf_ptr_to_datamatch* patch, uint8_t acc
     }
 }
 uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_patchset *patchset, uint32_t* insn_stream, uint32_t** insn_stream_end, uint8_t access_type);
-xnu_pf_patch_t* xnu_pf_maskmatch(xnu_pf_patchset_t* patchset, uint64_t* matches, uint64_t* masks, uint32_t entryc, bool required, bool (*callback)(struct xnu_pf_patch* patch, void* cacheable_stream)) {
+xnu_pf_patch_t* xnu_pf_maskmatch(xnu_pf_patchset_t* patchset, char * name, uint64_t* matches, uint64_t* masks, uint32_t entryc, bool required, bool (*callback)(struct xnu_pf_patch* patch, void* cacheable_stream))
+{
+    // Sanity check
+    for (uint32_t i=0; i<entryc; i++)
+    {
+        if((matches[i] & masks[i]) != matches[i])
+        {
+            panic("Bad maskmatch: %s (index %u)", name, i);
+        }
+    }
+
     struct xnu_pf_maskmatch* mm = malloc(sizeof(struct xnu_pf_maskmatch) + 16 * entryc);
     bzero(mm, sizeof(struct xnu_pf_maskmatch));
     mm->patch.should_match = true;
@@ -638,20 +706,21 @@ xnu_pf_patch_t* xnu_pf_maskmatch(xnu_pf_patchset_t* patchset, uint64_t* matches,
     mm->patch.pf_emit = (void*)xnu_pf_maskmatch_emit;
     mm->patch.pf_match = (void*)xnu_pf_maskmatch_match;
     mm->patch.is_required = required;
+    mm->patch.name = name;
     mm->pair_count = entryc;
-    
+
     uint32_t loadc = entryc;
     if (loadc > 8) loadc = 8;
 
     extern uint32_t pf_jit_slowpath_start, pf_jit_slowpath_next, pf_jit_slowpath_end;
-    mm->patch.pfjit_max_emit_size = (&pf_jit_slowpath_next - &pf_jit_slowpath_start) + ((patchset->accesstype >> 4) * 2 + 4) * loadc; 
+    mm->patch.pfjit_max_emit_size = (&pf_jit_slowpath_next - &pf_jit_slowpath_start) + ((patchset->accesstype >> 4) * 2 + 4) * loadc;
     mm->patch.pfjit_max_emit_size *= 4;
-    
+
     for (uint32_t i=0; i<entryc; i++) {
         mm->pairs[i][0] = matches[i];
         mm->pairs[i][1] = masks[i];
     }
-    
+
     mm->patch.next_patch = patchset->patch_head;
     patchset->patch_head = &mm->patch;
     return &mm->patch;
@@ -667,18 +736,19 @@ xnu_pf_patch_t* xnu_pf_ptr_to_data(xnu_pf_patchset_t* patchset, uint64_t slide, 
     mm->patch.is_required = required;
     extern uint32_t pf_jit_ptr_comparison_start, pf_jit_ptr_comparison_next;
     mm->patch.pfjit_max_emit_size = (&pf_jit_ptr_comparison_next - &pf_jit_ptr_comparison_start) * 4 + 16 * 4 + 32;
-        
+
     mm->slide = slide;
     mm->range = range;
     mm->data = data;
-    mm->datasz = datasz;    
-    
+    mm->datasz = datasz;
+
     mm->patch.next_patch = patchset->patch_head;
     patchset->patch_head = &mm->patch;
+    return &mm->patch;
 }
 uint32_t* xnu_pf_emit_insns(uint32_t* insn_stream, uint32_t* begin, uint32_t* end) {
     if (!insn_stream) return NULL;
-    
+
     uint32_t delta = (end - begin);
     memcpy(insn_stream, begin, delta * 4);
     return &insn_stream[delta];
@@ -729,7 +799,7 @@ uint32_t* xnu_pf_and_emit(uint32_t* insn_stream, uint8_t reg1, uint8_t reg2, uin
 uint32_t* xnu_pf_imm64_load_emit(uint32_t* insn_stream, uint8_t reg, uint64_t value) {
 
     *insn_stream++ = ((0x6940000 | (value & 0xFFFF)) << 5) | ((uint32_t)(reg & 0x1f));
-    
+
     if ((value >> 16) & 0xFFFF) {
         *insn_stream++ = ((0x7950000 | ((value >> 16) & 0xFFFF)) << 5) | ((uint32_t)(reg & 0x1f));
     }
@@ -739,14 +809,14 @@ uint32_t* xnu_pf_imm64_load_emit(uint32_t* insn_stream, uint8_t reg, uint64_t va
     if ((value >> 48) & 0xFFFF) {
         *insn_stream++ = ((0x7970000 | ((value >> 48) & 0xFFFF)) << 5) | ((uint32_t)(reg & 0x1f));
     }
-    
+
     return insn_stream;
 }
 void xnu_pf_disable_patch(xnu_pf_patch_t* patch) {
     if (!patch->should_match) return;
     patch->should_match = false;
     if (!patch->pfjit_entry) return;
-    
+
     patch->pfjit_stolen_opcode = *patch->pfjit_entry;
     xnu_pf_b_emit(patch->pfjit_entry, patch->pfjit_exit);
     invalidate_icache();
@@ -763,18 +833,18 @@ void xnu_pf_enable_patch(xnu_pf_patch_t* patch) {
 uint32_t* xnu_pf_ptr_to_data_emit(struct xnu_pf_ptr_to_datamatch* patch, struct xnu_pf_patchset *patchset, uint32_t* insn_stream, uint32_t** insn_stream_end, uint8_t access_type) {
     extern uint32_t pf_jit_ptr_comparison_start, pf_jit_ptr_comparison_end;
     patch->patch.pfjit_entry = insn_stream;
-    
+
     insn_stream = xnu_pf_imm64_load_emit(insn_stream, 0, patch->range->va);
-    insn_stream = xnu_pf_imm64_load_emit(insn_stream, 1, patch->range->va + patch->range->size);    
+    insn_stream = xnu_pf_imm64_load_emit(insn_stream, 1, patch->range->va + patch->range->size);
     insn_stream = xnu_pf_imm64_load_emit(insn_stream, 2, 0xffff000000000000);
     insn_stream = xnu_pf_imm64_load_emit(insn_stream, 3, patch->slide);
     insn_stream = xnu_pf_align3_emit(insn_stream);
     insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_ptr_comparison_start, &pf_jit_ptr_comparison_end);
-    
-    
+
+
     ((uint64_t*)insn_stream)[0] = (uint64_t)patch;
     ((uint64_t*)insn_stream)[1] = (uint64_t)&xnu_pf_ptr_to_data_match;
-    
+
     patch->patch.pfjit_exit = (uint32_t*)(&((uint64_t*)insn_stream)[2]);
     return patch->patch.pfjit_exit;
 }
@@ -787,21 +857,21 @@ uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_pa
     slowpath_stub = xnu_pf_align3_emit(slowpath_stub);
     uint64_t* slowpath_stub_args = (uint64_t*)xnu_pf_emit_insns(slowpath_stub, &pf_jit_slowpath_start, &pf_jit_slowpath_end);
     *insn_stream_end = slowpath_stub;
-    
+
     slowpath_stub_args[0] = (uint64_t)patch;
     slowpath_stub_args[1] = (uint64_t)&xnu_pf_maskmatch_match;
-    
+
     patch->patch.pfjit_entry = insn_stream_insert;
 
     uint32_t* prev_stub = slowpath_stub;
-    
+
     uint32_t* linkage[8] = {0};
-    
-    bool has_used_inline = false;
+
+    //bool has_used_inline = false;
     uint32_t cap = patch->pair_count;
-    
-    uint32_t* bailout_p;
-    
+
+    //uint32_t* bailout_p;
+
     uint64_t and_nop = 0;
     switch (access_type) {
         case XNU_PF_ACCESS_8BIT:
@@ -820,7 +890,7 @@ uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_pa
         panic("unk access");
         break;
     }
-    
+
     if (cap > 8) cap = 8;
     int hi_entropy = -1;
     uint8_t highest_rating = 0;
@@ -858,7 +928,7 @@ uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_pa
             cap = 0;
             continue;
         }
-        
+
         uint32_t* cmp_stub = &jit_test[0];
         uint32_t* cmp_stub_stream = cmp_stub;
 
@@ -883,7 +953,7 @@ uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_pa
         } else {
             cmp_stub_stream = xnu_pf_cmp_emit(cmp_stub_stream, 20 + i, reg0);
         }
-        
+
         uint32_t* cmp_stub_out = *insn_stream_end;
         uint32_t insnc = (cmp_stub_stream - cmp_stub);
         cmp_stub_out -= insnc + 1;
@@ -891,12 +961,12 @@ uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_pa
         for (int i=0; i < insnc; i++) {
             cmp_stub_out[i] = cmp_stub[i];
         }
-        
+
         linkage[i] = &cmp_stub_out[insnc];
 
         prev_stub = cmp_stub_out;
     }
-    
+
     if (cap) {
         if (!patchset->p0 || patchset->p0 != patch->pairs[hi_entropy][0]) {
             insn_stream_insert = xnu_pf_imm64_load_emit(insn_stream_insert, 0, patch->pairs[hi_entropy][0] & and_nop);
@@ -910,8 +980,8 @@ uint32_t* xnu_pf_maskmatch_emit(struct xnu_pf_maskmatch* patch, struct xnu_pf_pa
             insn_stream_insert = xnu_pf_cmp_emit(insn_stream_insert, 20 + hi_entropy, 0);
         }
         insn_stream_insert = xnu_pf_b_eq_emit(insn_stream_insert, prev_stub);
-    
-    
+
+
         for (int i=0; i<cap; i++) {
             if (linkage[i])
                 xnu_pf_b_ne_emit(linkage[i], insn_stream_insert);
@@ -940,7 +1010,7 @@ void xnu_pf_jit_dump(uint32_t* insn_start, uint32_t* insn_end) {
 void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
     uint32_t* pf_iter_loop_head_start, *pf_iter_loop_head_end;
     uint32_t* pf_iter_loop_tail_start, *pf_iter_loop_tail_end;
-    
+
     if (patchset->accesstype == XNU_PF_ACCESS_8BIT) {
         extern uint32_t pf_jit_iter_loop_iter_load8_start, pf_jit_iter_loop_iter_load8_end;
         extern uint32_t pf_jit_iter_loop_head_load8_start, pf_jit_iter_loop_head_load8_end;
@@ -950,7 +1020,7 @@ void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
 
         pf_iter_loop_tail_start = &pf_jit_iter_loop_iter_load8_start;
         pf_iter_loop_tail_end = &pf_jit_iter_loop_iter_load8_end;
-    } else 
+    } else
     if (patchset->accesstype == XNU_PF_ACCESS_16BIT) {
         extern uint32_t pf_jit_iter_loop_iter_load16_start, pf_jit_iter_loop_iter_load16_end;
         extern uint32_t pf_jit_iter_loop_head_load16_start, pf_jit_iter_loop_head_load16_end;
@@ -960,7 +1030,7 @@ void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
 
         pf_iter_loop_tail_start = &pf_jit_iter_loop_iter_load16_start;
         pf_iter_loop_tail_end = &pf_jit_iter_loop_iter_load16_end;
-    } else 
+    } else
     if (patchset->accesstype == XNU_PF_ACCESS_32BIT) {
         extern uint32_t pf_jit_iter_loop_iter_load32_start, pf_jit_iter_loop_iter_load32_end;
         extern uint32_t pf_jit_iter_loop_head_load32_start, pf_jit_iter_loop_head_load32_end;
@@ -970,7 +1040,7 @@ void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
 
         pf_iter_loop_tail_start = &pf_jit_iter_loop_iter_load32_start;
         pf_iter_loop_tail_end = &pf_jit_iter_loop_iter_load32_end;
-    } else 
+    } else
     if (patchset->accesstype == XNU_PF_ACCESS_64BIT) {
         extern uint32_t pf_jit_iter_loop_iter_load64_start, pf_jit_iter_loop_iter_load64_end;
         extern uint32_t pf_jit_iter_loop_head_load64_start, pf_jit_iter_loop_head_load64_end;
@@ -987,7 +1057,7 @@ void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
 
     xnu_pf_patch_t* patch = patchset->patch_head;
     uint32_t jit_size = 0x100;
-    
+
     while (patch) {
         if (!patch->pf_emit) {
             puts("xnu_pf_jit doesn't support this patch");
@@ -997,21 +1067,21 @@ void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
         }
         patch = patch->next_patch;
     }
-        
-    uint32_t* insn_stream = calloc(jit_size,1);    
-    uint32_t* insn_stream_end = &insn_stream[jit_size >> 2];   
+
+    uint32_t* insn_stream = jit_alloc(jit_size,1);
+    uint32_t* insn_stream_end = &insn_stream[jit_size >> 2];
     uint32_t* insn_stream_end_real = insn_stream_end;
     uint32_t* jit_entry = insn_stream;
-    
+
     extern uint32_t pf_jit_iter_loop_head_start, pf_jit_iter_loop_head_end;
     insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_head_start, &pf_jit_iter_loop_head_end);
-    
+
     insn_stream = xnu_pf_emit_insns(insn_stream, pf_iter_loop_head_start, pf_iter_loop_head_end);
     uint32_t* bailout = insn_stream;
     insn_stream++;
 
     uint32_t* loop_head = insn_stream;
-    
+
     patch = patchset->patch_head;
     while (patch) {
         uint64_t pre_emit = (uint64_t)insn_stream;
@@ -1025,9 +1095,9 @@ void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
 
     insn_stream = xnu_pf_emit_insns(insn_stream, pf_iter_loop_tail_start, pf_iter_loop_tail_end);
     insn_stream = xnu_pf_b_emit(insn_stream, loop_head);
-    
+
     xnu_pf_b_emit(bailout, insn_stream);
-    
+
     extern uint32_t pf_jit_iter_loop_end_start, pf_jit_iter_loop_end_end;
     insn_stream = xnu_pf_emit_insns(insn_stream, &pf_jit_iter_loop_end_start, &pf_jit_iter_loop_end_end);
     invalidate_icache();
@@ -1037,7 +1107,6 @@ void xnu_pf_emit(xnu_pf_patchset_t* patchset) { // converts a patchset to JIT
 
 void xnu_pf_apply_8(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
     uint8_t* stream = (uint8_t*)range->cacheable_base;
-    uint8_t* dstream = (uint8_t*)range->device_base;
     uint8_t reads[8];
     uint32_t stream_iters = range->size;
     for (int i=0; i<8; i++) {
@@ -1045,13 +1114,13 @@ void xnu_pf_apply_8(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
     }
     for (uint32_t index = 0; index < stream_iters; index++) {
         xnu_pf_patch_t* patch = patchset->patch_head;
-        
+
         while (patch) {
-            if (patch->should_match) 
+            if (patch->should_match)
                 patch->pf_match(patch, XNU_PF_ACCESS_8BIT, reads, &stream[index]);
             patch = patch->next_patch;
         }
-        
+
         for (int i=0; i<7; i++) {
             reads[i] = reads[i + 1];
         }
@@ -1060,7 +1129,6 @@ void xnu_pf_apply_8(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
 }
 void xnu_pf_apply_16(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
     uint16_t* stream = (uint16_t*)range->cacheable_base;
-    uint16_t* dstream = (uint16_t*)range->device_base;
     uint16_t reads[8];
     uint32_t stream_iters = range->size >> 1;
     for (int i=0; i<8; i++) {
@@ -1068,13 +1136,13 @@ void xnu_pf_apply_16(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
     }
     for (uint32_t index = 0; index < stream_iters; index++) {
         xnu_pf_patch_t* patch = patchset->patch_head;
-        
+
         while (patch) {
-            if (patch->should_match) 
+            if (patch->should_match)
                 patch->pf_match(patch, XNU_PF_ACCESS_16BIT, reads, &stream[index]);
             patch = patch->next_patch;
         }
-        
+
         for (int i=0; i<7; i++) {
             reads[i] = reads[i + 1];
         }
@@ -1083,7 +1151,6 @@ void xnu_pf_apply_16(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
 }
 void xnu_pf_apply_32(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
     uint32_t* stream = (uint32_t*)range->cacheable_base;
-    uint32_t* dstream = (uint32_t*)range->device_base;
     uint32_t reads[8];
     uint32_t stream_iters = range->size >> 2;
     for (int i=0; i<8; i++) {
@@ -1091,13 +1158,13 @@ void xnu_pf_apply_32(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
     }
     for (uint32_t index = 0; index < stream_iters; index++) {
         xnu_pf_patch_t* patch = patchset->patch_head;
-        
+
         while (patch) {
-            if (patch->should_match) 
+            if (patch->should_match)
                 patch->pf_match(patch, XNU_PF_ACCESS_32BIT, reads, &stream[index]);
             patch = patch->next_patch;
         }
-        
+
         for (int i=0; i<7; i++) {
             reads[i] = reads[i + 1];
         }
@@ -1113,13 +1180,13 @@ void xnu_pf_apply_64(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
     }
     for (uint32_t index = 0; index < stream_iters; index++) {
         xnu_pf_patch_t* patch = patchset->patch_head;
-        
+
         while (patch) {
-            if (patch->should_match) 
+            if (patch->should_match)
                 patch->pf_match(patch, XNU_PF_ACCESS_64BIT, reads, &stream[index]);
             patch = patch->next_patch;
         }
-        
+
         for (int i=0; i<7; i++) {
             reads[i] = reads[i + 1];
         }
@@ -1139,14 +1206,15 @@ void xnu_pf_apply(xnu_pf_range_t* range, xnu_pf_patchset_t* patchset) {
         else if (patchset->accesstype == XNU_PF_ACCESS_32BIT) xnu_pf_apply_32(range, patchset);
         else if (patchset->accesstype == XNU_PF_ACCESS_64BIT) xnu_pf_apply_64(range, patchset);
     }
-    xnu_pf_patch_t* patch = patchset->patch_head;
-    while (patch) {
-        if (patch->is_required) {
-            if (!patch->has_fired) {
-                panic("missing patch");
+    if(patchset->is_required)
+    {
+        for(xnu_pf_patch_t* patch = patchset->patch_head; patch; patch = patch->next_patch)
+        {
+            if(patch->is_required && !patch->has_fired)
+            {
+                panic("Missing patch: %s", patch->name);
             }
         }
-        patch = patch->next_patch;
     }
 }
 void xnu_pf_patchset_destroy(xnu_pf_patchset_t* patchset) {
@@ -1157,14 +1225,14 @@ void xnu_pf_patchset_destroy(xnu_pf_patchset_t* patchset) {
         patch = patch->next_patch;
         free(o_patch);
     }
-    if (patchset->jit_matcher) free(patchset->jit_matcher);
+    if (patchset->jit_matcher) jit_free(patchset->jit_matcher);
     free(patchset);
 }
-void xnu_boot() {
+void xnu_boot(void) {
 
 }
 
-void xnu_init() {
+void xnu_init(void) {
     command_register("dt", "parses loaded devicetree", log_dtree);
     command_register("xargs", "prints or sets xnu boot-args", pongo_boot_xargs);
     command_register("loadx", "loads xnu", pongo_copy_xnu);
@@ -1174,11 +1242,11 @@ void xnu_init() {
     command_register("xfb", "gives xnu access to the framebuffer (for -v or -s)", flip_video_display);
 }
 
-void xnu_hook() {
+void xnu_hook(void) {
     if (preboot_hook) preboot_hook();
 }
 
-void xnu_loadrd() {
+void xnu_loadrd(void) {
     if (ramdisk_size) {
         dt_node_t* memory_map = (dt_node_t*)dt_find(gDeviceTree, "memory-map");
         if (!memory_map) panic("invalid devicetree: no memory_map!");

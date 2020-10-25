@@ -71,7 +71,7 @@ void modload_cmd() {
                         for (int i=0; i<mh->ncmds; i++) {
                             if (lc->cmd == LC_SEGMENT_64) {
                                 struct segment_command_64 * sg = (struct segment_command_64*) lc;
-                                memset(allocto + sg->vmaddr, 0, sg->vmaddr);
+                                memset(allocto + sg->vmaddr, 0, sg->vmsize);
                                 memcpy(allocto + sg->vmaddr, loader_xfer_recv_data + sg->fileoff, sg->filesize);
                             }
                             lc = (struct load_command*)(((char*)lc) + lc->cmdsize);
@@ -110,7 +110,8 @@ void modload_cmd() {
                             uint32_t strx = nl->n_un.n_strx;
                             const char *name = (const char *)((uintptr_t)mh + symtab->stroff + strx);
                             // Resolve the symbol to its runtime address.
-                            if (*name == '_') name++;
+                            // XXX: line below was added during Linux ABI, is it ok to just drop this?
+                            //if (*name == '_') name++;
                             void* symbol_value = resolve_symbol(name);
                             if (symbol_value == 0) {
                                 puts("[modload_macho:!] load module: linking failed");
@@ -148,4 +149,3 @@ void modload_cmd() {
         } else puts("[modload_macho:!] load module: short read");
         loader_xfer_recv_count = 0;
 }
-

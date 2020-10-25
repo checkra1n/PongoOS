@@ -27,64 +27,72 @@ uint64_t gPMGRBase;
 uint64_t gWDTBase;
 
 __asm__(
-    ".globl get_el\n"
-    ".globl rebase_pc\n"
-    ".globl set_vbar_el3\n"
-    ".globl set_vbar_el1\n"
-    ".globl get_el\n"
-    ".globl get_ticks\n"
-    ".globl invalidate_icache\n"
-    ".globl _enable_interrupts\n"
-    ".globl _disable_interrupts\n"
-    "get_el:\n"
+    ".globl _get_el\n"
+    ".globl _rebase_pc\n"
+    ".globl _set_vbar_el3\n"
+    ".globl _set_vbar_el1\n"
+    ".globl __enable_interrupts\n"
+    ".globl __disable_interrupts\n"
+    ".globl _get_mpidr\n"
+    ".globl _get_migsts\n"
+    ".globl _set_migsts\n"
+    ".globl _get_mmfr0\n"
+    ".globl _invalidate_icache\n"
+    ".globl _enable_mmu_el1\n"
+    ".globl _disable_mmu_el1\n"
+    ".globl _enable_mmu_el3\n"
+    ".globl _disable_mmu_el3\n"
+    ".globl _get_ticks\n"
+
+    "_get_el:\n"
     "    mrs x0, currentel\n"
     "    lsr x0, x0, 2\n"
     "    ret\n"
-    "rebase_pc:\n"
+    "_rebase_pc:\n"
     "    add sp, sp, x0\n"
     "    add x29, x29, x0\n"
     "    add x30, x30, x0\n"
     "    ret\n"
 
-    "set_vbar_el3:\n"
+    "_set_vbar_el3:\n"
     "    msr vbar_el3, x0\n"
     "    isb\n"
     "    ret\n"
 
-    "set_vbar_el1:\n"
+    "_set_vbar_el1:\n"
     "    msr vbar_el1, x0\n"
     "    isb\n"
     "    ret\n"
 
-    "_enable_interrupts:\n"
+    "__enable_interrupts:\n"
     "    msr daifclr,#0xf\n"
     "    isb\n"
     "    ret\n"
-    "_disable_interrupts:\n"
+    "__disable_interrupts:\n"
     "    msr daifset,#0xf\n"
     "    isb\n"
     "    ret\n"
 
-    "get_mpidr:\n"
+    "_get_mpidr:\n"
     "    mrs x0, MPIDR_EL1\n"
     "    ret\n"
-    "get_migsts:\n"
+    "_get_migsts:\n"
     "    mrs x0, S3_4_c15_c0_4\n"
     "    ret\n"
-    "set_migsts:\n"
+    "_set_migsts:\n"
     "    msr S3_4_c15_c0_4, x0\n"
     "    ret\n"
-    "get_mmfr0:\n"
+    "_get_mmfr0:\n"
     "    mrs x0, id_aa64mmfr0_el1\n"
     "    ret\n"
-    "invalidate_icache:\n"
+    "_invalidate_icache:\n"
     "    dsb ish\n"
     "    ic iallu\n"
     "    dsb ish\n"
     "    isb\n"
     "    ret\n"
 
-    "enable_mmu_el1:\n"
+    "_enable_mmu_el1:\n"
     "    dsb sy\n"
     "    msr mair_el1, x2\n"
     "    msr tcr_el1, x1\n"
@@ -102,7 +110,7 @@ __asm__(
     "    isb sy\n"
     "    ret\n"
 
-    "disable_mmu_el1:\n"
+    "_disable_mmu_el1:\n"
     "    dsb sy\n"
     "    isb sy\n"
     "    mrs x3, sctlr_el1\n"
@@ -115,7 +123,7 @@ __asm__(
     "    isb sy\n"
     "    ret\n"
 
-    "enable_mmu_el3:\n"
+    "_enable_mmu_el3:\n"
     "    dsb sy\n"
     "    msr mair_el3, x2\n"
     "    msr tcr_el3, x1\n"
@@ -134,7 +142,7 @@ __asm__(
     "    msr scr_el3, x3\n"
     "    ret\n"
 
-    "disable_mmu_el3:\n"
+    "_disable_mmu_el3:\n"
     "    dsb sy\n"
     "    isb sy\n"
     "    mrs x3, sctlr_el3\n"
@@ -147,7 +155,7 @@ __asm__(
     "    isb sy\n"
     "    ret\n"
 
-    "get_ticks:\n"
+    "_get_ticks:\n"
     "   isb sy\n"
     "   mrs x0, cntpct_el0\n"
     "   ret\n"
@@ -176,11 +184,11 @@ OBFUSCATE_C_FUNC(static _Bool is_16k(void))
 volatile char is_in_exception;
 void print_state(uint64_t* state) {
     for (int i=0; i<31; i++) {
-        iprintf("X%d: 0x%016lx\n", i, state[i]);
+        iprintf("X%d: 0x%016llx\n", i, state[i]);
     }
-    iprintf("ESR_EL1: 0x%016lx\n", state[0xf8/8]);
-    iprintf("ELR_EL1: 0x%016lx\n", state[0x100/8]);
-    iprintf("FAR_EL1: 0x%016lx\n", state[0x108/8]);
+    iprintf("ESR_EL1: 0x%016llx\n", state[0xf8/8]);
+    iprintf("ELR_EL1: 0x%016llx\n", state[0x100/8]);
+    iprintf("FAR_EL1: 0x%016llx\n", state[0x108/8]);
 }
 int sync_exc(uint64_t* state) {
     dis_int_count = 1;
@@ -300,10 +308,10 @@ void sleep(uint32_t sec)
 int gAICVersion = -1;
 int gAICStyle = -1;
 
-static void interrupt_or_config(uint32_t bits) {
+__attribute__((used)) static void interrupt_or_config(uint32_t bits) {
     *(volatile uint32_t*)(gInterruptBase + 0x10) |= bits;
 }
-static void interrupt_and_config(uint32_t bits) {
+__attribute__((used)) static void interrupt_and_config(uint32_t bits) {
     *(volatile uint32_t*)(gInterruptBase + 0x10) &= bits;
 }
 uint32_t interrupt_masking_base = 0;
@@ -479,7 +487,7 @@ void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t at
     uint64_t pgsz = 1ULL << (tt_bits + 3ULL);
     if((va & (pgsz - 1ULL)) || (pa & (pgsz - 1ULL)) || (size & (pgsz - 1ULL)) || size < pgsz || (va + size < va) || (pa + size < pa))
     {
-        iprintf("map_range(0x%lx, 0x%lx, 0x%lx, ...)\n", va, pa, size);
+        iprintf("map_range(0x%llx, 0x%llx, 0x%llx, ...)\n", va, pa, size);
         panic("map_range: called with bad arguments");
     }
 

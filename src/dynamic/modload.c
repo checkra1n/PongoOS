@@ -41,9 +41,6 @@ void *__memcpy_chk (void *dest, const void * src, size_t n, size_t dest_len) {
      }
      return memcpy(dest,src,n);
 }
-void printf32(const char* str, uint32_t val) {
-     iprintf(str,val);
-}
 
 struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(xnu_pf_apply_each_kext),
@@ -56,10 +53,13 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(xnu_pf_patchset_create),
     EXPORT_SYMBOL(print_register),
     EXPORT_SYMBOL(alloc_static),
+    EXPORT_SYMBOL(xnu_slide_hdr_va),
     EXPORT_SYMBOL(xnu_slide_value),
     EXPORT_SYMBOL(xnu_header),
     EXPORT_SYMBOL(xnu_va_to_ptr),
     EXPORT_SYMBOL(xnu_ptr_to_va),
+    EXPORT_SYMBOL(xnu_rebase_va),
+    EXPORT_SYMBOL(kext_rebase_va),
     EXPORT_SYMBOL(xnu_pf_range_from_va),
     EXPORT_SYMBOL(xnu_pf_segment),
     EXPORT_SYMBOL(xnu_pf_section),
@@ -75,6 +75,7 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(dt_find),
     EXPORT_SYMBOL(dt_prop),
     EXPORT_SYMBOL(dt_alloc_memmap),
+    EXPORT_SYMBOL(bzero),
     EXPORT_SYMBOL(memset),
     EXPORT_SYMBOL(strcmp),
     EXPORT_SYMBOL(queue_rx_string),
@@ -87,7 +88,6 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(putc),
     EXPORT_SYMBOL(putchar),
     EXPORT_SYMBOL(puts),
-    EXPORT_SYMBOL(printf32),
     EXPORT_SYMBOL(strtoul),
     EXPORT_SYMBOL(invalidate_icache),
     EXPORT_SYMBOL(task_current),
@@ -154,16 +154,18 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL_P(gPMGRBase),
     EXPORT_SYMBOL(unlzma_decompress),
     EXPORT_SYMBOL_P(gDevType),
+    EXPORT_SYMBOL_P(soc_name),
+    EXPORT_SYMBOL_P(socnum),
     EXPORT_SYMBOL_P(loader_xfer_recv_data),
     EXPORT_SYMBOL_P(loader_xfer_recv_count),
     EXPORT_SYMBOL_P(preboot_hook),
     EXPORT_SYMBOL_P(ramdisk_buf),
     EXPORT_SYMBOL_P(ramdisk_size),
     EXPORT_SYMBOL_P(autoboot_count),
-    {.name = "__stack_chk_guard", .value = &f_stack_chk_guard},
-    {.name = "__stack_chk_fail", .value = &f_stack_chk_fail},
-    {.name = "printf_", .value = iprintf},
-    {.name = "printf", .value = iprintf},
+    {.name = "___stack_chk_guard", .value = &f_stack_chk_guard},
+    {.name = "___stack_chk_fail", .value = &f_stack_chk_fail},
+    {.name = "_iprintf", .value = iprintf},
+    {.name = "_printf", .value = iprintf},
     {.name = NULL}
 };
 void link_exports(struct pongo_exports* export) {
