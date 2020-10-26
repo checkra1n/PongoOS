@@ -62,7 +62,7 @@ void usbloader_init() {
 
 char stdoutbuf_copy[STDOUT_BUFLEN];
 void usb_read_stdout_cb() {
-    
+
 }
 bool ep0_device_request(struct setup_packet *setup) {
     if (setup->bmRequestType == 0x21) {
@@ -78,22 +78,49 @@ bool ep0_device_request(struct setup_packet *setup) {
                 loader_xfer_recv_count = 0;
             return true;
         }
-        if (setup->bRequest == 3 && setup->wLength > 0 && setup->wLength < 256) { // write to stdin
+        if (setup->bRequest == 3 && setup->wLength > 0 && setup->wLength <= 512) { // write to stdin
             ep0_begin_data_out_stage(usb_write_stdin);
             return true;
         }
-        if (setup->bRequest == 4) { // make it so next write to stdin will stall until command is over
-            should_wait_for_cmd_handler = 1;
-            return true;
+        if (setup->bRequest == 4) {
+            if(setup->wValue == 0) // make it so next write to stdin will stall until command is over
+            {
+                should_wait_for_cmd_handler = 1;
+                set_stdout_blocking(false);
+                return true;
+            }
+            if(setup->wValue == 1) // make writes to stdout stall until async check-in
+            {
+                should_wait_for_cmd_handler = 0;
+                set_stdout_blocking(true);
+                return true;
+            }
+            if(setup->wValue == 0xffff) // reset all
+            {
+                should_wait_for_cmd_handler = 0;
+                set_stdout_blocking(false);
+                return true;
+            }
         }
     } else if (setup->bmRequestType == 0xA1) {
         // IN request
-        if (setup->bRequest == 1 && setup->wLength == 512) { // request bulk upload initialization
+        if (setup->bRequest == 1 && (setup->wLength == 512 || setup->wLength == 0x1000)) { // request bulk upload initialization
             int xferlen = 0;
-            fetch_stdoutbuf(stdoutbuf_copy, &xferlen);
-            ep0_begin_data_in_stage(stdoutbuf_copy, xferlen, usb_read_stdout_cb);
+            char *buf = stdoutbuf_copy;
+            fetch_stdoutbuf(buf, &xferlen);
+            if(xferlen > setup->wLength)
+            {
+                buf += xferlen - setup->wLength;
+                xferlen = setup->wLength;
+            }
+            ep0_begin_data_in_stage(buf, xferlen, usb_read_stdout_cb);
             return true;
-        }       
+        }
+        if (setup->bRequest == 2 && setup->wLength == 1) { // check for async command completion status
+            uint8_t inprog = command_in_progress;
+            ep0_begin_data_in_stage(&inprog, 1, usb_read_stdout_cb);
+            return true;
+        }
     }
     return false;
 }

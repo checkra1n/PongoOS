@@ -22,6 +22,7 @@
 //
 #define LL_KTRW_INTERNAL 1
 #include <pongo.h>
+#include <aes/aes_private.h>
 
 boot_args * gBootArgs;
 void* gEntryPoint;
@@ -43,42 +44,31 @@ void shell_main();
 
 */
 
-void pongo_main_task() {
-    /*
-        Setup GPIO Base
-    */
-
+void pongo_main_task()
+{
+    // Setup GPIO Base
     gpio_early_init();
 
-    /*
-        Setup serial pinmux
-    */
-
+    // Setup serial pinmux
     serial_pinmux_init();
 
-    /*
-        Enable serial TX
-    */
-
+    // Enable serial TX
     serial_early_init();
 
-    /*
-        Turn on IRQ controller
-    */
-
+    // Turn on IRQ controller
     interrupt_init();
 
-    /*
-        Enable IRQ serial RX
-    */
-
+    // Enable IRQ serial RX
     serial_init();
 
-    /*
-        Initialize pmgr
-    */
-
+    // Initialize pmgr
     pmgr_init();
+
+    // Relieve WDT of its duty
+    wdt_disable();
+
+    // Set up AES
+    aes_init();
 
     puts("");
     puts("#==================");

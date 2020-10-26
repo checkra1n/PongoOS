@@ -43,9 +43,17 @@ int _open(const char *name, int flags, int mode) { return -1; }
 int _lseek(int file, int ptr, int dir) { return 0; }
 int _close(int file) { return -1; }
 
-char stdout_buf[STDOUT_BUFLEN];
-int stdout_buf_len;
-lock stdout_lock;
+static char stdout_buf[STDOUT_BUFLEN];
+static volatile int stdout_buf_len;
+static volatile bool stdout_blocking;
+static lock stdout_lock;
+
+void set_stdout_blocking(bool block)
+{
+    lock_take(&stdout_lock);
+    stdout_blocking = block;
+    lock_release(&stdout_lock);
+}
 
 void fetch_stdoutbuf(char* to, int* len) {
     lock_take(&stdout_lock);
@@ -55,20 +63,33 @@ void fetch_stdoutbuf(char* to, int* len) {
     lock_release(&stdout_lock);
 }
 
-int _write(int file, char *ptr, int len) {
+int _write(int file, char *ptr, int len)
+{
     lock_take(&stdout_lock);
     int i;
-    for (i = 0; i < len; i++) {
+    for(i = 0; i < len; i++)
+    {
         if (ptr[i] == '\0') serial_putc('\r');
         serial_putc(ptr[i]);
-	    screen_putc(ptr[i]);
-        
-        if (stdout_buf_len == 511) { // non-blocking behavior
-            memcpy(stdout_buf, stdout_buf+1, 510);
-            stdout_buf_len = 510;
+        screen_putc(ptr[i]);
+
+    retry:;
+        if(stdout_buf_len >= STDOUT_BUFLEN - 1)
+        {
+            if(stdout_blocking) // blocking
+            {
+                lock_release(&stdout_lock);
+                task_yield();
+                lock_take(&stdout_lock);
+                goto retry;
+            }
+            else // non-blocking = discard
+            {
+                --stdout_buf_len;
+                memmove(stdout_buf, stdout_buf+1, stdout_buf_len);
+            }
         }
         stdout_buf[stdout_buf_len++] = ptr[i];
-        
     }
     lock_release(&stdout_lock);
     return len;
@@ -83,7 +104,11 @@ extern uint32_t uart_should_drop_rx;
 void queue_rx_char(char inch) {
     lock_take(&stdin_lock);
     if (!uart_should_drop_rx)
-        putchar(inch);
+    {
+        // putchar(inch);
+        serial_putc(inch);
+        screen_putc(inch);
+    }
     if (bufoff < 512)
         stdin_buf[bufoff++] = inch;
     event_fire(&stdin_ev);

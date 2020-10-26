@@ -1229,7 +1229,11 @@ void xnu_pf_patchset_destroy(xnu_pf_patchset_t* patchset) {
     free(patchset);
 }
 void xnu_boot(void) {
-
+    uint64_t addr = socnum == 0x8960 ? 0x200000910 : 0x200000490;
+    if(*(volatile uint32_t*)addr != 0x1)
+    {
+        panic("Cannot boot XNU with TZ0 unlocked");
+    }
 }
 
 void xnu_init(void) {

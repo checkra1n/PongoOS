@@ -21,11 +21,12 @@
 //  This file is part of pongoOS.
 //
 #define LL_KTRW_INTERNAL 1
-#include <pongo.h>
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
 #include <mach-o/reloc.h>
 #include <lzma/lzmadec.h>
+#include <pongo.h>
+#include <aes/aes.h>
 
 void f_stack_chk_fail() { panic("stack overflow!"); }
 uint64_t f_stack_chk_guard = 0x4141414141414141;
@@ -119,10 +120,13 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(command_puts),
     EXPORT_SYMBOL(command_register),
     EXPORT_SYMBOL(command_tokenize),
+    EXPORT_SYMBOL(hexparse),
+    EXPORT_SYMBOL(hexprint),
     EXPORT_SYMBOL(get_el),
     EXPORT_SYMBOL(cache_invalidate),
     EXPORT_SYMBOL(cache_clean_and_invalidate),
     EXPORT_SYMBOL(register_irq_handler),
+    EXPORT_SYMBOL(device_clock_addr),
     EXPORT_SYMBOL(clock_gate),
     EXPORT_SYMBOL(disable_preemption),
     EXPORT_SYMBOL(enable_preemption),
@@ -162,6 +166,7 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL_P(ramdisk_buf),
     EXPORT_SYMBOL_P(ramdisk_size),
     EXPORT_SYMBOL_P(autoboot_count),
+    EXPORT_SYMBOL_P(aes),
     {.name = "___stack_chk_guard", .value = &f_stack_chk_guard},
     {.name = "___stack_chk_fail", .value = &f_stack_chk_fail},
     {.name = "_iprintf", .value = iprintf},

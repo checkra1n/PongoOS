@@ -23,8 +23,11 @@
 #include <stdbool.h>
 #define USB_DEBUG_ITERATION 0
 #define USB_DEBUG_INCREMENT_ITERATION()			do { } while (0)
-//#define USB_DEBUG(_type, ...)				do { iprintf(__VA_ARGS__); iprintf("\n"); } while(0)
-#define USB_DEBUG(_type, ...)				do { } while (0)
+#if defined(USB_DEBUG_LEVEL) && USB_DEBUG_LEVEL >= 1
+#   define USB_DEBUG(_type, ...)				do { iprintf(__VA_ARGS__); iprintf("\n"); } while(0)
+#else
+#   define USB_DEBUG(_type, ...)				do { } while (0)
+#endif
 #define USB_DEBUG_ABORT()				do { } while (0)
 #define USB_DEBUG_ABORT_ON_ITERATION(_iteration)	do { } while (0)
 #define BUG(n) panic("USB BUG: " #n)
@@ -119,4 +122,3 @@ extern size_t usb_write(const void *data, size_t size);
 extern void usb_in_transfer(uint8_t ep_addr, const void *data, uint32_t size, void (*callback)(void));
 extern void usb_out_transfer(uint8_t ep_addr, void *data, uint32_t size, void (*callback)(void *data, uint32_t size, uint32_t transferred));
 extern void usb_out_transfer_dma(uint8_t ep_addr, void *data, uint32_t dma, uint32_t size, void (*callback)(void *data, uint32_t size, uint32_t transferred));
-

@@ -315,13 +315,12 @@ extern void command_print(const char* val);
 extern void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args));
 extern char* command_tokenize(char* str, uint32_t strbufsz);
 extern uint8_t get_el(void);
-#define STDOUT_BUFLEN 512
-extern void fetch_stdoutbuf(char* to, int* len);
 extern uint64_t vatophys(uint64_t kvaddr);
 extern void cache_invalidate(void *address, size_t size);
 extern void cache_clean_and_invalidate(void *address, size_t size);
 extern void cache_clean(void *address, size_t size);
 extern void register_irq_handler(uint16_t irq_v, struct task* irq_handler);
+extern uint64_t device_clock_addr(uint32_t id);
 extern void clock_gate(uint64_t addr, char val);
 extern void disable_preemption();
 extern void enable_preemption();
@@ -330,7 +329,13 @@ extern void task_suspend_self_asserted();
 extern void command_execute(char* cmd);
 extern void queue_rx_string(char* string);
 extern void command_unregister(const char* name);
-#ifdef LL_KTRW_INTERNAL
+extern int hexparse(uint8_t *buf, char *s, size_t len);
+extern void hexprint(uint8_t *data, size_t sz);
+#ifdef PONGO_PRIVATE
+#define STDOUT_BUFLEN 0x1000
+extern volatile uint8_t command_in_progress;
+extern void set_stdout_blocking(bool block);
+extern void fetch_stdoutbuf(char* to, int* len);
 extern void usbloader_init();
 extern void pmgr_init();
 extern void command_init();

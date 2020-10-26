@@ -322,42 +322,100 @@ void unmask_interrupt(uint32_t reg) {
 void mask_interrupt(uint32_t reg) {
     (*(volatile uint32_t *)(gInterruptBase + 0x4100 + ((reg >> 3) * 4))) = (1 << ((reg) & 0x1F));
 }
-void wdt_reset() {
-    if (!gWDTBase) {
-        panic("wdt is not set up but was asked to reset, spinning here");
-        while (1) {}
+
+#define WDT_CHIP_TMR (*(volatile uint32_t*)(gWDTBase + 0x0))
+#define WDT_CHIP_RST (*(volatile uint32_t*)(gWDTBase + 0x4))
+#define WDT_CHIP_INT (*(volatile uint32_t*)(gWDTBase + 0x8))
+#define WDT_CHIP_CTL (*(volatile uint32_t*)(gWDTBase + 0xc))
+
+#define WDT_SYS_TMR (*(volatile uint32_t*)(gWDTBase + 0x10))
+#define WDT_SYS_RST (*(volatile uint32_t*)(gWDTBase + 0x14))
+#define WDT_SYS_CTL (*(volatile uint32_t*)(gWDTBase + 0x1c))
+
+void wdt_reset()
+{
+    if(!gWDTBase)
+    {
+        iprintf("wdt is not set up but was asked to reset, spinning here");
     }
-    *(volatile uint32_t*)(gWDTBase + 0xc) = 0;
-    *(volatile uint32_t*)(gWDTBase + 0x4) = 1;
-    *(volatile uint32_t*)(gWDTBase + 0x0) = 0x80000000;
-    *(volatile uint32_t*)(gWDTBase + 0xc) = 4;
-    *(volatile uint32_t*)(gWDTBase + 0x0) = 0;
+    else
+    {
+        WDT_CHIP_CTL = 0x0; // Disable WDT
+        WDT_SYS_CTL  = 0x0; // Disable WDT
+        WDT_SYS_RST  = 1; // Immediate reset
+        WDT_SYS_CTL  = 0x4; // Enable WDT
+        WDT_SYS_TMR  = 0; // Reset counter
+    }
     panic("wdt reset");
 }
-void wdt_enable() {
+void wdt_enable()
+{
+    // TODO: We should probably change this func signature to include a timeout, if we actually plan to use it?
     return;
+#if 0
     if (!gWDTBase) return;
     *(volatile uint32_t*)(gWDTBase + 0xc) = 0;
     *(volatile uint32_t*)(gWDTBase + 0x4) = 5 * 24000000; // fire watchdog reset every 5 seconds
     *(volatile uint32_t*)(gWDTBase + 0x0) = 0x80000000;
     *(volatile uint32_t*)(gWDTBase + 0xc) = 4;
     *(volatile uint32_t*)(gWDTBase + 0x0) = 0;
+#endif
 }
-void wdt_disable() {
-    return;
+void wdt_disable()
+{
     if (!gWDTBase) return;
-    *(volatile uint32_t*)(gWDTBase + 0xc) = 0;
-    *(volatile uint32_t*)(gWDTBase + 0x4) = 0xffffffff;
-    *(volatile uint32_t*)(gWDTBase + 0x0) = 0x80000000;
-    *(volatile uint32_t*)(gWDTBase + 0xc) = 4;
-    *(volatile uint32_t*)(gWDTBase + 0x0) = 0;
+    WDT_CHIP_CTL = 0x0; // Disable WDT
+    WDT_SYS_CTL  = 0x0; // Disable WDT
 }
 
-void pmgr_init() {
-    gPMGRBase = dt_get_u32_prop("pmgr", "reg");
-    gPMGRBase += gIOBase;
-    gWDTBase = dt_get_u32_prop("wdt", "reg");
-    gWDTBase += gIOBase;
+typedef struct
+{
+    uint64_t addr;
+    uint64_t size;
+} pmgr_reg_t;
+
+typedef struct
+{
+    uint32_t reg;
+    uint32_t off;
+    uint32_t idk;
+} pmgr_map_t;
+
+typedef struct
+{
+    uint32_t flg : 8,
+             a   : 16,
+             id  : 8;
+    uint32_t b;
+    uint32_t c   : 16,
+             idx :  8,
+             map :  8;
+    uint32_t d;
+    uint32_t e;
+    uint32_t f;
+    uint32_t g;
+    uint32_t h;
+    char name[0x10];
+} pmgr_dev_t;
+
+static uint32_t gPMGRreglen = 0;
+static uint32_t gPMGRmaplen = 0;
+static uint32_t gPMGRdevlen = 0;
+static pmgr_reg_t *gPMGRreg = NULL;
+static pmgr_map_t *gPMGRmap = NULL;
+static pmgr_dev_t *gPMGRdev = NULL;
+
+void pmgr_init()
+{
+    dt_node_t *pmgr = dt_find(gDeviceTree, "pmgr");
+    gPMGRreg = dt_prop(pmgr, "reg",     &gPMGRreglen);
+    gPMGRmap = dt_prop(pmgr, "ps-regs", &gPMGRmaplen);
+    gPMGRdev = dt_prop(pmgr, "devices", &gPMGRdevlen);
+    gPMGRreglen /= sizeof(*gPMGRreg);
+    gPMGRmaplen /= sizeof(*gPMGRmap);
+    gPMGRdevlen /= sizeof(*gPMGRdev);
+    gPMGRBase = gIOBase + gPMGRreg[0].addr;
+    gWDTBase  = gIOBase + dt_get_u64_prop("wdt", "reg");
     command_register("reset", "resets the device", wdt_reset);
     command_register("crash", "branches to an invalid address", (void*)0x41414141);
 }
@@ -376,6 +434,30 @@ void interrupt_teardown() {
     task_irq_teardown();
 }
 
+uint64_t device_clock_addr(uint32_t id)
+{
+    for(uint32_t i = 0; i < gPMGRdevlen; ++i)
+    {
+        pmgr_dev_t *d = &gPMGRdev[i];
+        if(d->id != id)
+        {
+            continue;
+        }
+        if((d->flg & 0x10) || d->map >= gPMGRmaplen)
+        {
+            break;
+        }
+        pmgr_map_t *m = &gPMGRmap[d->map];
+        pmgr_reg_t *r = &gPMGRreg[m->reg];
+        if(d->idx >= ((r->size - m->off) >> 3))
+        {
+            break;
+        }
+        return gIOBase + r->addr + m->off + (d->idx << 3);
+    }
+    return 0;
+}
+
 void clock_gate(uint64_t addr, char val)
 {
     if (val) {
@@ -385,11 +467,8 @@ void clock_gate(uint64_t addr, char val)
     }
 
     while (1) {
-        volatile uint32_t a = *(volatile uint32_t*)(addr);
-        volatile uint32_t b = *(volatile uint32_t*)(addr);
-        a ^= b >> 4;
-        a &= 0xf;
-        if (!a) break;
+        uint32_t x = *(volatile uint32_t*)(addr);
+        if((x & 0xf) == ((x >> 4) & 0xf)) break;
     }
 }
 
@@ -421,7 +500,6 @@ cache_clean_and_invalidate(void *address, size_t size) {
     asm volatile("isb");
 }
 
-
 void
 cache_clean(void *address, size_t size) { // invalidates too, because Apple
     uint64_t cache_line_size = 64;
@@ -441,22 +519,20 @@ uint64_t vatophys(uint64_t kvaddr) {
     disable_interrupts();
     if (get_el() == 1) {
         asm volatile("at s1e1r, %0" : : "r"(kvaddr));
-        asm volatile("isb");
-        asm volatile("mrs %0, PAR_EL1" : "=r"(par_el1));
     } else {
-        asm volatile("at S1E3R, %0" : : "r"(kvaddr));
-        asm volatile("isb");
-        asm volatile("mrs %0, PAR_EL1" : "=r"(par_el1));
+        asm volatile("at s1e3r, %0" : : "r"(kvaddr));
     }
+    asm volatile("isb");
+    asm volatile("mrs %0, par_el1" : "=r"(par_el1));
     enable_interrupts();
     if (par_el1 & 0x1) {
         return -1;
     }
     par_el1 &= 0xFFFFFFFFFFFF;
     if (is_16k()) {
-        return (kvaddr & 0x3FFF) | (par_el1 & (~0x3FFF));
+        return (kvaddr & 0x3fffULL) | (par_el1 & (~0x3fffULL));
     } else {
-        return (kvaddr & 0xFFF) | (par_el1 & (~0xFFF));
+        return (kvaddr & 0xfffULL) | (par_el1 & (~0xfffULL));
     }
 }
 

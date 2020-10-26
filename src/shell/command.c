@@ -21,6 +21,7 @@
 //  This file is part of pongoOS.
 //
 #define LL_KTRW_INTERNAL 1
+#include <stdlib.h>
 #include <pongo.h>
 struct task command_task = {.name = "command"};
 char command_buffer[0x200];
@@ -45,6 +46,16 @@ struct command {
     void (*cb)(const char* cmd, char* args);
 } commands[64];
 char is_masking_autoboot;
+
+static int cmp_cmd(const void *a, const void *b)
+{
+    const struct command *x = a, *y = b;
+    if(!x->name && !y->name) return 0;
+    if(!x->name) return 1;
+    if(!y->name) return -1;
+    return strcmp(x->name, y->name);
+}
+
 void command_unregister(const char* name) {
     for (int i=0; i<64; i++) {
         if (commands[i].name && strcmp(commands[i].name, name) == 0) {
@@ -53,6 +64,7 @@ void command_unregister(const char* name) {
             commands[i].cb = 0;
         }
     }
+    qsort(commands, 64, sizeof(struct command), &cmp_cmd);
 }
 void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args)) {
     command_unregister(name);
@@ -62,6 +74,7 @@ void command_register(const char* name, const char* desc, void (*cb)(const char*
             commands[i].name = name;
             commands[i].desc = desc;
             commands[i].cb = cb;
+            qsort(commands, 64, sizeof(struct command), &cmp_cmd);
             return;
         }
     }
@@ -98,23 +111,30 @@ void command_execute(char* cmd) {
         for (int i=0; i<64; i++) {
             if (commands[i].name && !strcmp(cmd, commands[i].name)) {
                 commands[i].cb(command_buffer, arguments);
-                break;
+                return;
             }
         }
+    }
+    if(cmd[0] != '\0')
+    {
+        iprintf("Bad command: %s\n", cmd);
     }
 }
 
 extern uint32_t uart_should_drop_rx;
 char command_handler_ready = 0;
+volatile uint8_t command_in_progress = 0;
 struct event command_handler_iter;
 void command_main() {
     while (1) {
-        event_fire(&command_handler_iter);
         if (!uart_should_drop_rx)
             iprintf("\rpongoOS> ");
         fflush(stdout);
+        event_fire(&command_handler_iter);
         command_handler_ready = 1;
+        command_in_progress = 0;
         fgets(command_buffer,512,stdin);
+        command_in_progress = 1;
         char* cmd_end = command_buffer + strlen(command_buffer);
         while (cmd_end != command_buffer) {
             cmd_end --;
