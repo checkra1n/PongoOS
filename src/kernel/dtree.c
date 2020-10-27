@@ -22,7 +22,7 @@
 //
 #include <pongo.h>
 
-OBFUSCATE_C_FUNC(int dt_check(void* mem, uint32_t size, uint32_t* offp))
+int dt_check(void* mem, uint32_t size, uint32_t* offp)
 {
     if (size < sizeof(dt_node_t))
         return -1;
@@ -49,7 +49,7 @@ OBFUSCATE_C_FUNC(int dt_check(void* mem, uint32_t size, uint32_t* offp))
     return 0;
 }
 
-OBFUSCATE_C_FUNC(int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg))
+int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg)
 {
     if (cb_node) {
         int r = cb_node(cbn_arg, node);
@@ -83,7 +83,7 @@ OBFUSCATE_C_FUNC(int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*
     return 0;
 }
 
-OBFUSCATE_C_FUNC(static int dt_find_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len))
+static int dt_find_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len)
 {
     dt_find_cb_t* arg = a;
     if (strcmp(key, "name") == 0 && strcmp(arg->name, val) == 0 && strlen(arg->name) + 1 == len) {
@@ -93,14 +93,14 @@ OBFUSCATE_C_FUNC(static int dt_find_cb(void* a, dt_node_t* node, int depth, cons
     return 0;
 }
 
-OBFUSCATE_C_FUNC(dt_node_t* dt_find(dt_node_t* node, const char* name))
+dt_node_t* dt_find(dt_node_t* node, const char* name)
 {
     dt_find_cb_t arg = { name, NULL };
     dt_parse(node, 0, NULL, NULL, NULL, &dt_find_cb, &arg);
     return arg.node;
 }
 
-OBFUSCATE_C_FUNC(static int dt_prop_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len))
+static int dt_prop_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len)
 {
     dt_prop_cb_t* arg = a;
     if (strcmp(arg->key, key) == 0) {
@@ -111,7 +111,7 @@ OBFUSCATE_C_FUNC(static int dt_prop_cb(void* a, dt_node_t* node, int depth, cons
     return 0;
 }
 
-OBFUSCATE_C_FUNC(void* dt_prop(dt_node_t* node, const char* key, uint32_t* lenp))
+void* dt_prop(dt_node_t* node, const char* key, uint32_t* lenp)
 {
     dt_prop_cb_t arg = { key, NULL, 0 };
     dt_parse(node, -1, NULL, NULL, NULL, &dt_prop_cb, &arg);
@@ -120,7 +120,7 @@ OBFUSCATE_C_FUNC(void* dt_prop(dt_node_t* node, const char* key, uint32_t* lenp)
     return arg.val;
 }
 
-OBFUSCATE_C_FUNC(static int dt_find_memmap_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len))
+static int dt_find_memmap_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len)
 {
     if ((key[0] == 'M' && key[1] == 'e' && key[9] == 'R' && key[10] == 'e') || (strcmp(*(void**)a, "RAMDisk") == 0)) {
         strcpy((char*)key, *(void**)a);
@@ -130,7 +130,7 @@ OBFUSCATE_C_FUNC(static int dt_find_memmap_cb(void* a, dt_node_t* node, int dept
     return 0;
 }
 
-OBFUSCATE_C_FUNC(struct memmap* dt_alloc_memmap(dt_node_t* node, const char* name))
+struct memmap* dt_alloc_memmap(dt_node_t* node, const char* name)
 {
     void* val = (void*)name;
     dt_parse(node, -1, NULL, NULL, NULL, &dt_find_memmap_cb, &val);

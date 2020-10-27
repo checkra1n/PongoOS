@@ -32,7 +32,7 @@ EMBEDDED_CC_FLAGS       ?= -Wall -Wunused-label -Werror -O3 -flto -ffreestanding
 
 # Pongo options
 PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -lg -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x418000000 -Wl,-sectalign,__DATA,__common,0x8
-PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -Djit_alloc=calloc -Djit_free=free -D'OBFUSCATE_C_FUNC(F)'='F' -I$(INC) -Iapple-include -I$(INC)/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/linux/libfdt $(PONGO_LDFLAGS) $(CFLAGS)
+PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -Djit_alloc=calloc -Djit_free=free -I$(INC) -Iapple-include -I$(INC)/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/linux/libfdt $(PONGO_LDFLAGS) $(CFLAGS)
 
 STAGE3_ENTRY_C          := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.S patches.S demote_patch.S jump_to_image.S main.c)
 PONGO_C                 := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.S) $(wildcard $(SRC)/shell/*.c)

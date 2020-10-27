@@ -176,7 +176,7 @@ void disable_interrupts() {
     if (!dis_int_count) panic("irq over-disable");
 }
 
-OBFUSCATE_C_FUNC(static _Bool is_16k(void))
+static _Bool is_16k(void)
 {
     return ((get_mmfr0() >> 20) & 0xf) == 0x1;
 }
@@ -681,7 +681,7 @@ void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t at
     }
 }
 
-OBFUSCATE_C_FUNC(void map_full_ram(uint64_t phys_off, uint64_t phys_size)) {
+void map_full_ram(uint64_t phys_off, uint64_t phys_size) {
     // Round up to make sure the framebuffer is in range
     uint64_t pgsz = 1ULL << (tt_bits + 3);
     phys_size = (phys_size + pgsz - 1) & ~(pgsz - 1);
@@ -700,7 +700,7 @@ OBFUSCATE_C_FUNC(void map_full_ram(uint64_t phys_off, uint64_t phys_size)) {
     asm volatile("dsb sy");
 }
 
-OBFUSCATE_C_FUNC(void lowlevel_setup(uint64_t phys_off, uint64_t phys_size))
+void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
 {
     if (is_16k()) {
         tt_bits = 11;
@@ -734,7 +734,7 @@ OBFUSCATE_C_FUNC(void lowlevel_setup(uint64_t phys_off, uint64_t phys_size))
     }
 }
 
-OBFUSCATE_C_FUNC(void lowlevel_cleanup(void))
+void lowlevel_cleanup(void)
 {
     cache_clean_and_invalidate((void*)ram_phys_off, ram_phys_size);
     if (get_el() == 1) {

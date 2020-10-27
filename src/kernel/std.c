@@ -24,11 +24,11 @@
 #include <pongo.h>
 #include <stdarg.h>
 
-OBFUSCATE_C_FUNC(void* memstr(const void* big, unsigned long blength, const char* little))
+void* memstr(const void* big, unsigned long blength, const char* little)
 {
     return memmem(big, blength, (void*)little, strlen(little) + 1);
 }
-OBFUSCATE_C_FUNC(void* memstr_partial(const void* big, unsigned long blength, const char* little))
+void* memstr_partial(const void* big, unsigned long blength, const char* little)
 {
     return memmem(big, blength, (void*)little, strlen(little));
 }

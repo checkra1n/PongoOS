@@ -33,7 +33,7 @@
 #define strcmp strcmp_
 #define strlen strlen_
 
-OBFUSCATE_C_FUNC(char* strcpy_(char* to, const char* from))
+char* strcpy_(char* to, const char* from)
 {
     char cur = 0;
     while ((cur = (*from++)))
@@ -51,14 +51,14 @@ void* memcpy_(void* dst, const void* src, unsigned long n)
     return dst; // i know this is not up to spec but who uses the return value of memcpy anyway lmao
 }
 
-OBFUSCATE_C_FUNC(int strcmp_(const char* s1, const char* s2))
+int strcmp_(const char* s1, const char* s2)
 {
     while (*s1 && (*s1 == *s2))
         s1++, s2++;
     return *(const unsigned char*)s1 - *(const unsigned char*)s2;
 }
 
-OBFUSCATE_C_FUNC(unsigned long strlen_(const char* str))
+unsigned long strlen_(const char* str)
 {
     unsigned long rv = 0;
     while (*str++)
