@@ -20,7 +20,6 @@
 //  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
-#define LL_KTRW_INTERNAL 1
 #include <pongo.h>
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>

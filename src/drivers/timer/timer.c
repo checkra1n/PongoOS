@@ -20,7 +20,6 @@
 //  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
-#define LL_KTRW_INTERNAL 1
 #include <pongo.h>
 extern void set_timer_reg(uint64_t v);
 extern void set_timer_ctr(uint64_t v);

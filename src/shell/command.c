@@ -20,7 +20,6 @@
 //  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
-#define LL_KTRW_INTERNAL 1
 #include <stdlib.h>
 #include <pongo.h>
 struct task command_task = {.name = "command"};

@@ -22,7 +22,6 @@
 //
 //#define XNU_PF_DUMP_JIT
 
-#define LL_KTRW_INTERNAL 1
 #include <pongo.h>
 void (*preboot_hook)(void);
 

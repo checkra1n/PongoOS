@@ -5,7 +5,6 @@
 // Copyright 2019 checkra1n team
 //
 
-#define LL_KTRW_INTERNAL 1
 #include <pongo.h>
 uint64_t gSynopsysBase;
 uint64_t gSynopsysOTGBase;

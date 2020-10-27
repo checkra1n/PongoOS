@@ -20,7 +20,6 @@
 //  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
-#define LL_KTRW_INTERNAL 1
 #include <pongo.h>
 
 OBFUSCATE_C_FUNC(int dt_check(void* mem, uint32_t size, uint32_t* offp))

@@ -21,7 +21,6 @@
 //  This file is part of pongoOS.
 //
 #ifdef AUTOBOOT
-#define LL_KTRW_INTERNAL 1
 #include <pongo.h>
 
 void pongo_autoboot()
