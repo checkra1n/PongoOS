@@ -462,12 +462,36 @@ void interrupt_teardown() {
     task_irq_teardown();
 }
 
-uint64_t device_clock_addr(uint32_t id)
+uint64_t device_clock_by_id(uint32_t id)
 {
     for(uint32_t i = 0; i < gPMGRdevlen; ++i)
     {
         pmgr_dev_t *d = &gPMGRdev[i];
         if(d->id != id)
+        {
+            continue;
+        }
+        if((d->flg & 0x10) || d->map >= gPMGRmaplen)
+        {
+            break;
+        }
+        pmgr_map_t *m = &gPMGRmap[d->map];
+        pmgr_reg_t *r = &gPMGRreg[m->reg];
+        if(d->idx >= ((r->size - m->off) >> 3))
+        {
+            break;
+        }
+        return gIOBase + r->addr + m->off + (d->idx << 3);
+    }
+    return 0;
+}
+
+uint64_t device_clock_by_name(const char *name)
+{
+    for(uint32_t i = 0; i < gPMGRdevlen; ++i)
+    {
+        pmgr_dev_t *d = &gPMGRdev[i];
+        if(strncmp(name, d->name, sizeof(d->name)) != 0)
         {
             continue;
         }

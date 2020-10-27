@@ -1723,16 +1723,17 @@ void usb_main() {
 static uint64_t reg1=0, reg2=0, reg3=0;
 
 void usb_bringup() {
-    uint64_t clockGateBase = dt_get_u32_prop("pmgr", "reg") + gIOBase;
-    clock_gate(clockGateBase + reg1, 0);
-    clock_gate(clockGateBase + reg2, 0);
-    clock_gate(clockGateBase + reg3, 0);
+    clock_gate(reg1, 0);
+    clock_gate(reg2, 0);
+    clock_gate(reg3, 0);
     spin(1000);
-    clock_gate(clockGateBase + reg1, 1);
-    clock_gate(clockGateBase + reg2, 1);
-    clock_gate(clockGateBase + reg3, 1);
+    clock_gate(reg1, 1);
+    clock_gate(reg2, 1);
+    clock_gate(reg3, 1);
+    // t8011 is really just cursed...
     if (socnum == 0x8011) {
-        *(volatile uint32_t*)(0x20C000024) = 0x3000088;
+        *(volatile uint32_t*)(gSynopsysComplexBase + 0x00) = 1;
+        *(volatile uint32_t*)(gSynopsysComplexBase + 0x24) = 0x3000088;
     } else {
         *(volatile uint32_t*)(gSynopsysComplexBase + 0x1c) = 0x108;
         *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
@@ -1771,49 +1772,66 @@ void usb_init() {
     }
     gSynopsysOTGBase += gIOBase;
     gSynopsysComplexBase = gIOBase + dt_get_u32_prop("usb-complex", "reg");
+    // Can't trust "usb-device" dtre entry, because that can be USB3 and we want USB2
+    gSynopsysBase = (gSynopsysOTGBase & ~0xfffULL) + 0x00100000;
+    uint32_t otg_irq;
 
-    switch (socnum) {
-        case 0x8010:
-        case 0x8012:
-            reg1 = 0x80268;
-            reg2 = 0x80270;
-            reg3 = 0x80290;
-        break;
-        case 0x8011:
-            reg1 = 0x80288;
-            reg2 = 0x80290;
-            reg3 = 0x802a0;
-        break;
-        case 0x8015:
-            reg1 = 0x80270;
-            reg2 = 0x80278;
-            reg3 = 0x80270;
-        break;
-        case 0x8000:
-        case 0x8003:
-            reg1 = 0x80250;
-            reg2 = 0x80258;
-            reg3 = 0x80290;
-        break;
-        case 0x8001:
-            reg1 = 0x80278;
-            reg2 = 0x80280;
-            reg3 = 0x802B8;
-        break;
+    // Would be nice to use device_clock_by_name() here, but the names are different across devices...
+    switch(socnum)
+    {
+        case 0x8960:
+            reg1 = gIOBase + 0x0e020158;
+            reg2 = gIOBase + 0x0e020160;
+            reg3 = gIOBase + 0x0e020188;
+            otg_irq = 162;
+            break;
         case 0x7000:
         case 0x7001:
-            reg1 = 0x20248;
-            reg2 = 0x20250;
-            reg3 = 0x20288;
-        break;
-        case 0x8960:
-            reg1 = 0x20158;
-            reg2 = 0x20160;
-            reg3 = 0x20188;
-        break;
+            reg1 = gIOBase + 0x0e020248;
+            reg2 = gIOBase + 0x0e020250;
+            reg3 = gIOBase + 0x0e020288;
+            otg_irq = 182;
+            break;
+        case 0x8000:
+        case 0x8003:
+            reg1 = gIOBase + 0x0e080250;
+            reg2 = gIOBase + 0x0e080258;
+            reg3 = gIOBase + 0x0e080290;
+            otg_irq = 214;
+            break;
+        case 0x8001:
+            reg1 = gIOBase + 0x0e080278;
+            reg2 = gIOBase + 0x0e080280;
+            reg3 = gIOBase + 0x0e0802B8;
+            otg_irq = 241;
+            break;
+        case 0x8010:
+            reg1 = gIOBase + 0x0e080268;
+            reg2 = gIOBase + 0x0e080270;
+            reg3 = gIOBase + 0x0e080290;
+            otg_irq = 241;
+            break;
+        case 0x8011:
+            reg1 = gIOBase + 0x0e080288;
+            reg2 = gIOBase + 0x0e080290;
+            reg3 = gIOBase + 0x0e0802a0;
+            otg_irq = 243;
+            break;
+        case 0x8012:
+            reg1 = gIOBase + 0x0e080268;
+            reg2 = gIOBase + 0x0e080270;
+            reg3 = gIOBase + 0x0e080290;
+            otg_irq = 304;
+            break;
+        case 0x8015:
+            reg1 = gIOBase + 0x32080270;
+            reg2 = gIOBase + 0x32080278;
+            reg3 = gIOBase + 0x32080270;
+            otg_irq = 324;
+            break;
         default:
-        USB_DEBUG(USB_DEBUG_STANDARD, "USB: unsupported platform: %x\nblame qwerty!\n", socnum);
-        break;
+            panic("USB: unsupported platform: %x\n - this one's on Siguza\n", socnum);
+            break;
     }
 
     uint64_t dma_page_v = (uint64_t) alloc_contig(4 * DMA_BUFFER_SIZE);
@@ -1824,8 +1842,6 @@ void usb_init() {
     disable_interrupts();
     usb_irq_mode = 1;
     usb_usbtask_handoff_mode = 0;
-    gSynopsysBase = dt_get_u32_prop("usb-device", "reg");
-    gSynopsysBase += (gSynopsysOTGBase & (~0xfff));
     usb_bringup();
 
     gSynopsysCoreVersion = reg_read(rGSNPSID) & 0xffff;
@@ -1869,7 +1885,7 @@ void usb_init() {
     }
     usb_irq = 0;
     if (usb_irq_mode) {
-        usb_irq = dt_get_u32_prop("usb-device", "interrupts");
+        usb_irq = otg_irq;
         task_register_preempt_irq(&usb_task, usb_main, usb_irq);
     }
     else task_register(&usb_task, usb_main);
@@ -1879,9 +1895,8 @@ void usb_init() {
 void usb_teardown() {
     if (!gSynopsysOTGBase) return;
     gSynopsysOTGBase = 0;
-    uint64_t clockGateBase = dt_get_u32_prop("pmgr", "reg") + gIOBase;
     *(volatile uint32_t*)(gSynopsysOTGBase + 0x4) &= ~2;
-    clock_gate(clockGateBase + reg3, 0);
-    clock_gate(clockGateBase + reg2, 0);
-    clock_gate(clockGateBase + reg1, 0);
+    clock_gate(reg3, 0);
+    clock_gate(reg2, 0);
+    clock_gate(reg1, 0);
 }

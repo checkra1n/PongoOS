@@ -64,23 +64,23 @@ void aes_a9_init(void)
     {
         case 0x8000:
         case 0x8003:
-            gAESPipeBase = gAESBase + 0x100;
-            gAESClockAddr = 0x20e080220;
+            gAESPipeBase  = gAESBase + 0x100;
+            gAESClockAddr = gIOBase + 0x0e080220;
             break;
         case 0x8001:
-            gAESClockAddr = 0x20e080218;
+            gAESClockAddr = gIOBase + 0x0e080218;
             break;
         case 0x8010:
-            gAESClockAddr = 0x20e080230;
+            gAESClockAddr = gIOBase + 0x0e080230;
             break;
         case 0x8011:
-            gAESClockAddr = 0x20e080228;
+            gAESClockAddr = gIOBase + 0x0e080228;
             break;
         case 0x8012:
-            gAESClockAddr = 0x20e080238;
+            gAESClockAddr = gIOBase + 0x0e080238;
             break;
         case 0x8015:
-            gAESClockAddr = 0x232080240;
+            gAESClockAddr = gIOBase + 0x32080240;
             break;
         default:
             panic("AES A9: counterfeit init call");
