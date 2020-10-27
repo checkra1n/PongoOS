@@ -197,7 +197,3 @@ extern uint32_t ramdisk_size;
 extern uint32_t autoboot_count;
 extern uint8_t * loader_xfer_recv_data;
 extern uint32_t loader_xfer_recv_count;
-
-/* Why is this there? Apple and AAPCS varargs ABIs are incompatible. This is temporary until that's worked around. */
-void printf32(const char* str, uint32_t x);
-
