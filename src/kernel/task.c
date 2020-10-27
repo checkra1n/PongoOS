@@ -31,13 +31,6 @@ extern void _task_switch(struct task* new);
 extern void _task_switch_asserted(struct task* new);
 
 extern uint64_t dis_int_count, fiqCount;
-void schedule_explicit(struct task* task) {
-    wdt_enable();
-    scheduler_ticks++;
-    timer_rearm();
-    if (dis_int_count != 1) panic("scheduler about to switch with ints held");
-    _task_switch_asserted(task);
-}
 uint64_t served_irqs;
 volatile struct task* sched_array[32];
 volatile char has_preempted = 0;
