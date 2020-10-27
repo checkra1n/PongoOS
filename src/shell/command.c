@@ -22,22 +22,9 @@
 //
 #include <stdlib.h>
 #include <pongo.h>
-struct task command_task = {.name = "command"};
+struct task* command_task;
 char command_buffer[0x200];
 int command_buffer_idx = 0;
-void command_print(const char* c) {
-    iprintf("%s", c);
-}
-void command_puts(const char* c) {
-    disable_interrupts();
-    puts(c);
-    enable_interrupts();
-}
-void command_putc(char c) {
-    disable_interrupts();
-    putc(c, stdout);
-    enable_interrupts();
-}
 
 struct command {
     const char* name;
@@ -45,6 +32,7 @@ struct command {
     void (*cb)(const char* cmd, char* args);
 } commands[64];
 char is_masking_autoboot;
+static lock command_lock;
 
 static int cmp_cmd(const void *a, const void *b)
 {
@@ -56,6 +44,7 @@ static int cmp_cmd(const void *a, const void *b)
 }
 
 void command_unregister(const char* name) {
+    lock_take(&command_lock);
     for (int i=0; i<64; i++) {
         if (commands[i].name && strcmp(commands[i].name, name) == 0) {
             commands[i].name = 0;
@@ -64,19 +53,22 @@ void command_unregister(const char* name) {
         }
     }
     qsort(commands, 64, sizeof(struct command), &cmp_cmd);
+    lock_release(&command_lock);
 }
 void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args)) {
-    command_unregister(name);
     if (is_masking_autoboot && strcmp(name,"autoboot") == 0) return;
+    lock_take(&command_lock);
     for (int i=0; i<64; i++) {
-        if (!commands[i].name) {
+        if (!commands[i].name || strcmp(commands[i].name, name) == 0) {
             commands[i].name = name;
             commands[i].desc = desc;
             commands[i].cb = cb;
             qsort(commands, 64, sizeof(struct command), &cmp_cmd);
+            lock_release(&command_lock);
             return;
         }
     }
+    lock_release(&command_lock);
     panic("too many commands");
 }
 
@@ -103,31 +95,54 @@ char* command_tokenize(char* str, uint32_t strbufsz) {
 }
 
 char is_executing_command;
-
+uint32_t command_flags;
+#define COMMAND_NOTFOUND 1
 void command_execute(char* cmd) {
     char* arguments = command_tokenize(cmd, 0x1ff);
     if (arguments) {
+        lock_take(&command_lock);
         for (int i=0; i<64; i++) {
             if (commands[i].name && !strcmp(cmd, commands[i].name)) {
-                commands[i].cb(command_buffer, arguments);
+                void (*cb)(const char* cmd, char* args) = commands[i].cb;
+                lock_release(&command_lock);
+                cb(command_buffer, arguments);
                 return;
             }
         }
+        lock_release(&command_lock);
     }
     if(cmd[0] != '\0')
     {
         iprintf("Bad command: %s\n", cmd);
     }
+    if (*cmd)
+        command_flags |= COMMAND_NOTFOUND;
 }
 
 extern uint32_t uart_should_drop_rx;
 char command_handler_ready = 0;
 volatile uint8_t command_in_progress = 0;
 struct event command_handler_iter;
+
+static inline void put_serial_modifier(const char* str) {
+    while (*str) serial_putc(*str++);
+}
+
 void command_main() {
     while (1) {
-        if (!uart_should_drop_rx)
-            iprintf("\rpongoOS> ");
+        if (!uart_should_drop_rx) {
+            fflush(stdout);
+            putchar('\r');
+            if (command_flags & COMMAND_NOTFOUND) {
+                put_serial_modifier("\x1b[31m");
+            }
+            iprintf("pongoOS> ");
+            fflush(stdout);
+            if (command_flags & COMMAND_NOTFOUND) {
+                put_serial_modifier("\x1b[0m");
+                command_flags &= ~COMMAND_NOTFOUND;
+            }
+        }
         fflush(stdout);
         event_fire(&command_handler_iter);
         command_handler_ready = 1;
@@ -145,21 +160,19 @@ void command_main() {
 }
 
 void help(const char * cmd, char* arg) {
-    disable_interrupts();
+    lock_take(&command_lock);
     for (int i=0; i<64; i++) {
         if (commands[i].name) {
             iprintf("%16s | %s\n", commands[i].name, commands[i].desc ? commands[i].desc : "no description");
         }
     }
-    enable_interrupts();
+    lock_release(&command_lock);
 }
 void command_crashed() {
-    task_register(&command_task, command_main);
-    command_task.flags |= TASK_CAN_CRASH;
+    task_restart_and_link(task_current()); // restart
 }
 void command_init() {
-    task_register(&command_task, command_main);
-    command_task.flags |= TASK_CAN_CRASH;
-    command_task.crash_callback = command_crashed;
+    command_task = task_create("command", command_main);
+    command_task->flags |= TASK_RESTART_ON_EXIT;
     command_register("help", "shows this help message", help);
 }

@@ -20,19 +20,50 @@
 //  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
-#ifndef AES_PRIVATE_H
-#define AES_PRIVATE_H
+#include <errno.h>
+#include <pongo.h>
+#include <stdarg.h>
+char preemption_over;
 
-#ifdef PONGO_PRIVATE
+char panic_did_enter = 0;
+void panic(const char* str, ...) {
+    disable_interrupts();
 
-#include <stddef.h>
-#include <stdint.h>
+    if (panic_did_enter) {
+        iprintf("\ndouble panic: %s\n", str);
+        while(1) {}
+    }
+    panic_did_enter = 1;
+    preemption_over = 1;
+    
+    va_list va;
+    va_start(va, str);
+    iprintf("\npanic: ");
+    viprintf(str, va);
+    va_end(va);
 
-void aes_init(void);
-void aes_a9_init(void);
-int aes_a7(uint32_t op, const void *src, void *dst, size_t len, const void *iv, const void *key);
-int aes_a9(uint32_t op, const void *src, void *dst, size_t len, const void *iv, const void *key);
+    struct task *t = task_current();
 
-#endif
+    iprintf("\ncrashed task: ");
+    if (t && t->name[0])
+        puts(t->name);
+    else puts("unknown");
+    int depth = 0;
 
-#endif
+    puts("call stack:");
+    for(uint64_t *fp = __builtin_frame_address(0); fp; fp = (uint64_t*)fp[0])
+    {
+        if (!(((uint64_t)fp) > ((uint64_t)(&task_current()->stack)) && ((uint64_t)fp) < ((uint64_t)(&task_current()->stack) + 0x2000))) {
+            break;
+        }
+        iprintf("0x%016llx 0x%016llx\n", fp[0], fp[1]);
+        depth++;
+        if (depth > 64) {
+            fiprintf(stderr, "stack depth too large, stopping here...\n");
+        }
+    }
+
+    puts("crashed in required task, resetting..");
+    sleep(5);
+    wdt_reset();
+}

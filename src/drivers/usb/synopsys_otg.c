@@ -46,7 +46,7 @@ static void USB_DEBUG_PRINT_REGISTERS();
 
 static void USB_DEBUG_PRINT_REGISTERS() {
     disable_interrupts();
-#define USB_DEBUG_REG_VALUE(reg) iprintf(#reg " = 0x%x\n", reg_read(reg));
+#define USB_DEBUG_REG_VALUE(reg) USB_DEBUG(USB_DEBUG_STANDARD, #reg " = 0x%x\n", reg_read(reg));
 	USB_DEBUG_REG_VALUE(rGOTGCTL);
 	USB_DEBUG_REG_VALUE(rGOTGINT);
 	USB_DEBUG_REG_VALUE(rGAHBCFG);
@@ -1750,10 +1750,27 @@ void usb_bringup() {
 }
 
 void usb_init() {
-    gSynopsysOTGBase = dt_get_u32_prop("otgphyctrl", "reg");
+    gSynopsysOTGBase = 0;
+    uint32_t sz = 0;
+    uint64_t *reg = dt_get_prop("otgphyctrl", "reg", &sz);
+    if(reg)
+    {
+        sz /= 0x10;
+        for(uint32_t i = 0; i < sz; ++i)
+        {
+            if(reg[2*i + 1] == 0x20)
+            {
+                gSynopsysOTGBase = reg[2*i];
+                break;
+            }
+        }
+    }
+    if(!gSynopsysOTGBase)
+    {
+        panic("Failed to find gSynopsysOTGBase");
+    }
     gSynopsysOTGBase += gIOBase;
-    gSynopsysComplexBase = dt_get_u32_prop("usb-complex", "reg");
-    gSynopsysComplexBase += gIOBase;
+    gSynopsysComplexBase = gIOBase + dt_get_u32_prop("usb-complex", "reg");
 
     switch (socnum) {
         case 0x8010:
@@ -1771,8 +1788,6 @@ void usb_init() {
             reg1 = 0x80270;
             reg2 = 0x80278;
             reg3 = 0x80270;
-            if (gSynopsysComplexBase == gSynopsysOTGBase)
-                gSynopsysOTGBase += 0x60;
         break;
         case 0x8000:
         case 0x8003:
@@ -1797,9 +1812,14 @@ void usb_init() {
             reg3 = 0x20188;
         break;
         default:
-        iprintf("USB: unsupported platform: %x\nblame qwerty!\n", socnum);
+        USB_DEBUG(USB_DEBUG_STANDARD, "USB: unsupported platform: %x\nblame qwerty!\n", socnum);
         break;
     }
+
+    uint64_t dma_page_v = (uint64_t) alloc_contig(4 * DMA_BUFFER_SIZE);
+    uint64_t dma_page_p = vatophys(dma_page_v);
+    bzero((void*)dma_page_v,4 * DMA_BUFFER_SIZE);
+    cache_clean_and_invalidate((void*)dma_page_v, 4 * DMA_BUFFER_SIZE);
 
     disable_interrupts();
     usb_irq_mode = 1;
@@ -1827,11 +1847,6 @@ void usb_init() {
     ep_out_activate(&ep0_out, 0, 0, EP0_MAX_PACKET_SIZE);
     ep_in_activate(&ep0_in, 0, 0, EP0_MAX_PACKET_SIZE, 0);
 
-    uint64_t dma_page_v = (uint64_t) alloc_contig(4 * DMA_BUFFER_SIZE);
-    uint64_t dma_page_p = vatophys(dma_page_v);
-    bzero((void*)dma_page_v,4 * DMA_BUFFER_SIZE);
-    cache_clean_and_invalidate((void*)dma_page_v, 4 * DMA_BUFFER_SIZE);
-
     ep0_out.default_xfer_dma_data = (void *)   (dma_page_v + 0 * DMA_BUFFER_SIZE);
     ep0_out.default_xfer_dma_phys = (uint32_t) (dma_page_p + 0 * DMA_BUFFER_SIZE);
     ep0_out.default_xfer_dma_size = DMA_BUFFER_SIZE;
@@ -1845,9 +1860,7 @@ void usb_init() {
     ep2_out.default_xfer_dma_phys = (uint32_t) (dma_page_p + 3 * DMA_BUFFER_SIZE);
     ep2_out.default_xfer_dma_size = DMA_BUFFER_SIZE;
 
-
     *(volatile uint32_t*)(gSynopsysOTGBase + 0x4) |= 2;
-    command_register("synopsys", "prints a synopsysotg register dump", USB_DEBUG_PRINT_REGISTERS);
 
     if (usb_usbtask_handoff_mode) {
         usbtask_niq = alloc_contig(sizeof(struct task));
@@ -1861,7 +1874,7 @@ void usb_init() {
     }
     else task_register(&usb_task, usb_main);
     enable_interrupts();
-
+    command_register("synopsys", "prints a synopsysotg register dump", USB_DEBUG_PRINT_REGISTERS);
 }
 void usb_teardown() {
     if (!gSynopsysOTGBase) return;

@@ -580,7 +580,7 @@ struct xnu_pf_maskmatch {
     uint32_t pair_count;
     uint64_t pairs[][2];
 };
-inline bool xnu_pf_maskmatch_match_8(struct xnu_pf_maskmatch* patch, uint8_t access_type, uint8_t* preread, uint8_t* cacheable_stream) {
+static inline bool xnu_pf_maskmatch_match_8(struct xnu_pf_maskmatch* patch, uint8_t access_type, uint8_t* preread, uint8_t* cacheable_stream) {
     uint32_t count = patch->pair_count;
     for (uint32_t i = 0; i < count; i++) {
         if (count < 8) {
@@ -595,7 +595,7 @@ inline bool xnu_pf_maskmatch_match_8(struct xnu_pf_maskmatch* patch, uint8_t acc
     }
     return true;
 }
-inline bool xnu_pf_maskmatch_match_16(struct xnu_pf_maskmatch* patch, uint8_t access_type, uint16_t* preread, uint16_t* cacheable_stream) {
+static inline bool xnu_pf_maskmatch_match_16(struct xnu_pf_maskmatch* patch, uint8_t access_type, uint16_t* preread, uint16_t* cacheable_stream) {
     uint32_t count = patch->pair_count;
     for (uint32_t i = 0; i < count; i++) {
         if (count < 8) {
@@ -610,7 +610,7 @@ inline bool xnu_pf_maskmatch_match_16(struct xnu_pf_maskmatch* patch, uint8_t ac
     }
     return true;
 }
-inline bool xnu_pf_maskmatch_match_32(struct xnu_pf_maskmatch* patch, uint8_t access_type, uint32_t* preread, uint32_t* cacheable_stream) {
+static inline bool xnu_pf_maskmatch_match_32(struct xnu_pf_maskmatch* patch, uint8_t access_type, uint32_t* preread, uint32_t* cacheable_stream) {
     uint32_t count = patch->pair_count;
     for (uint32_t i = 0; i < count; i++) {
         if (count < 8) {
@@ -625,7 +625,7 @@ inline bool xnu_pf_maskmatch_match_32(struct xnu_pf_maskmatch* patch, uint8_t ac
     }
     return true;
 }
-inline bool xnu_pf_maskmatch_match_64(struct xnu_pf_maskmatch* patch, uint8_t access_type, uint64_t* preread, uint64_t* cacheable_stream) {
+static inline bool xnu_pf_maskmatch_match_64(struct xnu_pf_maskmatch* patch, uint8_t access_type, uint64_t* preread, uint64_t* cacheable_stream) {
     uint32_t count = patch->pair_count;
     for (uint32_t i = 0; i < count; i++) {
         if (count < 8) {

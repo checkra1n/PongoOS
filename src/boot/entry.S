@@ -72,6 +72,7 @@ start$l0:
     sub sp, x5, #0x400
     mov x1, x0
     mov x0, x9
+    mov x29, xzr
     bl _trampoline_entry
     b .
 

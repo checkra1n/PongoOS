@@ -73,45 +73,6 @@ void ramdisk_cmd() {
 
 /*
 
-    Name: fdt_cmd
-    Description: command handler for fdt
-
- */
-extern void * fdt;
-extern bool fdt_initialized;
-#define LINUX_DTREE_SIZE 65536
-
-void fdt_cmd() {
-    if (!loader_xfer_recv_count) {
-        iprintf("please upload a fdt before issuing this command\n");
-        return;
-    }
-    if (fdt_initialized) free(fdt);
-    fdt = malloc(LINUX_DTREE_SIZE);
-    if (!fdt) panic("couldn't reserve heap for fdt");
-    memcpy(fdt, loader_xfer_recv_data, loader_xfer_recv_count);
-    fdt_initialized = 1;
-    loader_xfer_recv_count = 0;
-}
-
-/*
-
-    Name: pongo_boot_linux
-    Description: command handler for bootl
-
-*/
-
-void pongo_boot_linux() {
-    if (!linux_can_boot()) {
-        printf("linux boot not prepared\n");
-        return;
-    }
-    gBootFlag = BOOT_FLAG_LINUX;
-    task_yield();
-}
-
-/*
-
     Name: pongo_spin
     Description: command handler for spin
 
@@ -131,7 +92,87 @@ void start_host_shell() {
     usb_init();
     screen_puts("Done!");
 }
+#define HEXDUMP_COLS 16
+void hexdump(void *mem, unsigned int len)
+{
+        unsigned int i;
+        
+        for(i = 0; i < len + ((len % HEXDUMP_COLS) ? (HEXDUMP_COLS - len % HEXDUMP_COLS) : 0); i++)
+        {
+                /* print offset */
+                if(i % HEXDUMP_COLS == 0)
+                {
+                        iprintf("0x%09llx: ", (((uint64_t)mem)+i));
+                }
+ 
+                /* print hex data */
+                if(i < len)
+                {
+                        iprintf("%02x ", 0xFF & ((char*)mem)[i]);
+                }
+                else /* end of block, just aligning for ASCII dump */
+                {
+                        iprintf("   ");
+                }
+                
+                if(i % HEXDUMP_COLS == (HEXDUMP_COLS - 1))
+                {
+                        iprintf("\n");
+                }
+        }
+}
 
+void md8_cmd(const char* cmd, char* args) {
+    uint64_t base = strtoull(args, NULL, 16);
+    uint64_t size = 0x20;
+    char* arg1 = command_tokenize(args, 0x1ff - (args - cmd));
+    if (arg1) {
+        size = strtoull(arg1, NULL, 16);
+    }
+
+    if (!size || !base) {
+        iprintf("md8 usage: md8 [base] [size]\n");
+        return;
+    }
+
+    hexdump((void*)base, size);
+}
+void phys_page_dump(const char* cmd, char* args) {
+    uint64_t base = strtoull(args, NULL, 16);
+
+    if (! *args) {
+        iprintf("physdump usage: physdump [base]\n");
+        return;
+    }
+    map_range(0xc10000000, base, 0x4000, 3, 0, true);
+
+    hexdump((void*)0xc10000000, 0x4000);
+}
+void peek_cmd(const char* cmd, char* args) {
+    if (! *args) {
+        iprintf("peek usage: peek [addr]\n");
+        return;
+    }
+
+    uint64_t addr = strtoull(args, NULL, 16);
+    uint32_t rv = *((uint32_t*)addr);
+    iprintf("0x%llx: %x (%x %x %x %x)\n", (uint64_t)addr, rv, rv&0xff, (rv>>8)&0xff, (rv>>16)&0xff, (rv>>24)&0xff);
+}
+void poke_cmd(const char* cmd, char* args) {
+    if (! *args) {
+        iprintf("poke usage: poke [addr] [val32]\n");
+        return;
+    }
+    char* arg1 = command_tokenize(args, 0x1ff - (args - cmd));
+    if (!*arg1) {
+        iprintf("poke usage: poke [addr] [val32]\n");
+        return;
+    }
+    uint64_t addr = strtoull(args, NULL, 16);
+    uint32_t value = strtoul(arg1, NULL, 16);
+    iprintf("writing %x @ 0x%llx\n", value, addr);
+    *((uint32_t*)addr) = value;
+}
 
 /*
 
@@ -147,10 +188,12 @@ void shell_main() {
     extern void task_list(const char *, char*);
     command_register("ps", "lists current tasks and irq handlers", task_list);
     command_register("ramdisk", "loads a ramdisk for xnu", ramdisk_cmd);
-    command_register("bootl", "boots linux", pongo_boot_linux);
     command_register("bootr", "boot raw image", pongo_boot_raw);
     command_register("spin", "spins 1 second", pongo_spin);
-    command_register("fdt", "load linux fdt from usb", fdt_cmd);
+    command_register("md8", "memory dump", md8_cmd);
+    command_register("peek", "32bit mem read", peek_cmd);
+    command_register("poke", "32bit mem write", poke_cmd);
+    command_register("physdump", "dumps a page of phys", phys_page_dump);
     command_register("shell", "starts uart & usb based shell", start_host_shell);
     usbloader_init();
 
@@ -160,10 +203,8 @@ void shell_main() {
 
     extern void modload_cmd();
     command_register("modload", "loads module", modload_cmd);
-    disable_interrupts();
     command_init();
-    event_wait_asserted(&command_handler_iter);
-    
+
     xnu_init();
 
 #ifdef AUTOBOOT
@@ -172,7 +213,7 @@ void shell_main() {
 #endif
 
     queue_rx_string("shell\n");
-    
+
 #ifdef LOCK_TESTING
     task_register(&pongo_lock_test1, pongo_lock_test1_entry);
     task_register(&pongo_lock_test2, pongo_lock_test2_entry);

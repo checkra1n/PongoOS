@@ -43,8 +43,10 @@ void shell_main();
 
 */
 
-void pongo_main_task()
-{
+uint64_t gBootTimeTicks;
+void pongo_main_task() {
+    gBootTimeTicks = get_ticks();
+
     // Setup GPIO Base
     gpio_early_init();
 
@@ -62,6 +64,16 @@ void pongo_main_task()
 
     // Initialize pmgr
     pmgr_init();
+
+    /*
+        Initialize display
+     */
+    mipi_init();
+    
+    /*
+        Initialize TrustZone driver
+     */
+    tz_setup();
 
     // Relieve WDT of its duty
     wdt_disable();
@@ -81,7 +93,11 @@ void pongo_main_task()
     iprintf("Booted by: %s\n", dt_get_prop("chosen", "firmware-version", NULL));
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
     strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
+#ifdef __clang__
+    iprintf("Built with: Clang %s\n", __clang_version__);
+#else
     iprintf("Built with: GCC %s\n", __VERSION__);
+#endif
     iprintf("Running on: %s\n", soc_name);
 
     shell_main();

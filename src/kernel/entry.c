@@ -97,10 +97,8 @@ char pongo_sched_tick() {
                 rvalue = 1;
                 preempt_ctr = 0;
             }
-        } else if (tsk->flags & TASK_HAS_CRASHED) {
-            if (tsk->crash_callback) tsk->crash_callback();
-            tsk->flags &= ~TASK_HAS_CRASHED;
         }
+        
     }
 out:
     enable_interrupts();
@@ -116,6 +114,7 @@ out:
 
 char soc_name[9] = {};
 uint32_t socnum = 0x0;
+void (*sep_boot_hook)(void);
 
 __attribute__((noinline)) void pongo_entry_cached()
 {
@@ -209,16 +208,14 @@ __attribute__((noinline)) void pongo_entry_cached()
     }
     timer_disable();
     disable_interrupts();
-
+    extern char preemption_over;
+    preemption_over = 1;
+    
     while (gBootFlag)
     {
         if (gBootFlag == BOOT_FLAG_RAW) {
             screen_fill_basecolor();
             return;
-        }
-        if (gBootFlag == BOOT_FLAG_LINUX) {
-            screen_puts("Booting Linux...");
-            return linux_prep_boot();
         }
         if (gBootFlag == BOOT_FLAG_HOOK) {
             // hook for kernel patching here
@@ -227,7 +224,12 @@ __attribute__((noinline)) void pongo_entry_cached()
         }
         gBootFlag--;
     }
+    
     xnu_loadrd();
+    if (sep_boot_hook)
+        sep_boot_hook();
+    
+    __asm__ volatile("dsb sy");
     screen_puts("Booting");
 }
 
@@ -253,12 +255,9 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
     {
         jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000000, (uint64_t)gBootArgs, (uint64_t)gEntryPoint);
     }
-    else if(gBootFlag == BOOT_FLAG_LINUX)
-    {
-        linux_boot();
-    }
     else
     {
+        tz_lockdown();
         xnu_boot();
     }
     exit_to_el1_image((void*)gBootArgs, gEntryPoint);

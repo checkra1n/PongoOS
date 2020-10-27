@@ -20,19 +20,37 @@
 //  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
-#ifndef AES_PRIVATE_H
-#define AES_PRIVATE_H
+#include <pongo.h>
+static lock malloc_lock, malloc_lock_temp;
+static int malloc_lock_depth;
+static struct task* malloc_lock_owner;
+extern char preemption_over;
 
-#ifdef PONGO_PRIVATE
+void __malloc_lock(struct _reent * unused) {
+    if (preemption_over) return;
+    
+    lock_take(&malloc_lock_temp);
+    
+    if (malloc_lock_owner != task_current()) {
+        lock_take(&malloc_lock);
+    }
+    malloc_lock_depth++;
+    malloc_lock_owner = task_current();
 
-#include <stddef.h>
-#include <stdint.h>
+    lock_release(&malloc_lock_temp);
+}
 
-void aes_init(void);
-void aes_a9_init(void);
-int aes_a7(uint32_t op, const void *src, void *dst, size_t len, const void *iv, const void *key);
-int aes_a9(uint32_t op, const void *src, void *dst, size_t len, const void *iv, const void *key);
-
-#endif
-
-#endif
+void __malloc_unlock(struct _reent * unused) {
+    if (preemption_over) return;
+    
+    lock_take(&malloc_lock_temp);
+    malloc_lock_depth--;
+    if (!malloc_lock_depth) {
+        if (malloc_lock_owner != task_current()) {
+            panic("invalid lock usage in malloc()");
+        }
+        lock_release(&malloc_lock);
+        malloc_lock_owner = NULL;
+    }
+    lock_release(&malloc_lock_temp);
+}

@@ -30,12 +30,22 @@
 #include <strings.h>
 #include <kerninfo.h>
 
+#ifdef PONGO_PRIVATE
 #include "framebuffer/fb.h"
 #include "usb/usb.h"
 #include "uart/uart.h"
 #include "gpio/gpio.h"
 #include "timer/timer.h"
 #include "xnu/xnu.h"
+#include "tz/tz.h"
+#include "libDER/DER_Encode.h"
+#include "libDER/DER_Decode.h"
+#include "libDER/asn1Types.h"
+#include "libDER/oids.h"
+#include "img4/img4.h"
+#include "mipi/mipi.h"
+#include "aes/aes.h"
+#endif
 
 #define DT_KEY_LEN 0x20
 
@@ -117,8 +127,11 @@ extern void _task_yield();
 extern uint8_t * loader_xfer_recv_data;
 extern uint32_t loader_xfer_recv_count;
 extern uint32_t autoboot_count;
+extern uint64_t gBootTimeTicks;
 
-#define TASK_CAN_CRASH 1
+extern void (*sepfw_kpf_hook)(void* sepfw_bytes, size_t sepfw_size);
+
+#define TASK_CAN_EXIT 1
 #define TASK_LINKED 2
 #define TASK_IRQ_HANDLER 4
 #define TASK_PREEMPT 8
@@ -126,6 +139,10 @@ extern uint32_t autoboot_count;
 #define TASK_HAS_EXITED 32
 #define TASK_WAS_LINKED 64
 #define TASK_HAS_CRASHED 128
+#define TASK_RESTART_ON_EXIT 256
+
+#define TASK_TYPE_MASK TASK_IRQ_HANDLER|TASK_PREEMPT|TASK_LINKED
+#define TASK_REFCOUNT_GLOBAL 0xffffffff
 struct event {
 	struct task* task_head;
 };
@@ -153,7 +170,8 @@ struct task {
     uint32_t flags;
     struct task* next;
     struct task* prev;
-    void (*crash_callback)();
+    void (*exit_callback)();
+    uint32_t refcount;
 };
 extern boot_args * gBootArgs;
 extern void* gEntryPoint;
@@ -220,7 +238,7 @@ extern void xnu_pf_enable_patch(xnu_pf_patch_t* patch);
 extern struct segment_command_64* macho_get_segment(struct mach_header_64* header, const char* segname);
 extern struct section_64 *macho_get_section(struct segment_command_64 *seg, const char *name);
 extern struct mach_header_64* xnu_pf_get_first_kext(struct mach_header_64* kheader);
-
+extern void hexdump(void *mem, unsigned int len);
 extern xnu_pf_patch_t* xnu_pf_ptr_to_data(xnu_pf_patchset_t* patchset, uint64_t slide, xnu_pf_range_t* range, void* data, size_t datasz, bool required, bool (*callback)(struct xnu_pf_patch* patch, void* cacheable_stream));
 extern xnu_pf_patch_t* xnu_pf_maskmatch(xnu_pf_patchset_t* patchset, char * name, uint64_t* matches, uint64_t* masks, uint32_t entryc, bool required, bool (*callback)(struct xnu_pf_patch* patch, void* cacheable_stream));
 extern void xnu_pf_emit(xnu_pf_patchset_t* patchset); // converts a patchset to JIT
@@ -246,10 +264,11 @@ struct pongo_exports {
 };
 #define EXPORT_SYMBOL(x) {.name = "_"#x, .value = x}
 #define EXPORT_SYMBOL_P(x) {.name = "_"#x, .value = (void*)&x}
-
+extern void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite);
 void pongo_entry(uint64_t* kernel_args, void* entryp, void (*exit_to_el1_image)(void* boot_args, void* boot_entry_point));
 int pongo_fiq_handler();
 extern void (*preboot_hook)();
+extern void (*sep_boot_hook)();
 extern void (*rdload_hook)();
 extern void task_register_coop(struct task* task, void (*entry)()); // registers a cooperative task
 extern void task_register_preempt_irq(struct task* task, void (*entry)(), int irq_id); // registers an irq handler
@@ -258,11 +277,19 @@ extern void task_register(struct task* task, void (*entry)()); // register a pre
 extern void task_yield();
 extern void task_wait();
 extern void task_exit();
+extern void task_crash(const char* reason, ...);
+extern void task_restart_and_link(struct task* task);
+extern void task_exit_asserted();
+extern void task_crash_asserted(const char* reason, ...);
+extern struct task* task_create(const char* name, void (*entry)());
+extern struct task* task_create_extended(const char* name, void (*entry)(), int task_type, int arg);
+extern void task_reference(struct task* task);
+extern void task_release(struct task* task);
 extern void event_wait_asserted(struct event* ev);
 extern void event_wait(struct event* ev);
 extern void event_fire(struct event* ev);
 extern void* alloc_static(uint32_t size); // memory returned by this will be added to the xnu static region, thus will persist after xnu boot
-
+extern void task_bind_to_irq(struct task* task, int irq);
 extern struct event command_handler_iter;
 
 #ifdef memset
@@ -274,8 +301,6 @@ extern void* memstr(const void* big, unsigned long blength, const char* little);
 extern void* memstr_partial(const void* big, unsigned long blength, const char* little);
 
 extern uint64_t scheduler_ticks;
-extern void print_register(uint64_t value);
-void print_hex_number(uint64_t value);
 extern void invalidate_icache(void);
 extern struct task* task_current();
 extern char preemption_should_skip_beat();
@@ -308,10 +333,6 @@ extern void wdt_disable();
 extern bool linux_can_boot();
 extern void linux_prep_boot();
 extern void linux_boot();
-extern void command_in_char(char val);
-extern void command_putc(char val);
-extern void command_puts(const char* val);
-extern void command_print(const char* val);
 extern void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args));
 extern char* command_tokenize(char* str, uint32_t strbufsz);
 extern uint8_t get_el(void);
@@ -331,6 +352,12 @@ extern void queue_rx_string(char* string);
 extern void command_unregister(const char* name);
 extern int hexparse(uint8_t *buf, char *s, size_t len);
 extern void hexprint(uint8_t *data, size_t sz);
+
+// Legacy
+extern void print_register(uint64_t value);
+extern void command_putc(char val);
+extern void command_puts(const char* val);
+
 #ifdef PONGO_PRIVATE
 #define STDOUT_BUFLEN 0x1000
 extern volatile uint8_t command_in_progress;
@@ -361,4 +388,5 @@ extern void lowlevel_cleanup(void);
 extern void lowlevel_setup(uint64_t phys_off, uint64_t phys_size);
 extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
 #endif
+
 #endif

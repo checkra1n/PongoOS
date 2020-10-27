@@ -24,7 +24,8 @@
 #define USB_DEBUG_ITERATION 0
 #define USB_DEBUG_INCREMENT_ITERATION()			do { } while (0)
 #if defined(USB_DEBUG_LEVEL) && USB_DEBUG_LEVEL >= 1
-#   define USB_DEBUG(_type, ...)				do { iprintf(__VA_ARGS__); iprintf("\n"); } while(0)
+#   include <stdio.h>
+#   define USB_DEBUG(_type, fmt, ...)			do { fiprintf(stderr, fmt "\n", ##__VA_ARGS__); } while(0)
 #else
 #   define USB_DEBUG(_type, ...)				do { } while (0)
 #endif

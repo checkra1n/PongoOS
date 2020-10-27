@@ -155,15 +155,17 @@ exc_el3:
     mrs x0, elr_el3
     mrs x1, far_el3
     stp x0,x1,[sp,#0x100]
+    mrs x1, spsr_el3
+    str x1, [sp, #0x110]
 
+    // Need to keep x29 valid for panic()
+    add x29, sp, #0xe8
     mov x0, sp
     blr x16
 
     ldp x2,x1,[sp,#0x100]
     msr elr_el3, x2
     msr far_el3, x1
-    mrs x1, spsr_el3
-    str x1, [sp, #0x110]
 
     cmp x0, #1
     b.ne exc_done
@@ -172,6 +174,7 @@ exc_el3:
     msr elr_el3, x0
     msr far_el3, x1
     ldr x0, [sp, #0x110]
+    msr spsr_el3, x0
     b exc_done
 exc_el1:
     mrs x29, esr_el1
@@ -179,15 +182,17 @@ exc_el1:
     mrs x0, elr_el1
     mrs x1, far_el1
     stp x0,x1,[sp,#0x100]
+    mrs x1, spsr_el1
+    str x1, [sp, #0x110]
 
+    // Need to keep x29 valid for panic()
+    add x29, sp, #0xe8
     mov x0, sp
     blr x16
 
     ldp x2,x1,[sp,#0x100]
     msr elr_el1, x2
     msr far_el1, x1
-    mrs x1, spsr_el1
-    str x1, [sp, #0x110]
 
     cmp x0, #1
     b.ne exc_done
@@ -196,7 +201,7 @@ exc_el1:
     msr elr_el1, x0
     msr far_el1, x1
     ldr x0, [sp, #0x110]
-
+    msr spsr_el1, x0
 exc_done:
     ldp x0,x1,[sp]
     ldp x2,x3,[sp,#0x10]

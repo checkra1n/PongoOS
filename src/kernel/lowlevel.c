@@ -42,6 +42,7 @@ __asm__(
     ".globl _enable_mmu_el3\n"
     ".globl _disable_mmu_el3\n"
     ".globl _get_ticks\n"
+    ".globl _panic_new_fp\n"
 
     "_get_el:\n"
     "    mrs x0, currentel\n"
@@ -97,6 +98,8 @@ __asm__(
     "    msr tcr_el1, x1\n"
     "    msr ttbr0_el1, x0\n"
     "    isb sy\n"
+    "    tlbi vmalle1\n"
+    "    isb sy\n"
     "    ic iallu\n"
     "    isb sy\n"
     "    mrs x3, sctlr_el1\n"
@@ -128,6 +131,8 @@ __asm__(
     "    msr tcr_el3, x1\n"
     "    msr ttbr0_el3, x0\n"
     "    isb sy\n"
+    "    tlbi alle3\n"
+    "    isb sy\n"
     "    ic iallu\n"
     "    isb sy\n"
     "    mrs x3, sctlr_el3\n"
@@ -155,10 +160,16 @@ __asm__(
     "    ret\n"
 
     "_get_ticks:\n"
-    "   isb sy\n"
-    "   mrs x0, cntpct_el0\n"
-    "   ret\n"
+    "    isb sy\n"
+    "    mrs x0, cntpct_el0\n"
+    "    ret\n"
+
+    "_panic_new_fp:\n"
+    "    mov x29, 0\n"
+    "    b _panic\n"
     );
+
+extern _Noreturn void panic_new_fp(const char* string, ...);
 
 uint64_t dis_int_count = 1;
 void _enable_interrupts();
@@ -183,30 +194,49 @@ static _Bool is_16k(void)
 volatile char is_in_exception;
 void print_state(uint64_t* state) {
     for (int i=0; i<31; i++) {
-        iprintf("X%d: 0x%016llx\n", i, state[i]);
+        fiprintf(stderr, "X%d: %s0x%016llx ", i, i < 10 ? " " : "", state[i]);
+        if (i == 30) break;
+        if ((i & 1) == 1) {
+            if ((i & 3) == 3) {
+                putc('\n', stderr);
+            } else {
+                fflush(stdout);
+                screen_putc('\n'); // avoid word wrap on screen
+            }
+        }
     }
-    iprintf("ESR_EL1: 0x%016llx\n", state[0xf8/8]);
-    iprintf("ELR_EL1: 0x%016llx\n", state[0x100/8]);
-    iprintf("FAR_EL1: 0x%016llx\n", state[0x108/8]);
+    fiprintf(stderr, "SP:  0x%016llx\n", ((uint64_t)state) + 0x340);
+    fiprintf(stderr, "ESR: 0x%016llx ", state[0xf8/8]);
+    fiprintf(stderr, "ELR: 0x%016llx ", state[0x100/8]);
+    fflush(stdout);
+    screen_putc('\n'); // avoid word wrap on screen
+    fiprintf(stderr, "FAR: 0x%016llx ", state[0x108/8]);
+    fiprintf(stderr, "CPSR:        0x%08llx\n", state[0x110/8]);
+    fiprintf(stderr, "Call stack:\n");
+    int depth = 0;
+    for(uint64_t *fp = (uint64_t*)state[29]; fp; fp = (uint64_t*)fp[0])
+    {
+        if (!(state[29] > ((uint64_t)(&task_current()->stack)) && state[29] < ((uint64_t)(&task_current()->stack) + 0x2000))) {
+            break;
+        }
+        fiprintf(stderr, "0x%016llx 0x%016llx\n", fp[0], fp[1]);
+        depth++;
+        if (depth > 64) {
+            fiprintf(stderr, "stack depth too large, stopping here...\n");
+        }
+    }
+
+    fflush(stdout);
 }
 int sync_exc(uint64_t* state) {
-    dis_int_count = 1;
-    if (!is_in_exception && task_current()->flags & TASK_CAN_CRASH) {
-        is_in_exception = 1;
-
-        iprintf("pongoOS: killing task |%s| due to crash\n", task_current()->name[0] ? task_current()->name : "<unknown>");
+    _disable_interrupts();
+    dis_int_count++;
+    if (dis_int_count != 1) {
         print_state(state);
-
-        task_unlink(task_current());
-        task_current()->flags &= ~TASK_CAN_CRASH;
-        task_current()->flags |= TASK_HAS_EXITED;
-        task_current()->flags |= TASK_HAS_CRASHED;
-        is_in_exception = 0;
-        task_yield_asserted();
-        return 0;
+        panic("caught sync exception with interrupts held");
     }
     print_state(state);
-    panic("caught sync exception");
+    task_crash_asserted("caught sync exception!");
     return 0;
 }
 uint32_t interrupt_vector() {
@@ -247,7 +277,7 @@ int serror_exc(uint64_t* state) {
     is_in_exception = 1;
     dis_int_count = 1;
     print_state(state);
-    panic("caught serror exception");
+    panic_new_fp("caught serror exception");
     is_in_exception = 0;
     return 0;
 }
@@ -335,7 +365,7 @@ void wdt_reset()
 {
     if(!gWDTBase)
     {
-        iprintf("wdt is not set up but was asked to reset, spinning here");
+        fiprintf(stderr, "wdt is not set up but was asked to reset, spinning here");
     }
     else
     {
@@ -423,7 +453,6 @@ void interrupt_init() {
     gInterruptBase += gIOBase;
 
     gAICVersion = dt_get_u32_prop("aic", "aic-version");
-    iprintf("initializing AIC %d\n", gAICVersion);
 
     interrupt_or_config(0xE0000000);
     interrupt_or_config(1); // enable interrupt
@@ -562,8 +591,7 @@ void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t at
     uint64_t pgsz = 1ULL << (tt_bits + 3ULL);
     if((va & (pgsz - 1ULL)) || (pa & (pgsz - 1ULL)) || (size & (pgsz - 1ULL)) || size < pgsz || (va + size < va) || (pa + size < pa))
     {
-        iprintf("map_range(0x%llx, 0x%llx, 0x%llx, ...)\n", va, pa, size);
-        panic("map_range: called with bad arguments");
+        panic("map_range: called with bad arguments (0x%llx, 0x%llx, 0x%llx, ...)", va, pa, size);
     }
 
     union
@@ -679,6 +707,20 @@ void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t at
         }
         break;
     }
+    asm volatile("dsb sy");
+    if (get_el() == 1) {
+         asm volatile("tlbi vmalle1\n");
+    } else {
+         asm volatile("tlbi alle3\n");
+    }
+    asm volatile("dsb sy");
+    asm("dsb sy");
+    asm("isb");
+    asm("ic iallu");
+    asm("dsb sy");
+    asm("isb");
+
+
 }
 
 void map_full_ram(uint64_t phys_off, uint64_t phys_size) {
@@ -727,10 +769,10 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
 
     if (get_el() == 1) {
         set_vbar_el1((uint64_t)&exception_vector);
-        enable_mmu_el1((uint64_t)ttbr0, 0x130802a00 | (tg0 << 14) | t0sz, 0xbb04, 5);
+        enable_mmu_el1((uint64_t)ttbr0, 0x130802a00 | (tg0 << 14) | t0sz, 0x04bb00, 5);
     } else {
         set_vbar_el3((uint64_t)&exception_vector);
-        enable_mmu_el3((uint64_t)ttbr0, 0x12a00 | (tg0 << 14) | t0sz, 0xbb04);
+        enable_mmu_el3((uint64_t)ttbr0, 0x12a00 | (tg0 << 14) | t0sz, 0x04bb00);
     }
 }
 

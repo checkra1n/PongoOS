@@ -28,4 +28,4 @@ if dev is None:
 dev.set_configuration()
 
 #dev.ctrl_transfer(0x21, 4, 0, 0, 0)
-print(dev.ctrl_transfer(0xa1, 1, 0, 0, 512).tostring())
+print("".join(chr (x) for x in dev.ctrl_transfer(0xa1, 1, 0, 0, 512)))

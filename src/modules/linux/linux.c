@@ -166,7 +166,7 @@ void linux_dtree_late(void) {
     fdt_appendprop_string(fdt, node, "bootargs", cmdline);
 
     /* simplefb dart-apcie3*/
-    sprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
+    siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_addrrange(fdt,0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
     fdt_appendprop_cell(fdt, node1, "width", gBootArgs->Video.v_width);
@@ -180,7 +180,7 @@ void linux_dtree_late(void) {
 void linux_dtree_overlay(char *boot_args) {
     char fdt_nodename[64];
     int node = 0, node1 = 0;
-    sprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
+    siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_addrrange(fdt,0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
     fdt_appendprop_cell(fdt, node1, "width", gBootArgs->Video.v_width);

@@ -73,8 +73,20 @@ void screen_putc(uint8_t c)
 {
     if (!gFramebuffer) return;
     disable_interrupts();
+    if (c == '\b') {
+        if (x_cursor > 8 * SCALE_FACTOR) {
+            x_cursor -= 8 * SCALE_FACTOR;
+        } else {
+            x_cursor = 0;
+        }
+        if (LEFT_MARGIN > x_cursor) {
+            x_cursor = LEFT_MARGIN;
+        }
+        enable_interrupts();
+        return;
+    }
     if (c == '\n' || (x_cursor + (8 * SCALE_FACTOR)) > (gWidth - LEFT_MARGIN*2)) {
-        if ((y_cursor + (12 * SCALE_FACTOR)) > gHeight) {
+        if ((y_cursor + (12 * SCALE_FACTOR) + 16) > gHeight) {
             y_cursor = bannerHeight;
         } else {
             y_cursor += 1 + 8 * SCALE_FACTOR;
@@ -102,7 +114,7 @@ void screen_putc(uint8_t c)
         for (int y = 0; y < (8 * SCALE_FACTOR); y++) {
             if (font8x8_basic[c & 0x7f][y / SCALE_FACTOR] & (1 << (x / SCALE_FACTOR))) {
                 uint32_t ind = (x + local_x_cursor) + ((y + local_y_cursor) * gRowPixels);
-                uint32_t curcolor = gFramebuffer[ind];
+                uint32_t curcolor = basecolor; // gFramebuffer[ind];
                 if (curcolor == basecolor && (curcolor & 0x3fffffff) != 0x40000000) {
                     curcolor ^= 0xFFFFFFFF;
                 } else {
@@ -110,6 +122,9 @@ void screen_putc(uint8_t c)
                 }
                 curcolor &= 0x3fffffff;
                 gFramebuffer[ind] = curcolor;
+            } else {
+                uint32_t ind = (x + local_x_cursor) + ((y + local_y_cursor) * gRowPixels);
+                gFramebuffer[ind] = basecolor;
             }
         }
     }
@@ -139,13 +154,15 @@ void screen_invert() {
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
 }
 
-uint32_t bitmap[] = { 0x0, 0xa00, 0x400, 0x5540, 0x7fc0, 0x3f80, 0x3f80, 0x1f00, 0x1f00, 0x1f00, 0x3f80, 0xffe0, 0x3f80, 0x3f80, 0x3f83, 0x103f9f, 0x18103ffb, 0xe3fffd5, 0x1beabfab, 0x480d7fd5, 0xf80abfab, 0x480d7fd5, 0x1beabfab, 0xe3fffd5, 0x18107ffb, 0x107fdf, 0x7fc3, 0xffe0, 0xffe0, 0xffe0, 0x1fff0, 0x1fff0 };
+uint32_t gLogoBitmap[32] = { 0x0, 0xa00, 0x400, 0x5540, 0x7fc0, 0x3f80, 0x3f80, 0x1f00, 0x1f00, 0x1f00, 0x3f80, 0xffe0, 0x3f80, 0x3f80, 0x3f83, 0x103f9f, 0x18103ffb, 0xe3fffd5, 0x1beabfab, 0x480d7fd5, 0xf80abfab, 0x480d7fd5, 0x1beabfab, 0xe3fffd5, 0x18107ffb, 0x107fdf, 0x7fc3, 0xffe0, 0xffe0, 0xffe0, 0x1fff0, 0x1fff0 };
 
 void screen_init() {
-    gFramebuffer = (uint32_t*)(gBootArgs->Video.v_baseAddr - 0x800000000 + kCacheableView);
     gRowPixels = gBootArgs->Video.v_rowBytes >> 2;
     uint16_t width = gWidth = gBootArgs->Video.v_width;
     uint16_t height = gHeight = gBootArgs->Video.v_height;
+    uint64_t fbsize = gHeight * gRowPixels * 4;
+    map_range(0xfb0000000ULL, gBootArgs->Video.v_baseAddr, (fbsize+0x3fff) & ~0x3fff, 3, 1, true);
+    gFramebuffer = (uint32_t*)(0xfb0000000ULL);
 
     height &= 0xfff0;
     scale_factor = 2;
@@ -161,7 +178,7 @@ void screen_init() {
     uint32_t logo_y_begin = (height / 2) - (16 * logo_scaler_factor);
 
     for (uint32_t y = 0; y < (32 * logo_scaler_factor); ++y) {
-        uint32_t b = bitmap[y / logo_scaler_factor];
+        uint32_t b = gLogoBitmap[y / logo_scaler_factor];
         for (uint32_t x = 0; x < (32 * logo_scaler_factor); ++x) {
             uint32_t ind = logo_x_begin + x + ((logo_y_begin + y) * gRowPixels);
             uint32_t curcolor = gFramebuffer[ind];

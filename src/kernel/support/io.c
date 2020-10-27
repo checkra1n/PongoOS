@@ -24,18 +24,9 @@
 #include <sys/stat.h>
 #include <pongo.h>
 
-caddr_t _sbrk(int size) {
-    return (caddr_t)alloc_contig(size);
-}
-
 int _fstat(int file, struct stat *st) {
     st->st_mode = S_IFCHR;
     return 0;
-}
-
-int _exit() {
-   task_exit();
-   return -1; // should never be reached, ever.
 }
 
 int _isatty(int file) { return 1; }
@@ -47,6 +38,8 @@ static char stdout_buf[STDOUT_BUFLEN];
 static volatile int stdout_buf_len;
 static volatile bool stdout_blocking;
 static lock stdout_lock;
+
+extern char preemption_over;
 
 void set_stdout_blocking(bool block)
 {
@@ -65,13 +58,27 @@ void fetch_stdoutbuf(char* to, int* len) {
 
 int _write(int file, char *ptr, int len)
 {
-    lock_take(&stdout_lock);
+    switch(file)
+    {
+        case 1: if (preemption_over) file = 2;
+        case 2: break;
+        default: panic("Write to unknown fd: %d", file);
+    }
+    if(file == 1) {
+        extern uint64_t dis_int_count;
+        if (dis_int_count != 0) {
+            panic("write() to stdout with interrupts disabled - please use stderr instead\n");
+        }
+        lock_take(&stdout_lock);
+    }
     int i;
     for(i = 0; i < len; i++)
     {
         if (ptr[i] == '\0') serial_putc('\r');
         serial_putc(ptr[i]);
         screen_putc(ptr[i]);
+
+        if(file != 1) continue;
 
     retry:;
         if(stdout_buf_len >= STDOUT_BUFLEN - 1)
@@ -91,7 +98,7 @@ int _write(int file, char *ptr, int len)
         }
         stdout_buf[stdout_buf_len++] = ptr[i];
     }
-    lock_release(&stdout_lock);
+    if(file == 1) lock_release(&stdout_lock);
     return len;
 }
 
@@ -103,15 +110,26 @@ uint32_t bufoff = 0;
 extern uint32_t uart_should_drop_rx;
 void queue_rx_char(char inch) {
     lock_take(&stdin_lock);
-    if (!uart_should_drop_rx)
-    {
-        // putchar(inch);
-        serial_putc(inch);
-        screen_putc(inch);
+    if (inch == '\x7f') {
+        if (bufoff) {
+            bufoff--;
+            stdin_buf[bufoff] = 0;
+            putc('\b', stderr);
+            putc(' ', stderr);
+            putc('\b', stderr);
+            fflush(stderr);
+        }
+        lock_release(&stdin_lock);
+        return;
+    }
+    if (!uart_should_drop_rx) {
+        putc(inch, stderr);
+        fflush(stderr);
     }
     if (bufoff < 512)
         stdin_buf[bufoff++] = inch;
-    event_fire(&stdin_ev);
+    if (inch == '\n')
+        event_fire(&stdin_ev);
     lock_release(&stdin_lock);
 }
 void queue_rx_string(char* string) {
