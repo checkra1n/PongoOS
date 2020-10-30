@@ -140,31 +140,113 @@ extern void (*sepfw_kpf_hook)(void* sepfw_bytes, size_t sepfw_size);
 #define TASK_WAS_LINKED 64
 #define TASK_HAS_CRASHED 128
 #define TASK_RESTART_ON_EXIT 256
+#define TASK_SPAWN 512
 
-#define TASK_TYPE_MASK TASK_IRQ_HANDLER|TASK_PREEMPT|TASK_LINKED
-#define TASK_REFCOUNT_GLOBAL 0xffffffff
+#define TASK_TYPE_MASK TASK_IRQ_HANDLER|TASK_PREEMPT|TASK_LINKED|TASK_CAN_EXIT|TASK_RESTART_ON_EXIT|TASK_SPAWN
+#define TASK_REFCOUNT_GLOBAL 0x7fffffff
 struct event {
 	struct task* task_head;
 };
 
+extern struct vm_space kernel_vm_space;
+
+#define VM_SPACE_SIZE 0x100000000
+#define VM_SPACE_BASE 0xFFFFFFFE00000000
+
+typedef enum {
+    KERN_SUCCESS,
+    KERN_FAILURE,
+    KERN_VM_OOM
+} err_t;
+typedef enum {
+    VM_FLAGS_ANYWHERE = 0,
+    VM_FLAGS_FIXED = 1,
+    
+} vm_flags_t;
+typedef enum {
+    PROT_READ = 1,
+    PROT_WRITE = 2,
+    PROT_EXEC = 4,
+    PROT_KERN_ONLY = 8,
+    PROT_DEVICE = 16,
+    PROT_PAGING_INFO = 32
+} vm_protect_t;
+
+#ifdef PONGO_PRIVATE
+union tte
+{
+    struct
+    {
+        uint64_t valid :  1,
+                 table :  1,
+                 attr  :  3,
+                 ns    :  1,
+                 ap    :  2,
+                 sh    :  2,
+                 af    :  1,
+                 nG    :  1,
+                 oa    : 36,
+                 res00 :  3,
+                 dbm   :  1,
+                 cont  :  1,
+                 pxn   :  1,
+                 uxn   :  1,
+                 ign0  :  4,
+                 pbha  :  4,
+                 ign1  :  1;
+    };
+    struct
+    {
+        uint64_t res01  : 12,
+                 oahigh :  4,
+                 nT     :  1,
+                 res02  : 42,
+                 pxntab :  1,
+                 uxntab :  1,
+                 aptab  :  2,
+                 nstab  :  1;
+    };
+    uint64_t u64;
+};
+
+struct vm_space {
+    uint64_t ttbr0;
+    uint64_t ttbr1;
+    uint64_t vm_space_base;
+    uint64_t vm_space_end;
+    uint8_t* vm_space_table;
+    lock vm_space_lock;
+    uint32_t refcount;
+    struct vm_space* parent;
+    uint64_t asid;
+};
+extern void vm_init();
+extern struct vm_space* vm_reference(struct vm_space* vmspace);
+extern void vm_release(struct vm_space* vmspace);
+extern struct vm_space* vm_create(struct vm_space* parent);
 struct task {
     uint64_t x[30];
     uint64_t lr;
     uint64_t sp;
     uint64_t runcnt;
     uint64_t real_lr;
-    uint64_t fp[18];
+    uint64_t fp[20];
+    uint64_t cpsr;
+    uint64_t exception_stack;
+    uint64_t is_spsel1;
+    uint64_t ttbr1; // usermode
+    uint64_t ttbr0; // ignored for now
     struct task* irq_ret;
-    uint64_t entry;
     void* task_ctx;
-    uint64_t stack[0x2000 / 8];
     uint64_t irq_count;
     uint32_t irq_type;
     uint64_t wait_until;
     uint32_t sched_count;
-    uint32_t pid;
     struct task* eq_next;
     uint64_t anchor[0];
+    uint64_t el0_exception_stack;
+    uint64_t pad;
+    uint64_t initial_state[30];
     uint64_t t_flags; // task-specific flags, not used by task subsystem if not for internal tasks
     char name[32];
     uint32_t flags;
@@ -172,8 +254,39 @@ struct task {
     struct task* prev;
     void (*exit_callback)();
     uint32_t refcount;
+    int32_t critical_count;
+    void (*fault_catch)();
+    struct vm_space* vm_space;
+    uint64_t user_stack;
+    uint64_t entry_stack;
+    uint64_t kernel_stack;
+    uint64_t entry;
+    uint32_t pid;
+    uint32_t gencount;
+    lock task_lock;
 };
+extern void map_range_map(uint64_t* tt0, uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite, uint64_t paging_info, vm_protect_t prot, bool is_tt1);
+extern void task_alloc_fast_stacks(struct task* task);
+#else
+struct task;
+struct vm_space;
+#endif
+#define PAGE_SIZE 0x4000
+#define PAGE_MASK 0x3FFF
+extern err_t vm_space_map_page_physical_prot(struct vm_space* vmspace, uint64_t vaddr, uint64_t physical, vm_protect_t prot);
+extern uint64_t ppage_alloc();
+extern void ppage_free(uint64_t page);
+extern err_t vm_allocate(struct task* task, uint64_t* addr, uint64_t size, vm_flags_t flags);
+extern err_t vm_space_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_flags_t flags);
+extern err_t vm_deallocate(struct task* task, uint64_t addr, uint64_t size);
+extern err_t vm_space_deallocate(struct vm_space* vmspace, uint64_t addr, uint64_t size);
+extern void vm_flush(struct vm_space* fl);
+extern void vm_flush_by_addr(struct vm_space* fl, uint64_t va);
+extern size_t memcpy_trap(void* dest, void* src, size_t size);
+extern void task_critical_enter();
+extern void task_critical_exit();
 extern boot_args * gBootArgs;
+extern void task_restart(struct task* task);
 extern void* gEntryPoint;
 extern dt_node_t *gDeviceTree;
 extern uint64_t gIOBase;
@@ -183,6 +296,7 @@ extern void* ramdisk_buf;
 extern uint32_t ramdisk_size;
 extern char soc_name[9];
 extern uint32_t socnum;
+extern uint64_t vatophys_static(void* kva); // only safe to use with phystokva or alloc_contig's return value
 
 typedef struct xnu_pf_range {
     uint64_t va;
@@ -337,6 +451,7 @@ extern void command_register(const char* name, const char* desc, void (*cb)(cons
 extern char* command_tokenize(char* str, uint32_t strbufsz);
 extern uint8_t get_el(void);
 extern uint64_t vatophys(uint64_t kvaddr);
+extern void* phystokv(uint64_t paddr);
 extern void cache_invalidate(void *address, size_t size);
 extern void cache_clean_and_invalidate(void *address, size_t size);
 extern void cache_clean(void *address, size_t size);
@@ -347,6 +462,7 @@ extern void clock_gate(uint64_t addr, char val);
 extern void disable_preemption();
 extern void enable_preemption();
 extern void* alloc_contig(uint32_t size);
+extern uint64_t alloc_phys(uint32_t size);
 extern void task_suspend_self_asserted();
 extern void command_execute(char* cmd);
 extern void queue_rx_string(char* string);
@@ -358,6 +474,8 @@ extern void hexprint(uint8_t *data, size_t sz);
 extern void print_register(uint64_t value);
 extern void command_putc(char val);
 extern void command_puts(const char* val);
+
+extern void pongo_syscall_entry(struct task* task, uint32_t sysnr, uint64_t* state);
 
 #ifdef PONGO_PRIVATE
 #define STDOUT_BUFLEN 0x1000
@@ -373,7 +491,6 @@ extern void interrupt_init();
 extern void interrupt_teardown();
 extern void task_irq_teardown();
 extern uint32_t exception_vector[];
-extern void set_vbar_el3(uint64_t vec);
 extern void set_vbar_el1(uint64_t vec);
 extern void rebase_pc(uint64_t vec);
 extern void rebase_sp(uint64_t vec);
@@ -381,13 +498,23 @@ extern uint64_t get_mmfr0(void);
 extern uint64_t get_migsts(void);
 extern uint64_t get_mpidr(void);
 extern void set_migsts(uint64_t val);
-extern void enable_mmu_el1(uint64_t ttbr, uint64_t tcr, uint64_t mair, uint64_t sctlr);
+extern void enable_mmu_el1(uint64_t ttbr0, uint64_t tcr, uint64_t mair, uint64_t ttbr1);
 extern void disable_mmu_el1();
-extern void enable_mmu_el3(uint64_t ttbr, uint64_t tcr, uint64_t mair);
-extern void disable_mmu_el3();
 extern void lowlevel_cleanup(void);
 extern void lowlevel_setup(uint64_t phys_off, uint64_t phys_size);
 extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
+static inline _Bool is_16k(void)
+{
+    return ((get_mmfr0() >> 20) & 0xf) == 0x1;
+}
+static inline void flush_tlb(void)
+{
+    __asm__ volatile("isb");
+    __asm__ volatile("tlbi vmalle1\n");
+    __asm__ volatile("dsb sy");
+}
+extern void task_real_unlink(struct task* task);
+
 #endif
 
 #endif

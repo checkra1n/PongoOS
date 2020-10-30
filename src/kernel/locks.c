@@ -44,7 +44,8 @@ extern uint64_t dis_int_count;
 
 void lock_take(lock* _lock) {
     // takes a lock yielding until it acquires it
-    if(dis_int_count)
+    extern char preemption_over;
+    if(dis_int_count && !preemption_over)
     {
         panic("Called lock_take with interrupts disabled");
     }
@@ -77,7 +78,9 @@ void lock_take(lock* _lock) {
 }
 void lock_take_spin(lock* _lock) {
     // takes a lock spinning until it acquires it
-    if(dis_int_count)
+    
+    extern char preemption_over;
+    if(dis_int_count && !preemption_over)
     {
         panic("Called lock_take_spin with interrupts disabled");
     }

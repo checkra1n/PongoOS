@@ -123,8 +123,8 @@ void stage3_exit_to_el1_image(void* boot_args, void* boot_entry_point) {
         // hypv
         *(void**)(gboot_args + 0x20) = boot_args;
         *(void**)(gboot_args + 0x28) = boot_entry_point;
+        asm("smc #0"); // elevate to EL3
     }
-    extern void screen_puts(const char* str);
     jump_to_image((uint64_t)gboot_entry_point, (uint64_t)gboot_args);
 }
 
@@ -144,12 +144,16 @@ void trampoline_entry(void* boot_image, void* boot_args)
         strcpy(boot_image + 0x200, "Stage2 KJC Loader");
         patch_bootloader(boot_image);
     } else {
+        
         gboot_args = boot_args;
         gboot_entry_point = boot_image;
+        extern volatile void setup_el1(void * entryp,uint64_t,uint64_t);
+        
+        
         extern volatile void smemset(void*, uint8_t, uint64_t);
         smemset(&__bss_start, 0, ((uint64_t)__bss_end) - ((uint64_t)__bss_start));
-        void main (void);
-        main();
+        extern void main (void);
+        setup_el1(main, (uint64_t)boot_image, (uint64_t)boot_args);
     }
     jump_to_image((uint64_t)boot_image, (uint64_t)boot_args);
 }

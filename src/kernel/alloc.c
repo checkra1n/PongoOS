@@ -39,7 +39,7 @@ void alloc_init() {
     alloc_heap_base = (((uint64_t)__bss_end) + 0x7fff) & (~0x3fff);
     alloc_heap_base &= 0xFFFFFFFF;
     alloc_heap_base += kCacheableView;
-    alloc_heap_end = (((uint64_t)((kCacheableView - 0x800000000 + gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
+    alloc_heap_end = (((uint64_t)(phystokv(gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
 
     uint64_t alloc_static_hardcap = alloc_static_base + (1024 * 1024 * 64);
     if (alloc_static_end > alloc_static_hardcap) {
@@ -63,6 +63,16 @@ void* alloc_static(uint32_t size) { // memory returned by this will be added to 
     return rv;
 }
 
+uint64_t alloc_phys(uint32_t size) { // memory returned by this will be added to the xnu static region, thus will persist after xnu boot
+    if (!alloc_static_base) {
+        alloc_init();
+    }
+    uint64_t rv = vatophys(alloc_heap_current);
+    alloc_heap_current += (size + 0x3fff) & (~0x3fff);
+    if (alloc_heap_current > alloc_heap_end) return 0;
+    return rv;
+}
+
 void* alloc_contig(uint32_t size) {
     if (!alloc_static_base) {
         alloc_init();
@@ -73,3 +83,9 @@ void* alloc_contig(uint32_t size) {
     return rv;
 }
 
+void* phystokv(uint64_t paddr) {
+    return (void*)(paddr - 0x800000000 + kCacheableView);
+}
+uint64_t vatophys_static(void* kva) {
+    return (((uint64_t)kva) - kCacheableView + 0x800000000);
+}

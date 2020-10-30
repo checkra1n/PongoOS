@@ -160,9 +160,22 @@ void screen_init() {
     gRowPixels = gBootArgs->Video.v_rowBytes >> 2;
     uint16_t width = gWidth = gBootArgs->Video.v_width;
     uint16_t height = gHeight = gBootArgs->Video.v_height;
+    uint64_t fbbase = gBootArgs->Video.v_baseAddr;
     uint64_t fbsize = gHeight * gRowPixels * 4;
-    map_range(0xfb0000000ULL, gBootArgs->Video.v_baseAddr, (fbsize+0x3fff) & ~0x3fff, 3, 1, true);
-    gFramebuffer = (uint32_t*)(0xfb0000000ULL);
+    uint64_t fboff;
+    if(is_16k())
+    {
+        fboff  = fbbase & 0x3fffULL;
+        fbsize = (fbsize + fboff + 0x3fffULL) & ~0x3fffULL;
+    }
+    else
+    {
+        fboff  = fbbase & 0xfffULL;
+        fbsize = (fbsize + fboff + 0xfffULL) & ~0xfffULL;
+    }
+    map_range(0xfb0000000ULL, fbbase - fboff, fbsize, 3, 1, true);
+    gFramebuffer = (uint32_t*)(0xfb0000000ULL + fboff);
+
 
     height &= 0xfff0;
     scale_factor = 2;

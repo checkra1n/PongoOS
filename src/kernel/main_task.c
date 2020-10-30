@@ -71,7 +71,7 @@ void pongo_main_task() {
     mipi_init();
     
     /*
-        Initialize TrustZone driver
+        Initialize TrustZone drivers
      */
     tz_setup();
 

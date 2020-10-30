@@ -168,11 +168,9 @@ void help(const char * cmd, char* arg) {
     }
     lock_release(&command_lock);
 }
-void command_crashed() {
-    task_restart_and_link(task_current()); // restart
-}
 void command_init() {
     command_task = task_create("command", command_main);
     command_task->flags |= TASK_RESTART_ON_EXIT;
+    command_task->flags &= ~TASK_CAN_EXIT;
     command_register("help", "shows this help message", help);
 }

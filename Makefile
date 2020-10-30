@@ -18,7 +18,7 @@ ifeq ($(HOST_OS),Linux)
 endif
 endif
 
-PONGO_VERSION           := 2.1.0-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
+PONGO_VERSION           := 2.2.0-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
 ROOT                    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 SRC                     := $(ROOT)/src
 AUX                     := $(ROOT)/tools
@@ -37,7 +37,6 @@ PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPON
 STAGE3_ENTRY_C          := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.S patches.S demote_patch.S jump_to_image.S main.c)
 PONGO_C                 := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/kernel/support/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.S) $(wildcard $(SRC)/shell/*.c)
 PONGO_DRIVERS_C         := $(wildcard $(SRC)/drivers/*/*.c) $(wildcard $(SRC)/drivers/*/*.S) $(wildcard $(SRC)/linux/*/*.c) $(wildcard $(SRC)/linux/*.c) $(wildcard $(SRC)/lib/*/*.c)
-
 
 .PHONY: all clean
 

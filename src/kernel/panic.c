@@ -50,18 +50,21 @@ void panic(const char* str, ...) {
     else puts("unknown");
     int depth = 0;
 
-    puts("call stack:");
-    for(uint64_t *fp = __builtin_frame_address(0); fp; fp = (uint64_t*)fp[0])
+    iprintf("\nCall stack:\n");
+    uint64_t fpcopy[2];
+    for(uint64_t *fp = __builtin_frame_address(0); fp; fp = (uint64_t*)fpcopy[0])
     {
-        if (!(((uint64_t)fp) > ((uint64_t)(&task_current()->stack)) && ((uint64_t)fp) < ((uint64_t)(&task_current()->stack) + 0x2000))) {
+        if (memcpy_trap(fpcopy, fp, 0x10) == 0x10) {
+            iprintf("0x%016llx: fp 0x%016llx, lr 0x%016llx\n", ((uint64_t)fp), fpcopy[0], fpcopy[1]);
+        } else {
+            iprintf("couldn't access frame at %016llx, stopping here..,\n", (uint64_t)fp);
             break;
         }
-        iprintf("0x%016llx 0x%016llx\n", fp[0], fp[1]);
         depth++;
         if (depth > 64) {
-            fiprintf(stderr, "stack depth too large, stopping here...\n");
+            iprintf("stack depth too large, stopping here...\n");
         }
-    }
+   }
 
     puts("crashed in required task, resetting..");
     sleep(5);

@@ -84,6 +84,8 @@ void pongo_spin() {
 
 extern char is_masking_autoboot;
 void start_host_shell() {
+    task_current()->flags |= TASK_CAN_EXIT;
+
     is_masking_autoboot = 1;
     command_unregister("shell");
     command_unregister("autoboot");
@@ -174,6 +176,55 @@ void poke_cmd(const char* cmd, char* args) {
     *((uint32_t*)addr) = value;
 }
 
+void panic_cmd(const char* cmd, char* args) {
+    if (! *args) {
+        panic("panic called from shell");
+    } else {
+        panic(args);
+    }
+}
+
+static struct task* umtask = NULL;
+
+void spawn_cmd(const char* cmd, char* args) {
+    if (umtask) {
+        if (umtask->flags & TASK_LINKED) {
+            iprintf("umtask executing, wait for exit..\n");
+            return;
+        }
+        task_release(umtask);
+        umtask = NULL;
+    }
+    
+    if (! *args) {
+        iprintf("usage: spawn syscallnr [x0]\n");
+        return;
+    }
+    char* arg1 = command_tokenize(args, 0x1ff - (args - cmd));
+
+    uint64_t sysc = strtoull(args, NULL, 16);
+
+    umtask = task_create_extended("um", (void*)NULL, TASK_SPAWN|TASK_PREEMPT|TASK_CAN_EXIT, 0);
+    uint64_t addr = 0;
+    vm_allocate(umtask, &addr, 0x4000, VM_FLAGS_ANYWHERE);
+    uint64_t phys = ppage_alloc();
+    uint32_t* ins = phystokv(phys);
+    if (arg1)
+        umtask->initial_state[0] = strtoull(arg1, NULL, 16);
+
+    umtask->initial_state[15] = sysc;
+    ins[0] = 0xd4000841;
+    ins[1] = 0xd280002f;
+    ins[2] = 0xd4000841;
+    invalidate_icache();
+    
+    vm_space_map_page_physical_prot(umtask->vm_space, addr, phys, PROT_READ|PROT_WRITE|PROT_EXEC);
+
+    umtask->entry = (uint64_t)addr;
+    
+    task_link(umtask);
+
+}
 /*
 
     Name: shell_main
@@ -185,7 +236,9 @@ void shell_main() {
     /*
         Load command handler
     */
+    
     extern void task_list(const char *, char*);
+    command_register("panic", "calls panic()", panic_cmd);
     command_register("ps", "lists current tasks and irq handlers", task_list);
     command_register("ramdisk", "loads a ramdisk for xnu", ramdisk_cmd);
     command_register("bootr", "boot raw image", pongo_boot_raw);
@@ -195,6 +248,7 @@ void shell_main() {
     command_register("poke", "32bit mem write", poke_cmd);
     command_register("physdump", "dumps a page of phys", phys_page_dump);
     command_register("shell", "starts uart & usb based shell", start_host_shell);
+    command_register("spawn", "starts a usermode process", spawn_cmd);
     usbloader_init();
 
     /*

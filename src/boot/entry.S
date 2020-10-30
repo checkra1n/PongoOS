@@ -69,12 +69,53 @@ copyloop_3:
     ret
 
 start$l0:
-    sub sp, x5, #0x400
     mov x1, x0
     mov x0, x9
     mov x29, xzr
+    sub x5, x5, #0x400
+    and x5, x5, #~0xf
+    bl _set_exception_stack_core0
+    mov sp, x5
     bl _trampoline_entry
     b .
+
+.globl _setup_el1
+_setup_el1:
+    stp x29, x30, [sp, #-0x10]!
+    mov x20, x1
+    mov x21, x2
+    mrs x16, currentel
+    cmp x16, #0x4
+    b.eq el1_entry
+    cmp x16, #0xc
+    b.ne .
+
+el3_entry:
+
+    adr x16, _exception_vector_el3
+    msr vbar_el3, x16
+    mov x16, #0x430
+    msr scr_el3, x16
+    mov x16, #4
+    msr spsr_el3, x16
+    adr x16, el1_entry
+    msr elr_el3, x0
+    eret
+
+el1_entry:
+    blr x0
+    b .
+
+.globl _set_exception_stack_core0
+_set_exception_stack_core0:
+    msr spsel, #1
+    adrp x8, _exception_stack@PAGE
+    add x8, x8, _exception_stack@PAGEOFF
+    add x8, x8, #0x4000
+    and x8, x8, #~0xf
+    mov sp, x8
+    msr spsel, #0
+    ret
 
 .globl _smemcpy128
 _smemcpy128:
@@ -96,3 +137,46 @@ memset$continue:
 
 nullsub:
     ret
+
+.align 12
+.globl _exception_vector_el3
+_exception_vector_el3:
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    /* Lower EL with Aarch64 */
+    mov x18, #0xc
+    msr spsr_el3, x18
+    mrs x18, elr_el3
+    add x18, x18, #4
+    msr elr_el3, x18
+    eret
+
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+

@@ -60,7 +60,8 @@ struct task* irqvecs[0x200];
 void register_irq_handler(uint16_t irq_v, struct task* irq_handler)
 {
     if (irq_v >= 0x1ff) panic("invalid irq");
-    task_reference(irq_handler);
+    if (irqvecs[irq_v]) task_release(irqvecs[irq_v]);
+    if (irq_handler) task_reference(irq_handler);
     irqvecs[irq_v] = irq_handler;
 }
 
@@ -266,7 +267,6 @@ void task_crash_internal(const char* reason, va_list va) {
     fiprintf(stderr, "pongoOS: killing task |%s| due to crash: ", task_current()->name[0] ? task_current()->name : "<unknown>");
     vfiprintf(stderr, reason, va);
     putc('\n', stderr);
-    task_unlink(task_current());
     task_current()->flags |= TASK_HAS_CRASHED;
 
     task_exit_asserted();
@@ -288,6 +288,25 @@ void task_exit() {
     disable_interrupts();
     task_exit_asserted();
 }
+
+void task_critical_enter() {
+    struct task *t = task_current();
+    if(t)
+    {
+        t->critical_count++;
+    }
+}
+void task_critical_exit() {
+    struct task *t = task_current();
+    if(t)
+    {
+        if (!t->critical_count) {
+            panic("invalid call to task_critical_exit");
+        }
+        t->critical_count--;
+    }
+}
+
 void task_exit_asserted() {
     if (task_current()->flags & TASK_IRQ_HANDLER) {
         if (task_current()->flags & TASK_HAS_CRASHED) {
@@ -297,6 +316,9 @@ void task_exit_asserted() {
         }
     }
     task_current()->flags |= TASK_HAS_EXITED;
+    if (task_current()->critical_count) {
+        panic("crashed in critical section");
+    }
     if (!(task_current()->flags & TASK_CAN_EXIT)) {
         panic("required task exited!");
     }
@@ -306,22 +328,89 @@ void task_exit_asserted() {
     task_load_asserted(&sched_task);
     panic("never reached");
 }
+
+void task_spawn(struct task* initial_task) { // moves a task to a new addess space (EL0 task)
+    lock_take(&initial_task->task_lock);
+    if (initial_task->vm_space) {
+        initial_task->vm_space = vm_create(initial_task->vm_space); // consumes ref
+    } else {
+        initial_task->vm_space = vm_create(vm_reference(task_current()->vm_space)); // consumes ref
+    }
+    initial_task->user_stack = 0;
+    initial_task->ttbr0 = initial_task->vm_space->ttbr0;
+    initial_task->ttbr1 = initial_task->vm_space->ttbr1 | initial_task->vm_space->asid;
+    lock_release(&initial_task->task_lock);
+}
+
+extern void task_entry_j(void(*entry)(), uint64_t stack, void (*retn)(), uint64_t cpsr);
+void task_fault_stack(struct task* task) {
+    if (!task->user_stack) {
+        uint64_t addr = 0;
+        if (vm_space_allocate(task->vm_space, &addr, 0x40000, VM_FLAGS_ANYWHERE) != KERN_SUCCESS) panic("task_register_unlinked: couldn't allocate stack");
+
+        for (uint32_t i = 0x8000; i < 0x38000; i+= PAGE_SIZE) {
+            vm_space_map_page_physical_prot(task->vm_space, addr + i, ppage_alloc(), PROT_READ|PROT_WRITE);
+        }
+
+        task->user_stack = addr;
+        task->entry_stack = addr + 0x37800;
+        
+        flush_tlb();
+    }
+}
+int ct = 0;
 void task_entry() {
-    void (*entry)() = (void*)task_current()->entry;
-    entry();
-    task_exit();
+    struct task* task = task_current();
+    if (!task) panic("task_entry: no task");
+    task_fault_stack(task);
+    if (!task->entry_stack) {
+        panic("task_entry: no stack");
+    }
+    
+    if (task->vm_space == &kernel_vm_space) {
+        task->cpsr = 0x4; // EL1 SP0
+        
+        void (*entry)() = (void*)task->entry;
+        task_entry_j(entry, task->entry_stack, task_exit, task->cpsr);
+    } else {
+        task->cpsr = 0; // EL0
+        
+        void (*entry)() = (void*)task->entry;
+        task_entry_j(entry, task->entry_stack, 0, task->cpsr);
+    }
+    
+    panic("unreachable");
 }
 volatile uint32_t gPid = 1;
+void task_alloc_fast_stacks(struct task* task) {
+    if (!task->kernel_stack) {
+        task->kernel_stack = (uint64_t)alloc_contig(0x8000);
+    }
+    task->exception_stack = (uint64_t)task->kernel_stack + 0x3ff0;
+    task->exception_stack &= ~0xf;
+    task->el0_exception_stack = task->kernel_stack;
+}
+void task_set_entry(struct task* task) {
+    task_alloc_fast_stacks(task);
 
+    task->lr = (uint64_t)task_entry;
+    task->sp = (uint64_t)task->kernel_stack + 0x7ff0;
+    task->sp &= ~0xf;
+    task->ttbr0 = task->vm_space->ttbr0;
+    task->ttbr1 = task->vm_space->ttbr1 | task->vm_space->asid;
+}
 
+void task_restart(struct task* task) {
+    disable_interrupts();
+    memset(task, 0, offsetof(struct task, anchor));
+    task_set_entry(task);
+    task->gencount++;
+    task->flags &= ~(TASK_HAS_EXITED|TASK_HAS_CRASHED);
+    enable_interrupts();
+}
 void task_restart_and_link(struct task* task) {
     disable_interrupts();
-    task->sp = (uint64_t)(&task->anchor);
-    task->sp -= 0x80;
-    task->sp &= ~0xF;
-    task->lr = (uint64_t)task_entry;
-    memset(&task->x[0], 0, 30 * 8);
-    task->flags &= ~(TASK_HAS_EXITED|TASK_HAS_CRASHED);
+    task_restart(task);
     task_link(task);
     enable_interrupts();
 }
@@ -329,14 +418,17 @@ void task_restart_and_link(struct task* task) {
 
 void task_register_unlinked(struct task* task, void (*entry)()) {
     memset(task, 0, offsetof(struct task, anchor));
+
+    if (!task->vm_space)
+        task->vm_space = vm_reference(task_current()->vm_space);
+    
     task->refcount = TASK_REFCOUNT_GLOBAL;
-    task->sp = (uint64_t)(&task->anchor);
-    task->sp -= 0x80;
-    task->sp &= ~0xF;
+    task_set_entry(task);
     task->entry = (uint64_t)entry;
-    task->lr = (uint64_t)task_entry;
     task->flags &= TASK_WAS_LINKED | TASK_HAS_EXITED;
     task->flags |= TASK_PREEMPT;
+    task->gencount = 0;
+
     disable_interrupts();
     task->pid = gPid++;
     enable_interrupts();
@@ -378,15 +470,17 @@ void task_register_coop(struct task* task, void (*entry)()) {
 
 struct task* task_create(const char* name, void (*entry)()) {
     struct task* task = malloc(sizeof(struct task));
+    disable_interrupts();
     bzero((void*) task, sizeof(struct task));
     task_register(task, entry);
     strncpy(task->name, name, 32);
     task->refcount = 1;
+    enable_interrupts();
     return task;
 }
 struct task* task_create_extended(const char* name, void (*entry)(), int task_type, int arg) {
     task_type &= TASK_TYPE_MASK;
-    
+
     struct task* task = malloc(sizeof(struct task));
     bzero((void*) task, sizeof(struct task));
 
@@ -396,6 +490,13 @@ struct task* task_create_extended(const char* name, void (*entry)(), int task_ty
     task->flags &= ~TASK_PREEMPT;
     if (task_type & TASK_PREEMPT) task->flags |= TASK_PREEMPT;
     task->refcount = 1;
+
+    if (task_type & TASK_SPAWN) {
+        if (task_type & TASK_IRQ_HANDLER) {
+            panic("irq handlers must be bound to the kernel vmspace");
+        }
+        task_spawn(task);
+    }
     
     if ((task_type & TASK_IRQ_HANDLER) && arg) { /* register as IRQ handler */
         disable_interrupts();
@@ -408,6 +509,7 @@ struct task* task_create_extended(const char* name, void (*entry)(), int task_ty
         task_link(task);
         enable_interrupts();
     }
+
     return task;
 }
 void task_bind_to_irq(struct task* task, int irq) {
@@ -425,13 +527,15 @@ void task_release(struct task* task) {
     if (!task) return;
     if (task->refcount == TASK_REFCOUNT_GLOBAL) return;
     uint32_t refcount = __atomic_fetch_sub(&task->refcount, 1, __ATOMIC_SEQ_CST);
-    if (refcount == 0) {
+    if (refcount == 1) {
         disable_interrupts();
         if (task_current() == task) panic("trying to free the current task");
-        if (task->flags & TASK_IRQ_HANDLER) panic("can't free an IRQ handling task");
-        if (task->flags & TASK_LINKED) task_unlink(task);
-        free(task);
+        //fiprintf(stderr, "freeing task: %p\n", task);
+
+        task_real_unlink(task);
         enable_interrupts();
+        vm_release(task->vm_space);
+        free(task);
     }
 }
 
@@ -527,8 +631,24 @@ void task_set_sched_head(struct task* task) {
 */
 
 void task_unlink(struct task* task) {
+    bool should_release = false;
     disable_interrupts();
+    if ((task->flags & TASK_LINKED))
+        should_release = true;
     task->flags &= ~TASK_LINKED;
+    enable_interrupts();
+}
+
+void task_real_unlink(struct task* task) {
+    disable_interrupts();
+    if (task == pongo_sched_head) {
+        pongo_sched_head = task->next;
+    }
+    if (task->flags & TASK_WAS_LINKED) {
+        task->prev->next = task->next;
+        task->next->prev = task->prev;
+        task->flags &= ~(TASK_WAS_LINKED|TASK_LINKED);
+    }
     enable_interrupts();
 }
 

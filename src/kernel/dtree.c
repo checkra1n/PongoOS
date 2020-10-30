@@ -115,7 +115,7 @@ void* dt_prop(dt_node_t* node, const char* key, uint32_t* lenp)
 {
     dt_prop_cb_t arg = { key, NULL, 0 };
     dt_parse(node, -1, NULL, NULL, NULL, &dt_prop_cb, &arg);
-    if (arg.val)
+    if (arg.val && lenp)
         *lenp = arg.len;
     return arg.val;
 }

@@ -1835,7 +1835,7 @@ void usb_init() {
     }
 
     uint64_t dma_page_v = (uint64_t) alloc_contig(4 * DMA_BUFFER_SIZE);
-    uint64_t dma_page_p = vatophys(dma_page_v);
+    uint64_t dma_page_p = vatophys_static((void*)dma_page_v);
     bzero((void*)dma_page_v,4 * DMA_BUFFER_SIZE);
     cache_clean_and_invalidate((void*)dma_page_v, 4 * DMA_BUFFER_SIZE);
 
@@ -1894,7 +1894,7 @@ void usb_init() {
 }
 void usb_teardown() {
     if (!gSynopsysOTGBase) return;
-    gSynopsysOTGBase = 0;
+    reg_write(rGAHBCFG, 0x2e);
     *(volatile uint32_t*)(gSynopsysOTGBase + 0x4) &= ~2;
     clock_gate(reg3, 0);
     clock_gate(reg2, 0);

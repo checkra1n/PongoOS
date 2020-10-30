@@ -55,11 +55,7 @@ int pongo_fiq_handler() {
 */
 
 __attribute__((noinline)) void pongo_reinstall_vbar() {
-    if (get_el() == 1) {
-        set_vbar_el1((uint64_t)&exception_vector);
-    } else {
-        set_vbar_el3((uint64_t)&exception_vector);
-    }
+    set_vbar_el1((uint64_t)&exception_vector);
 }
 
 /*
@@ -118,6 +114,8 @@ void (*sep_boot_hook)(void);
 
 __attribute__((noinline)) void pongo_entry_cached()
 {
+    extern char preemption_over;
+    preemption_over = 1;
     gDeviceTree = (void*)((uint64_t)gBootArgs->deviceTreeP - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000 + kCacheableView);
     gIOBase = dt_get_u64_prop_i("arm-io", "ranges", 1);
     uint64_t max_video_addr = gBootArgs->Video.v_baseAddr + gBootArgs->Video.v_rowBytes * gBootArgs->Video.v_height;
@@ -156,17 +154,35 @@ __attribute__((noinline)) void pongo_entry_cached()
     */
 
     pongo_reinstall_vbar();
-    enable_interrupts();
+    
+    
+    extern void _task_set_current(struct task* t);
+    
+    task_alloc_fast_stacks(&sched_task);
+    
+    task_link(&sched_task);
+    _task_set_current(&sched_task);
+    // Setup VM
+    
+    vm_init();
 
     /*
         Draw logo and set up framebuffer
     */
 
     screen_init();
-
+    
     /*
         Set up main task for scheduling
     */
+    
+    extern struct vm_space kernel_vm_space;
+    task_current()->vm_space = &kernel_vm_space;
+    preemption_over = 0;
+    task_current()->cpsr = 0x205;
+    task_current()->ttbr0 = kernel_vm_space.ttbr0;
+    task_current()->ttbr1 = kernel_vm_space.ttbr1 | kernel_vm_space.asid;
+    
     void pongo_main_task();
     task_register(&pongo_task, pongo_main_task);
     task_link(&pongo_task);
@@ -175,10 +191,8 @@ __attribute__((noinline)) void pongo_entry_cached()
         Set up FIQ timer
     */
 
-    extern void _task_set_current(struct task* t);
 
-    task_link(&sched_task);
-    _task_set_current(&sched_task);
+    enable_interrupts();
 
     timer_init();
     timer_rearm();
@@ -207,8 +221,8 @@ __attribute__((noinline)) void pongo_entry_cached()
         }
     }
     timer_disable();
+    usb_teardown();
     disable_interrupts();
-    extern char preemption_over;
     preemption_over = 1;
     
     while (gBootFlag)
@@ -247,9 +261,12 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
     gEntryPoint = entryp;
     lowlevel_setup(gBootArgs->physBase & 0xFFFFFFFF, 0x1f000000);
     rebase_pc(kCacheableView - 0x800000000);
+    extern void set_exception_stack_core0();
+    set_exception_stack_core0();
     pongo_entry_cached();
     gFramebuffer = (uint32_t*)gBootArgs->Video.v_baseAddr;
     rebase_pc(0x800000000 - kCacheableView);
+    set_exception_stack_core0();
     lowlevel_cleanup();
     if(gBootFlag == BOOT_FLAG_RAW)
     {
