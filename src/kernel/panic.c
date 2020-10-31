@@ -70,7 +70,6 @@ void panic(const char* str, ...) {
         }
    }
 
-    puts("crashed in required task, resetting..");
     sleep(5);
     wdt_reset();
 }
