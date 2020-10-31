@@ -20,20 +20,53 @@
 //  Copyright (c) 2019-2020 checkra1n team
 //  This file is part of pongoOS.
 //
+#ifndef vfs_h
+#define vfs_h
+
 #include <pongo.h>
 
-uint64_t heap_base = 0xe00000000;
-uint64_t heap_cursor = 0xe00000000;
-uint64_t heap_end = 0xe00000000;
-extern struct vm_space kernel_vm_space;
-caddr_t _sbrk(int size) {
-    disable_interrupts();
-    uint64_t cursor_copy = heap_cursor;
-    heap_cursor += size;
-    while (heap_cursor > heap_end) {
-        vm_space_map_page_physical_prot(&kernel_vm_space, heap_end, ppage_alloc(), PROT_READ|PROT_WRITE|PROT_EXEC|PROT_KERN_ONLY);
-        heap_end += 0x4000;
-    }
-    enable_interrupts();
-    return (caddr_t)cursor_copy;
-}
+#define FILETABLE_MAX_SIZE 512
+
+struct file;
+
+struct fileops {
+    void (*initialize)(struct file* file);
+    void (*destroy)(struct file* file);
+};
+
+struct vnode {
+    
+};
+
+struct file {
+    lock lock;
+    uint32_t refcount;
+    struct fileops* fileops;
+    void* fileinfo;
+};
+
+struct filedesc {
+    struct file* file;
+    uint32_t refcount;
+};
+
+struct filetable {
+    struct filedesc** file_table;
+    uint32_t file_count;
+    uint32_t refcount;
+};
+
+void filetable_reference(struct filetable* filetable);
+void filetable_release(struct filetable* filetable);
+
+void filedesc_reference(struct filedesc* filetable);
+void filedesc_release(struct filedesc* filetable);
+
+void file_reference(struct file* filetable);
+void file_release(struct file* filetable);
+
+struct file* file_create();
+struct filedesc* filedesc_create(struct file* file);
+struct filetable* filetable_create(uint32_t size);
+
+#endif

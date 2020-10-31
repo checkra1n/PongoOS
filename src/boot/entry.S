@@ -160,9 +160,6 @@ _exception_vector_el3:
     /* Lower EL with Aarch64 */
     mov x18, #0xc
     msr spsr_el3, x18
-    mrs x18, elr_el3
-    add x18, x18, #4
-    msr elr_el3, x18
     eret
 
 .balign 128

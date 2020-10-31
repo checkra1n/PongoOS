@@ -184,18 +184,7 @@ void panic_cmd(const char* cmd, char* args) {
     }
 }
 
-static struct task* umtask = NULL;
-
 void spawn_cmd(const char* cmd, char* args) {
-    if (umtask) {
-        if (umtask->flags & TASK_LINKED) {
-            iprintf("umtask executing, wait for exit..\n");
-            return;
-        }
-        task_release(umtask);
-        umtask = NULL;
-    }
-    
     if (! *args) {
         iprintf("usage: spawn syscallnr [x0]\n");
         return;
@@ -204,27 +193,52 @@ void spawn_cmd(const char* cmd, char* args) {
 
     uint64_t sysc = strtoull(args, NULL, 16);
 
-    umtask = task_create_extended("um", (void*)NULL, TASK_SPAWN|TASK_PREEMPT|TASK_CAN_EXIT, 0);
-    uint64_t addr = 0;
-    vm_allocate(umtask, &addr, 0x4000, VM_FLAGS_ANYWHERE);
+    uint64_t shc_addr = 0;
+    
+    struct proc* umproc = proc_create(NULL, "usermode", 0);
+    vm_allocate(umproc->vm_space, &shc_addr, 0x4000, VM_FLAGS_ANYWHERE | VM_FLAGS_NOMAP);
     uint64_t phys = ppage_alloc();
     uint32_t* ins = phystokv(phys);
+    int ic = 0;
+    ins[ic++] = 0xa9bf7bfd;
+    ins[ic++] = 0xd4000841;
+    ins[ic++] = 0xd280002f;
+    ins[ic++] = 0xd4000841;
+    ins[ic++] = 0xa8c17bfd;
+    ins[ic++] = 0xd65f03c0;
+    
+    invalidate_icache();
+    vm_space_map_page_physical_prot(umproc->vm_space, shc_addr, phys, PROT_READ | PROT_WRITE | PROT_EXEC);
+    
+    struct task* umtask = proc_create_task(umproc, (void*)shc_addr);
+
     if (arg1)
         umtask->initial_state[0] = strtoull(arg1, NULL, 16);
 
     umtask->initial_state[15] = sysc;
-    ins[0] = 0xd4000841;
-    ins[1] = 0xd280002f;
-    ins[2] = 0xd4000841;
-    invalidate_icache();
     
-    vm_space_map_page_physical_prot(umtask->vm_space, addr, phys, PROT_READ|PROT_WRITE|PROT_EXEC);
-
-    umtask->entry = (uint64_t)addr;
+    task_link(umtask); // implicitly consumes the reference (ie. once the task exits, it will drop the last reference and get free'd)
     
-    task_link(umtask);
-
+    proc_release(umproc); // the proc will be held alive by the reference in the task, which will be dropped once it gets free'd
 }
+
+void paging_cmd(const char* cmd, char* args) {
+    uint64_t addr = 0;
+    vm_allocate(task_current()->vm_space, &addr, 0x8000, VM_FLAGS_ANYWHERE);
+    *(uint32_t*)(addr + 0x3ffe) = 0x41414141;
+    iprintf("fault-in successful!\n");
+}
+int recurse_me(int x) { // we need some actual code or the compiler will optimize this out
+    int rv = 0;
+    if (x & 1)
+        rv += recurse_me(x + 2);
+    iprintf("pls do not optimise me out: %d\n", rv); // side-effecting, reads rv, which depends on actually recursing on recurse_times
+    return rv;
+}
+void recursion_cmd(const char* cmd, char* args) {
+    recurse_me(10001);
+}
+
 /*
 
     Name: shell_main
@@ -249,6 +263,8 @@ void shell_main() {
     command_register("physdump", "dumps a page of phys", phys_page_dump);
     command_register("shell", "starts uart & usb based shell", start_host_shell);
     command_register("spawn", "starts a usermode process", spawn_cmd);
+    command_register("paging", "tests paging", paging_cmd);
+    command_register("recursion", "tests stack guards", recursion_cmd);
     usbloader_init();
 
     /*

@@ -21,36 +21,11 @@
 //  This file is part of pongoOS.
 //
 #include <pongo.h>
-static lock malloc_lock, malloc_lock_temp;
-static int malloc_lock_depth;
-static struct task* malloc_lock_owner;
-extern char preemption_over;
 
 void __malloc_lock(struct _reent * unused) {
-    if (preemption_over) return;
-    
-    lock_take(&malloc_lock_temp);
-    
-    if (malloc_lock_owner != task_current()) {
-        lock_take(&malloc_lock);
-    }
-    malloc_lock_depth++;
-    malloc_lock_owner = task_current();
-
-    lock_release(&malloc_lock_temp);
+    disable_interrupts();
 }
 
 void __malloc_unlock(struct _reent * unused) {
-    if (preemption_over) return;
-    
-    lock_take(&malloc_lock_temp);
-    malloc_lock_depth--;
-    if (!malloc_lock_depth) {
-        if (malloc_lock_owner != task_current()) {
-            panic("invalid lock usage in malloc()");
-        }
-        lock_release(&malloc_lock);
-        malloc_lock_owner = NULL;
-    }
-    lock_release(&malloc_lock_temp);
+    enable_interrupts();
 }

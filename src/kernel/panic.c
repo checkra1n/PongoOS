@@ -48,6 +48,10 @@ void panic(const char* str, ...) {
     if (t && t->name[0])
         puts(t->name);
     else puts("unknown");
+    iprintf("\ncrashed process: ");
+    if (t && t->proc && t->proc->name[0])
+        puts(t->proc->name);
+    else puts("unknown");
     int depth = 0;
 
     iprintf("\nCall stack:\n");

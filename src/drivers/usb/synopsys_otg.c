@@ -1443,12 +1443,15 @@ static void
 ep0_out_interrupt() {
 	uint32_t doepint = reg_read(rDOEPINT(0));
 	reg_write(rDOEPINT(0), doepint);
-	bool is_setup = !!(gSynopsysCoreVersion < 0x300a ? (doepint & 0x8) : (doepint & 0x8000));
+    bool is_setup = !!(doepint & 0x8008);
 	bool is_data  = !is_setup && !!(doepint & 0x1);
 	if (is_setup) {
 		// We've received a setup packet.
+
+        spin(1); // this is required because this interrupt is asserted *before* the DMA transfer is complete on some devices.. ugh
         struct setup_packet *setup = ep_out_recv_setup_done(&ep0_out);
-		ep0.setup_packet = *setup;
+        ep0.setup_packet = *setup;
+
 		ep0.setup_packet_pending = true;
 		ep0.data_out_stage_callback = NULL;
 		ep0.status_out_stage_callback = NULL;
@@ -1456,7 +1459,8 @@ ep0_out_interrupt() {
 	if ((doepint & 0x8) && ep0.setup_packet_pending) {
 		// The SETUP stage is done, so process the queued setup packet.
 		ep0.setup_packet_pending = false;
-		bool success = false;
+
+        bool success = false;
 		// Only begin processing the setup packet if we will have enough room for the whole
 		// transfer. We could break down the layering to allow even bigger contiguous
 		// transfers, but this works fine for me.
@@ -1895,8 +1899,5 @@ void usb_init() {
 void usb_teardown() {
     if (!gSynopsysOTGBase) return;
     reg_write(rGAHBCFG, 0x2e);
-    *(volatile uint32_t*)(gSynopsysOTGBase + 0x4) &= ~2;
-    clock_gate(reg3, 0);
-    clock_gate(reg2, 0);
-    clock_gate(reg1, 0);
+    reg_or(rDCTL, 0x2);
 }

@@ -22,15 +22,17 @@
 //
 #ifdef AUTOBOOT
 #include <pongo.h>
-
+uint64_t* autoboot_block;
 void pongo_autoboot()
 {
-	uint64_t* autoboot_block = (uint64_t*)0x419000000;
 	if (autoboot_block[0] == 0x746F6F626F747561) {
-                memcpy(loader_xfer_recv_data, &autoboot_block[2], (uint32_t)autoboot_block[1]);
-                loader_xfer_recv_count = (uint32_t)autoboot_block[1];
-                autoboot_count = loader_xfer_recv_count;
-                queue_rx_string("modload\nautoboot\n");
+        resize_loader_xfer_data((uint32_t)autoboot_block[1]);
+        memcpy(loader_xfer_recv_data, &autoboot_block[2], (uint32_t)autoboot_block[1]);
+        loader_xfer_recv_count = (uint32_t)autoboot_block[1];
+        autoboot_count = loader_xfer_recv_count;
+        phys_force_free(vatophys((uint64_t)autoboot_block), (autoboot_block[1] + 0x20 + 0x3fff) & ~0x3fff);
+
+        queue_rx_string("modload\nautoboot\n");
 	}
 }
 

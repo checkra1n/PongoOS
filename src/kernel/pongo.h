@@ -141,6 +141,8 @@ extern void (*sepfw_kpf_hook)(void* sepfw_bytes, size_t sepfw_size);
 #define TASK_HAS_CRASHED 128
 #define TASK_RESTART_ON_EXIT 256
 #define TASK_SPAWN 512
+#define TASK_FROM_PROC 1024
+#define TASK_PLEASE_DEREF 2048
 
 #define TASK_TYPE_MASK TASK_IRQ_HANDLER|TASK_PREEMPT|TASK_LINKED|TASK_CAN_EXIT|TASK_RESTART_ON_EXIT|TASK_SPAWN
 #define TASK_REFCOUNT_GLOBAL 0x7fffffff
@@ -152,6 +154,11 @@ extern struct vm_space kernel_vm_space;
 
 #define VM_SPACE_SIZE 0x100000000
 #define VM_SPACE_BASE 0xFFFFFFFE00000000
+#define PAGING_INFO_ALLOC_ON_FAULT_MAGIC 0x00000000efef0008ULL
+#define PAGING_INFO_ALLOC_ON_FAULT_MASK  0x00000000ffffffffULL
+#define PAGING_INFO_ALLOC_ON_FAULT_INFO_MASK  0x000000ff00000000ULL
+#define PAGING_INFO_ALLOC_ON_FAULT_INFO_GET(x) ((x & PAGING_INFO_ALLOC_ON_FAULT_INFO_MASK) >> 32ULL)
+#define PAGING_INFO_ALLOC_ON_FAULT_INFO_SET(to, x) to = ((to & ~PAGING_INFO_ALLOC_ON_FAULT_INFO_MASK) | ((((uint64_t)x) << 32ULL) & PAGING_INFO_ALLOC_ON_FAULT_INFO_MASK));
 
 typedef enum {
     KERN_SUCCESS,
@@ -161,7 +168,7 @@ typedef enum {
 typedef enum {
     VM_FLAGS_ANYWHERE = 0,
     VM_FLAGS_FIXED = 1,
-    
+    VM_FLAGS_NOMAP = 2 // only reserves the VM space without doing anything with the lower level MM. call vm_space_map_page_physical_prot to actually associate a physical page manually! without this, pages will be populated on PF
 } vm_flags_t;
 typedef enum {
     PROT_READ = 1,
@@ -173,113 +180,39 @@ typedef enum {
 } vm_protect_t;
 
 #ifdef PONGO_PRIVATE
-union tte
-{
-    struct
-    {
-        uint64_t valid :  1,
-                 table :  1,
-                 attr  :  3,
-                 ns    :  1,
-                 ap    :  2,
-                 sh    :  2,
-                 af    :  1,
-                 nG    :  1,
-                 oa    : 36,
-                 res00 :  3,
-                 dbm   :  1,
-                 cont  :  1,
-                 pxn   :  1,
-                 uxn   :  1,
-                 ign0  :  4,
-                 pbha  :  4,
-                 ign1  :  1;
-    };
-    struct
-    {
-        uint64_t res01  : 12,
-                 oahigh :  4,
-                 nT     :  1,
-                 res02  : 42,
-                 pxntab :  1,
-                 uxntab :  1,
-                 aptab  :  2,
-                 nstab  :  1;
-    };
-    uint64_t u64;
-};
-
-struct vm_space {
-    uint64_t ttbr0;
-    uint64_t ttbr1;
-    uint64_t vm_space_base;
-    uint64_t vm_space_end;
-    uint8_t* vm_space_table;
-    lock vm_space_lock;
-    uint32_t refcount;
-    struct vm_space* parent;
-    uint64_t asid;
-};
-extern void vm_init();
-extern struct vm_space* vm_reference(struct vm_space* vmspace);
-extern void vm_release(struct vm_space* vmspace);
-extern struct vm_space* vm_create(struct vm_space* parent);
-struct task {
-    uint64_t x[30];
-    uint64_t lr;
-    uint64_t sp;
-    uint64_t runcnt;
-    uint64_t real_lr;
-    uint64_t fp[20];
-    uint64_t cpsr;
-    uint64_t exception_stack;
-    uint64_t is_spsel1;
-    uint64_t ttbr1; // usermode
-    uint64_t ttbr0; // ignored for now
-    struct task* irq_ret;
-    void* task_ctx;
-    uint64_t irq_count;
-    uint32_t irq_type;
-    uint64_t wait_until;
-    uint32_t sched_count;
-    struct task* eq_next;
-    uint64_t anchor[0];
-    uint64_t el0_exception_stack;
-    uint64_t pad;
-    uint64_t initial_state[30];
-    uint64_t t_flags; // task-specific flags, not used by task subsystem if not for internal tasks
-    char name[32];
-    uint32_t flags;
-    struct task* next;
-    struct task* prev;
-    void (*exit_callback)();
-    uint32_t refcount;
-    int32_t critical_count;
-    void (*fault_catch)();
-    struct vm_space* vm_space;
-    uint64_t user_stack;
-    uint64_t entry_stack;
-    uint64_t kernel_stack;
-    uint64_t entry;
-    uint32_t pid;
-    uint32_t gencount;
-    lock task_lock;
-};
-extern void map_range_map(uint64_t* tt0, uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite, uint64_t paging_info, vm_protect_t prot, bool is_tt1);
-extern void task_alloc_fast_stacks(struct task* task);
+#import "vfs.h"
+#import "task.h"
 #else
+struct proc;
 struct task;
 struct vm_space;
 #endif
 #define PAGE_SIZE 0x4000
 #define PAGE_MASK 0x3FFF
+extern struct vm_space* vm_reference(struct vm_space* vmspace);
+extern void vm_release(struct vm_space* vmspace);
+extern struct vm_space* vm_create(struct vm_space* parent);
+extern struct proc* proc_create(struct proc* parent, const char* proc_name, uint32_t flags);
+extern void proc_reference(struct proc*);
+extern void proc_release(struct proc*);
+extern struct task* proc_create_task(struct proc* proc, void* entrypoint);
+#define PROC_NO_VM 1
+extern uint32_t loader_xfer_recv_size;
+extern void resize_loader_xfer_data(uint32_t newsz);
+extern bool vm_fault(struct vm_space* vmspace, uint64_t vma, vm_protect_t fault_prot);
+extern err_t map_physical_range(struct vm_space* vmspace, uint64_t* va, uint64_t pa, uint32_t size, vm_flags_t flags, vm_protect_t prot);
+extern struct vm_space* task_vm_space(struct task*);
+extern void map_range_map(uint64_t* tt0, uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite, uint64_t paging_info, vm_protect_t prot, bool is_tt1);
 extern err_t vm_space_map_page_physical_prot(struct vm_space* vmspace, uint64_t vaddr, uint64_t physical, vm_protect_t prot);
 extern uint64_t ppage_alloc();
 extern void ppage_free(uint64_t page);
-extern err_t vm_allocate(struct task* task, uint64_t* addr, uint64_t size, vm_flags_t flags);
-extern err_t vm_space_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_flags_t flags);
-extern err_t vm_deallocate(struct task* task, uint64_t addr, uint64_t size);
-extern err_t vm_space_deallocate(struct vm_space* vmspace, uint64_t addr, uint64_t size);
+extern void* page_alloc();
+extern void page_free(void* page);
+extern void* alloc_contig(uint32_t size);
+extern void free_contig(void* base, uint32_t size);
+extern void free_phys(uint64_t base, uint32_t size);
+extern err_t vm_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_flags_t flags);
+extern err_t vm_deallocate(struct vm_space* vmspace, uint64_t addr, uint64_t size);
 extern void vm_flush(struct vm_space* fl);
 extern void vm_flush_by_addr(struct vm_space* fl, uint64_t va);
 extern size_t memcpy_trap(void* dest, void* src, size_t size);
@@ -297,6 +230,12 @@ extern uint32_t ramdisk_size;
 extern char soc_name[9];
 extern uint32_t socnum;
 extern uint64_t vatophys_static(void* kva); // only safe to use with phystokva or alloc_contig's return value
+extern uint32_t phys_get_entry(uint64_t pa);
+extern void phys_set_entry(uint64_t pa, uint32_t val);
+extern void mark_phys_wired(uint64_t pa, uint64_t size);
+extern void phys_force_free(uint64_t pa, uint64_t size);
+extern void phys_reference(uint64_t pa, uint64_t size);
+extern void phys_dereference(uint64_t pa, uint64_t size);
 
 typedef struct xnu_pf_range {
     uint64_t va;
@@ -396,7 +335,7 @@ extern void task_restart_and_link(struct task* task);
 extern void task_exit_asserted();
 extern void task_crash_asserted(const char* reason, ...);
 extern struct task* task_create(const char* name, void (*entry)());
-extern struct task* task_create_extended(const char* name, void (*entry)(), int task_type, int arg);
+extern struct task* task_create_extended(const char* name, void (*entry)(), int task_type, uint64_t arg);
 extern void task_reference(struct task* task);
 extern void task_release(struct task* task);
 extern void event_wait_asserted(struct event* ev);

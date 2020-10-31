@@ -84,8 +84,12 @@ char pongo_sched_tick() {
         goto out;
     }
     if (pongo_sched_head) {
-        struct task* tsk = pongo_sched_head;
+        struct task* volatile tsk = pongo_sched_head;
         pongo_sched_head = pongo_sched_head->next;
+        if (tsk->flags & TASK_PLEASE_DEREF) {
+            tsk->flags &= ~TASK_PLEASE_DEREF;
+            task_release(tsk);
+        } else
         if (tsk->flags & TASK_LINKED) {
             _task_switch_asserted(tsk);
             disable_interrupts();
@@ -178,19 +182,21 @@ __attribute__((noinline)) void pongo_entry_cached()
     
     extern struct vm_space kernel_vm_space;
     task_current()->vm_space = &kernel_vm_space;
-    preemption_over = 0;
     task_current()->cpsr = 0x205;
     task_current()->ttbr0 = kernel_vm_space.ttbr0;
     task_current()->ttbr1 = kernel_vm_space.ttbr1 | kernel_vm_space.asid;
+    task_current()->proc = proc_create(NULL, "kernel", PROC_NO_VM);
+    task_current()->proc->vm_space = &kernel_vm_space;
     
     void pongo_main_task();
     task_register(&pongo_task, pongo_main_task);
     task_link(&pongo_task);
-
+    
     /*
         Set up FIQ timer
     */
 
+    preemption_over = 0;
 
     enable_interrupts();
 

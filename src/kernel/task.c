@@ -172,15 +172,21 @@ retry:;
             ++ni;
         }
     }
+    extern uint64_t ppages;
+    extern uint64_t free_pages;
+    extern uint64_t wired_pages;
+    extern uint64_t pages_in_freelist;
+    extern uint64_t paging_requests;
     // Get these too while we're uninterruptible
     uint64_t a = *(volatile uint64_t*)&served_irqs,
              b = *(volatile uint64_t*)&fiqCount,
              c = *(volatile uint64_t*)&preemption_counter,
-             d = (get_ticks() - gBootTimeTicks) / (2400 * 1000);
+             d = (get_ticks() - gBootTimeTicks) / (2400 * 1000),
+             e = ppages, f = free_pages, g = wired_pages, h = pages_in_freelist, i = paging_requests;
     enable_interrupts();
 
     // Now dump it all out
-    iprintf("served irqs: %lld, caught fiqs: %lld, preempt: %lld, uptime: %lld.%llds\n", a, b, c, d/10, d%10);
+    iprintf("=+= System Information ===\n | served irqs: %lld, caught fiqs: %lld, preempt: %lld, uptime: %lld.%llds\n | free pages: %lld (%lld MB), inuse: %lld (%lld MB), paged: %lld\n | fastbin: %lld (%lld MB), wired: %lld (%lld MB), total: %lld (%lld MB)\n=+=    Process List    ===\n", a, b, c, d/10, d%10, f, f / 0x40, e - f, (e - f) / 0x40, i, h, h / 0x40, g, g / 0x40, e, e / 0x40);
     for(int i = 0; i < ntasks; ++i)
     {
         task_info_t *t = &tasks_copy[i];
@@ -264,7 +270,7 @@ void task_wait() {
 }
 
 void task_crash_internal(const char* reason, va_list va) {
-    fiprintf(stderr, "pongoOS: killing task |%s| due to crash: ", task_current()->name[0] ? task_current()->name : "<unknown>");
+    fiprintf(stderr, "pongoOS: killing task |%s| (proc: %s): ", task_current()->name[0] ? task_current()->name : "<unknown>", task_current()->proc ? task_current()->proc->name : "<unknown>");
     vfiprintf(stderr, reason, va);
     putc('\n', stderr);
     task_current()->flags |= TASK_HAS_CRASHED;
@@ -325,6 +331,9 @@ void task_exit_asserted() {
     task_unlink(task_current());
     if (task_current()->exit_callback) task_current()->exit_callback();
     if (task_current()->flags & TASK_RESTART_ON_EXIT) task_restart_and_link(task_current());
+    else
+        task_current()->flags |= TASK_PLEASE_DEREF;
+
     task_load_asserted(&sched_task);
     panic("never reached");
 }
@@ -332,30 +341,35 @@ void task_exit_asserted() {
 void task_spawn(struct task* initial_task) { // moves a task to a new addess space (EL0 task)
     lock_take(&initial_task->task_lock);
     if (initial_task->vm_space) {
-        initial_task->vm_space = vm_create(initial_task->vm_space); // consumes ref
+        initial_task->vm_space = vm_create(initial_task->vm_space);
     } else {
-        initial_task->vm_space = vm_create(vm_reference(task_current()->vm_space)); // consumes ref
+        initial_task->vm_space = vm_create(NULL);
     }
     initial_task->user_stack = 0;
     initial_task->ttbr0 = initial_task->vm_space->ttbr0;
     initial_task->ttbr1 = initial_task->vm_space->ttbr1 | initial_task->vm_space->asid;
     lock_release(&initial_task->task_lock);
 }
+struct task* proc_create_task(struct proc* proc, void* entryp) {
+    struct task* task = task_create_extended(proc->name, (void*)entryp, TASK_PREEMPT|TASK_CAN_EXIT|TASK_FROM_PROC, (uint64_t)proc);
+    lock_take(&proc->lock);
+    task->proc_task_list_next = proc->task_list;
+    proc->task_list = task;
+    lock_release(&proc->lock);
+    return task;
+}
 
 extern void task_entry_j(void(*entry)(), uint64_t stack, void (*retn)(), uint64_t cpsr);
 void task_fault_stack(struct task* task) {
     if (!task->user_stack) {
         uint64_t addr = 0;
-        if (vm_space_allocate(task->vm_space, &addr, 0x40000, VM_FLAGS_ANYWHERE) != KERN_SUCCESS) panic("task_register_unlinked: couldn't allocate stack");
-
-        for (uint32_t i = 0x8000; i < 0x38000; i+= PAGE_SIZE) {
-            vm_space_map_page_physical_prot(task->vm_space, addr + i, ppage_alloc(), PROT_READ|PROT_WRITE);
-        }
-
+        if (vm_allocate(task->vm_space, &addr, 0x40000, VM_FLAGS_ANYWHERE) != KERN_SUCCESS) panic("task_register_unlinked: couldn't allocate stack");
+        
+        vm_space_map_page_physical_prot(task->vm_space, addr, 0, 0); // place guard page
+        vm_space_map_page_physical_prot(task->vm_space, addr+0x3c000, 0, 0); // place guard page
+        
         task->user_stack = addr;
         task->entry_stack = addr + 0x37800;
-        
-        flush_tlb();
     }
 }
 int ct = 0;
@@ -384,17 +398,21 @@ void task_entry() {
 volatile uint32_t gPid = 1;
 void task_alloc_fast_stacks(struct task* task) {
     if (!task->kernel_stack) {
-        task->kernel_stack = (uint64_t)alloc_contig(0x8000);
+        task->kernel_stack = (uint64_t)page_alloc();
     }
-    task->exception_stack = (uint64_t)task->kernel_stack + 0x3ff0;
+    if (!task->exception_stack_top) {
+        task->exception_stack_top = (uint64_t)page_alloc();
+    }
+    task->exception_stack = (uint64_t)task->exception_stack_top + 0x3ff0;
     task->exception_stack &= ~0xf;
-    task->el0_exception_stack = task->kernel_stack;
+    task->el0_exception_stack = task->kernel_stack + 0x3ff0;
+    task->el0_exception_stack &= ~0xf;
 }
 void task_set_entry(struct task* task) {
     task_alloc_fast_stacks(task);
 
     task->lr = (uint64_t)task_entry;
-    task->sp = (uint64_t)task->kernel_stack + 0x7ff0;
+    task->sp = (uint64_t)task->kernel_stack + 0x3ff0;
     task->sp &= ~0xf;
     task->ttbr0 = task->vm_space->ttbr0;
     task->ttbr1 = task->vm_space->ttbr1 | task->vm_space->asid;
@@ -419,8 +437,15 @@ void task_restart_and_link(struct task* task) {
 void task_register_unlinked(struct task* task, void (*entry)()) {
     memset(task, 0, offsetof(struct task, anchor));
 
-    if (!task->vm_space)
-        task->vm_space = vm_reference(task_current()->vm_space);
+    if (task->proc) {
+        if (!task->vm_space)
+            task->vm_space = vm_reference(task->proc->vm_space);
+    } else {
+        if (!task->vm_space)
+            task->vm_space = vm_reference(task_current()->vm_space);
+        task->proc = task_current()->proc;
+        proc_reference(task->proc);
+    }
     
     task->refcount = TASK_REFCOUNT_GLOBAL;
     task_set_entry(task);
@@ -478,12 +503,20 @@ struct task* task_create(const char* name, void (*entry)()) {
     enable_interrupts();
     return task;
 }
-struct task* task_create_extended(const char* name, void (*entry)(), int task_type, int arg) {
+struct task* task_create_extended(const char* name, void (*entry)(), int task_type, uint64_t arg) {
+    struct proc* proc = task_current()->proc;
+    if (task_type & TASK_FROM_PROC) {
+        proc = (struct proc*) arg;
+        arg = 0;
+    }
+    
     task_type &= TASK_TYPE_MASK;
 
     struct task* task = malloc(sizeof(struct task));
     bzero((void*) task, sizeof(struct task));
-
+    
+    proc_reference(proc);
+    task->proc = proc;
     task_register_unlinked(task, entry);
     strncpy(task->name, name, 32);
     task->flags |= task_type & ~TASK_LINKED;
@@ -530,12 +563,27 @@ void task_release(struct task* task) {
     if (refcount == 1) {
         disable_interrupts();
         if (task_current() == task) panic("trying to free the current task");
-        //fiprintf(stderr, "freeing task: %p\n", task);
-
+#if DEBUG_REFCOUNT
+        fiprintf(stderr, "freeing task: %p (%s)\n", task, task->name);
+#endif
+        if (task->proc) {
+            struct task** el = &task->proc->task_list;
+            while (*el) {
+                if (*el == task) {
+                    *el = task->proc_task_list_next;
+                    break;
+                }
+                el = &((*el)->proc_task_list_next);
+            }
+        }
+        page_free((void*)task->kernel_stack);
+        page_free((void*)task->exception_stack_top);
+        vm_deallocate(task->vm_space, task->user_stack, 0x40000);
         task_real_unlink(task);
-        enable_interrupts();
         vm_release(task->vm_space);
+        proc_release(task->proc);
         free(task);
+        enable_interrupts();
     }
 }
 
@@ -609,6 +657,24 @@ void task_link(struct task* task) {
     enable_interrupts();
 }
 
+void task_real_unlink(struct task* task) {
+    disable_interrupts();
+    if (task->flags & TASK_WAS_LINKED) {
+        if (task == pongo_sched_head) {
+            if (task == task->next) {
+                pongo_sched_head = NULL;
+            } else {
+                pongo_sched_head = task->next;
+            }
+        }
+
+        task->prev->next = task->next;
+        task->next->prev = task->prev;
+        task->flags &= ~(TASK_WAS_LINKED|TASK_LINKED);
+    }
+    enable_interrupts();
+}
+
 /*
 
     Name: task_set_sched_head
@@ -631,24 +697,8 @@ void task_set_sched_head(struct task* task) {
 */
 
 void task_unlink(struct task* task) {
-    bool should_release = false;
     disable_interrupts();
-    if ((task->flags & TASK_LINKED))
-        should_release = true;
     task->flags &= ~TASK_LINKED;
-    enable_interrupts();
-}
-
-void task_real_unlink(struct task* task) {
-    disable_interrupts();
-    if (task == pongo_sched_head) {
-        pongo_sched_head = task->next;
-    }
-    if (task->flags & TASK_WAS_LINKED) {
-        task->prev->next = task->next;
-        task->next->prev = task->prev;
-        task->flags &= ~(TASK_WAS_LINKED|TASK_LINKED);
-    }
     enable_interrupts();
 }
 
@@ -674,4 +724,48 @@ void event_fire(struct event* ev) {
     }
     ev->task_head = NULL;
     enable_interrupts();
+}
+
+struct proc* proc_create(struct proc* parent, const char* procname, uint32_t flags) {
+    struct proc* proc = malloc(sizeof(struct proc));
+    bzero(proc, sizeof(struct proc));
+    strncpy(proc->name, procname, 64);
+    if (parent) {
+        proc->file_table = parent->file_table;
+        proc->vm_space = vm_create(parent->vm_space);
+        filetable_reference(proc->file_table);
+    } else {
+        proc->file_table = filetable_create(FILETABLE_MAX_SIZE);
+        if (!(flags & PROC_NO_VM)) {
+            proc->vm_space = vm_create(NULL);
+        } else {
+            proc->vm_space = NULL;
+        }
+    }
+    proc->refcount = 1;
+    return proc;
+}
+void proc_reference(struct proc* proc) {
+    if (!proc) return;
+    __atomic_fetch_add(&proc->refcount, 1, __ATOMIC_SEQ_CST);
+}
+void proc_release(struct proc* proc) {
+    if (!proc) return;
+    uint32_t refcount = __atomic_fetch_sub(&proc->refcount, 1, __ATOMIC_SEQ_CST);
+    if (refcount == 1) {
+#if DEBUG_REFCOUNT
+        fiprintf(stderr, "freeing proc %s @ %p\n", proc->name, proc);
+#endif
+        struct task* to_free = proc->task_list;
+        while (to_free) {
+            struct task* tc = to_free;
+            to_free = tc->proc_task_list_next;
+            tc->proc_task_list_next = NULL;
+            task_release(tc);
+        }
+
+        vm_release(proc->vm_space);
+        filetable_release(proc->file_table);
+        free(proc);
+    }
 }

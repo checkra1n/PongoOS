@@ -234,6 +234,7 @@ void print_state(uint64_t* state) {
         fiprintf(stderr, "skipping call stack due to fault in critical section\n");
     } else {
         fiprintf(stderr, "Call stack:\n");
+        fiprintf(stderr, "         registers: fp 0x%016llx, lr 0x%016llx\n", state[29], state[30]);
         int depth = 0;
         uint64_t fpcopy[2];
         for(uint64_t *fp = (uint64_t*)state[29]; fp; fp = (uint64_t*)fpcopy[0])
@@ -256,6 +257,25 @@ void print_state(uint64_t* state) {
 }
 int sync_exc_handle(uint64_t* state) {
     struct task *t = task_current();
+    uint64_t far = state[0x108/8];
+    uint64_t esr = state[0xf8/8];
+    uint64_t esr_ec = (esr & 0xFC000000) >> 26;
+    
+    if (t && ((esr_ec == 0b100101) || // Data abort from current EL
+              (esr_ec == 0b100100)    // Data abort from lower EL
+              )) {
+        if (vm_fault(t->vm_space, far, PROT_READ | (esr_ec & 0b1 ? PROT_KERN_ONLY : 0))) {
+            return 0;
+        }
+    }
+    if (t && ((esr_ec == 0b100000) || // Instruction abort from lower EL
+              (esr_ec == 0b100001)    // Instruction abort from current EL
+              )) {
+        if (vm_fault(t->vm_space, far, PROT_EXEC | (esr_ec & 0b1 ? PROT_KERN_ONLY : 0))) {
+            return 0;
+        }
+    }
+
     if (t && t->fault_catch) {
         // fiprintf(stderr, "caught fault with fault_catch, overwriting lr\n");
         state[0x100/8] = (uint64_t)t->fault_catch;
@@ -640,8 +660,15 @@ cache_clean(void *address, size_t size) { // invalidates too, because Apple
     asm volatile("dsb sy");
     asm volatile("isb");
 }
+extern uint64_t heap_base;
+extern uint64_t heap_end;
 
 uint64_t vatophys(uint64_t kvaddr) {
+    if(kvaddr >= 0x8000000000000000) {
+        panic("vatophys: address must be in ttbr0");
+    } else if (kvaddr >= heap_base && kvaddr < heap_end) {
+        panic("vatophys: called on heap, which is non-contiguous!");
+    }
     uint64_t par_el1;
     disable_interrupts();
     asm volatile("at s1e1r, %0" : : "r"(kvaddr));
@@ -659,242 +686,3 @@ uint64_t vatophys(uint64_t kvaddr) {
     }
 }
 
-uint64_t ram_phys_off;
-uint64_t ram_phys_size;
-
-uint64_t tt_bits, tg0, t0sz, t1sz;
-uint64_t ttb_alloc_base;
-volatile uint64_t *ttbr0, *ttbr1;
-
-volatile uint64_t* (*ttb_alloc)(void);
-
-volatile uint64_t* ttb_alloc_early(void)
-{
-    uint64_t pgsz = 1ULL << (tt_bits + 3ULL);
-    ttb_alloc_base -= pgsz;
-    volatile uint64_t* rv = (volatile uint64_t*) ttb_alloc_base;
-    for(size_t i = 0; i < (pgsz / 8); i++)
-    {
-        rv[i] = 0;
-    }
-    return rv;
-}
-
-void map_range_map(uint64_t* tt0, uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite, uint64_t paging_info, vm_protect_t prot, bool is_tt1)
-{
-    // NOTE: Blind assumption that all TT levels support block mappings.
-    // Currently we configure TCR that way, we just need to ensure that we will continue to do so.
-
-    uint64_t bits = 64ULL;
-    if (is_tt1) {
-        bits -= t1sz;
-        va -= (0xffffffffffffffff - ((1ULL << (65 - t1sz)) - 1));
-        va &= (1ULL << bits) - 1;
-    } else {
-        bits -= t0sz;
-        va &= (1ULL << bits) - 1;
-    }
-
-    uint64_t pgsz = 1ULL << (tt_bits + 3ULL);
-    if((va & (pgsz - 1ULL)) || (pa & (pgsz - 1ULL)) || (size & (pgsz - 1ULL)) || size < pgsz || (va + size < va) || (pa + size < pa))
-    {
-        panic("map_range: called with bad arguments (0x%llx, 0x%llx, 0x%llx, ...)", va, pa, size);
-    }
-
-    union tte tte;
-    
-    volatile uint64_t *tt = (volatile uint64_t*)tt0;
-    if((bits - 3) % tt_bits != 0)
-    {
-        bits += tt_bits - ((bits - 3) % tt_bits);
-    }
-    while(true)
-    {
-        uint64_t blksz = 1ULL << (bits - tt_bits),
-                 lo = va & ~(blksz - 1ULL),
-                 hi = (va + size + (blksz - 1ULL)) & ~(blksz - 1ULL);
-
-        if(size < blksz && hi - lo == blksz) // Sub-block, but fits into single TT
-        {
-            uint64_t idx = (va >> (bits - tt_bits)) & ((1ULL << tt_bits) - 1ULL);
-            tte.u64 = tt[idx];
-            if(tte.valid && tte.table)
-            {
-                tt = (volatile uint64_t*)((uint64_t)tte.oa << 12);
-            }
-            else if(!tte.valid || overwrite)
-            {
-                volatile uint64_t *newtt = ttb_alloc();
-                tte.u64 = 0;
-                tte.valid = 1;
-                tte.table = 1;
-                tte.oa = (uint64_t)newtt >> 12;
-                tt[idx] = tte.u64;
-                tt = newtt;
-            }
-            else
-            {
-                panic("map_range: trying to map table over existing entry");
-            }
-            bits -= tt_bits;
-            continue;
-        }
-
-        while(lo < hi)
-        {
-            uint64_t sz = blksz;
-            if(lo < va)
-            {
-                sz -= va - lo;
-            }
-            if(sz > size)
-            {
-                sz = size;
-            }
-            if(sz < blksz) // Need to traverse anew
-            {
-                map_range_map((uint64_t*)tt0, va, pa, sz, sh, attridx, overwrite, paging_info, prot, is_tt1);
-            }
-            else if((pa & (blksz - 1ULL))) // Cursed case
-            {
-                uint64_t frag = pa & (blksz - 1ULL);
-                map_range_map((uint64_t*)tt0, va, pa, sz - frag, sh, attridx, overwrite, paging_info, prot, is_tt1);
-                map_range_map((uint64_t*)tt0, va + sz - frag, pa + sz - frag, frag, sh, attridx, overwrite, paging_info, prot, is_tt1);
-            }
-            else
-            {
-                uint64_t idx = (va >> (bits - tt_bits)) & ((1ULL << tt_bits) - 1);
-                tte.u64 = tt[idx];
-                if(tte.valid && !overwrite)
-                {
-                    panic("map_range: trying to map block over existing entry");
-                }
-                if (prot & PROT_PAGING_INFO) {
-                    tte.u64 = paging_info;
-                    tte.valid = 0;
-                    tt[idx] = tte.u64;
-                } else {
-                    tte.u64 = 0;
-                    tte.valid = 1;
-                    tte.table = blksz == pgsz ? 1 : 0; // L3
-                    tte.attr = attridx;
-                    tte.sh = sh;
-                    tte.af = 1;
-                    
-                    tte.oa = pa >> 12;
-                    tte.uxn = 1;
-
-                    if (is_tt1) {
-                        if (!(prot & PROT_EXEC)) {
-                            tte.pxn = 1;
-                            tte.uxn = 1;
-                        } else {
-                            tte.pxn = 0;
-                            tte.uxn = 0;
-                        }
-                        
-                        if (!(prot & PROT_WRITE)) {
-                            tte.ap |= 0b10;
-                        }
-                        
-                        if (!(prot & PROT_KERN_ONLY)) {
-                            tte.ap |= 0b01;
-                            tte.pxn = 1;
-                        }
-                        tte.nG = 1;
-                    }
-/*
-                    union tte otte;
-                    otte.u64 = tt[idx];
-                    if (otte.valid && otte.table == (blksz == pgsz ? 1 : 0)) {
-                        for (uint64_t r0 = 0; r0 < blksz; r0 += pgsz) {
-                            ppage_free(r0 + (otte.oa << 12));
-                        }
-                    }
-*/
-                    if (pa && (prot & PROT_READ)) {
-                        tt[idx] = tte.u64;
-                    } else {
-                        tt[idx] = 0;
-                    }
-
-                }
-            }
-            lo += blksz;
-            va += sz;
-            pa += sz;
-            size -= sz;
-        }
-        break;
-    }
-
-
-}
-void map_range_noflush(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite) {
-    map_range_map((void*)ttbr0, va, pa, size, sh, attridx, overwrite, 0, PROT_READ|PROT_WRITE|PROT_EXEC|PROT_KERN_ONLY, false);
-}
-
-
-void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite)
-{
-    map_range_noflush(va, pa, size, sh, attridx, overwrite);
-    flush_tlb();
-}
-
-void map_full_ram(uint64_t phys_off, uint64_t phys_size) {
-    // Round up to make sure the framebuffer is in range
-    uint64_t pgsz = 1ULL << (tt_bits + 3);
-    phys_size = (phys_size + pgsz - 1) & ~(pgsz - 1);
-
-    map_range_noflush(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 3, 1, true);
-    map_range_noflush(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 3, 0, true);
-    ram_phys_off = kCacheableView + phys_off;
-    ram_phys_size = phys_size;
-
-    flush_tlb();
-}
-
-void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
-{
-    if (is_16k()) {
-        tt_bits = 11;
-        tg0 = 0b10;
-        t0sz = 28;
-        t1sz = 28;
-    } else {
-        tt_bits = 9;
-        tg0 = 0b00;
-        t0sz = 25;
-        t1sz = 25;
-    }
-    uint64_t pgsz = 1ULL << (tt_bits + 3);
-    ttb_alloc = ttb_alloc_early;
-
-    ttb_alloc_base = MAGIC_BASE - 0x4000;
-
-    ttbr0 = ttb_alloc();
-    ttbr1 = ttb_alloc();
-    map_range_noflush(0x200000000, 0x200000000, 0x100000000, 3, 0, false);
-    phys_off += (pgsz-1);
-    phys_off &= ~(pgsz-1);
-    map_range_noflush(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 3, 1, false);
-    map_range_noflush(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 3, 0, false);
-    // TLB flush is done by enable_mmu_el1
-
-    ram_phys_off = kCacheableView + phys_off;
-    ram_phys_size = phys_size;
-
-    if (!(get_el() == 1)) panic("pongoOS runs in EL1 only! did you skip pongoMon?");
-    
-    set_vbar_el1((uint64_t)&exception_vector);
-    enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg0 << 30) | (t1sz << 16) | t0sz, 0x04bb00, (uint64_t)ttbr1);
-    
-    kernel_vm_space.ttbr0 = (uint64_t)ttbr0;
-    kernel_vm_space.ttbr1 = (uint64_t)ttbr1;
-}
-
-void lowlevel_cleanup(void)
-{
-    cache_clean_and_invalidate((void*)ram_phys_off, ram_phys_size);
-    disable_mmu_el1();
-}

@@ -20,6 +20,7 @@
 #  Copyright (c) 2019-2020 checkra1n team
 #  This file is part of pongoOS.
 #
+import struct
 import sys
 data = open(sys.argv[1], "rb").read()
 import usb.core
@@ -29,7 +30,7 @@ if dev is None:
 dev.set_configuration()
 
 dev.ctrl_transfer(0x21, 2, 0, 0, 0)
+dev.ctrl_transfer(0x21, 5, 0, 0, struct.pack('I', len(data)))
+dev.ctrl_transfer(0x21, 2, 0, 0, 0)
 dev.ctrl_transfer(0x21, 1, 0, 0, 0)
 dev.write(2,data,1000000)
-if len(data) % 512 == 0:
-	dev.write(2,"")
