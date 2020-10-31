@@ -115,7 +115,7 @@ skip:;
         goto help;
     }
     sz /= 2;
-    data = malloc(sz);
+    data = alloc_contig(sz);
     if(!data)
     {
         panic("AES cmd: malloc failed (%lu)\n", sz);
@@ -134,7 +134,7 @@ skip:;
     {
         hexprint(data, sz);
     }
-    free(data);
+    free_contig(data, sz);
     return;
 help:;
     if(data) free(data);
