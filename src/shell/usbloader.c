@@ -75,15 +75,21 @@ bool reallocate_loader_xfer_data(const void* data, uint32_t size) {
     if (size != 4) panic("reallocate_loader_xfer_data");
     
     uint32_t newsz = *(uint32_t*)data;
+    newsz += 0x1ff;
+    newsz &= ~0x1ff;
     if (newsz > UPLOADSZ_MAX) return false;
+    loader_xfer_recv_count = 0;
+    usbloader_is_waiting_xfer = 1;
     resize_loader_xfer_data(newsz);
     loader_xfer_size = newsz;
-    
+    usb_out_transfer_dma(2, loader_xfer_recv_data, vatophys((uint64_t)loader_xfer_recv_data), loader_xfer_size, usbloader_xfer_done_cb); // should resolve the VA rather than doing this, but oh well.
+
     return true;
 }
 
 void usbloader_init() {
     loader_xfer_recv_data = alloc_contig(UPLOADSZ);
+    loader_xfer_size = UPLOADSZ;
     loader_xfer_recv_size = UPLOADSZ;
     loader_xfer_recv_count = 0;
 } // fetch_stdoutbuf
@@ -130,7 +136,8 @@ bool ep0_device_request(struct setup_packet *setup) {
                 return true;
             }
         }
-        if (setup->bRequest == 5 && setup->wLength == 4) { // request upload buffer size change
+        if (setup->bRequest == 1 && setup->wLength == 4) { // request upload buffer size change
+            if (usbloader_is_waiting_xfer) return false;
             ep0_begin_data_out_stage(reallocate_loader_xfer_data);
             return true;
         }

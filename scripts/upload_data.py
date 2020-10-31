@@ -30,7 +30,5 @@ if dev is None:
 dev.set_configuration()
 
 dev.ctrl_transfer(0x21, 2, 0, 0, 0)
-dev.ctrl_transfer(0x21, 5, 0, 0, struct.pack('I', len(data)))
-dev.ctrl_transfer(0x21, 2, 0, 0, 0)
-dev.ctrl_transfer(0x21, 1, 0, 0, 0)
+dev.ctrl_transfer(0x21, 1, 0, 0, struct.pack('I', len(data)))
 dev.write(2,data,1000000)
