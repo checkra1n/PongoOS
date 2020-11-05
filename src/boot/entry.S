@@ -72,10 +72,8 @@ start$l0:
     mov x1, x0
     mov x0, x9
     mov x29, xzr
-    sub x5, x5, #0x400
-    and x5, x5, #~0xf
     bl _set_exception_stack_core0
-    mov sp, x5
+    bl _set_execution_stack_core0
     bl _trampoline_entry
     b .
 
@@ -115,6 +113,16 @@ _set_exception_stack_core0:
     and x8, x8, #~0xf
     mov sp, x8
     msr spsel, #0
+    ret
+
+.globl _set_execution_stack_core0
+_set_execution_stack_core0:
+    msr spsel, #0
+    adrp x8, _sched_stack@PAGE
+    add x8, x8, _sched_stack@PAGEOFF
+    add x8, x8, #0x4000
+    and x8, x8, #~0xf
+    mov sp, x8
     ret
 
 .globl _smemcpy128

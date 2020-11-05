@@ -149,6 +149,7 @@ void aes_init(void)
         case 0x8960:
         case 0x7000:
         case 0x7001:
+            aes_a7_init();
             aes_impl = &aes_a7;
             break;
         case 0x8000:

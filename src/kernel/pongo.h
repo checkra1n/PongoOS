@@ -310,11 +310,27 @@ extern void xnu_pf_apply_each_kext(struct mach_header_64* kheader, xnu_pf_patchs
 #else
 #   define kCacheableView 0x400000000ULL
 #endif
-#define MAGIC_BASE 0x818000000ULL
 struct pongo_exports {
     const char* name;
     void * value;
 };
+struct pongo_module_segment_info {
+    char* name;
+    uint64_t vm_addr;
+    uint64_t vm_size;
+    vm_protect_t prot;
+};
+
+struct pongo_module_info {
+    const char* name;
+    struct pongo_exports* exports;
+    uint64_t vm_base;
+    uint64_t vm_end;
+    struct pongo_module_info* next;
+    uint32_t segcount;
+    struct pongo_module_segment_info segments[];
+};
+extern struct pongo_module_info* pongo_module_create(uint32_t segmentCount);
 #define EXPORT_SYMBOL(x) {.name = "_"#x, .value = x}
 #define EXPORT_SYMBOL_P(x) {.name = "_"#x, .value = (void*)&x}
 extern void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite);
@@ -323,6 +339,7 @@ int pongo_fiq_handler();
 extern void (*preboot_hook)();
 extern void (*sep_boot_hook)();
 extern void (*rdload_hook)();
+extern void vm_flush_by_addr_all_asid(uint64_t va);
 extern void task_register_coop(struct task* task, void (*entry)()); // registers a cooperative task
 extern void task_register_preempt_irq(struct task* task, void (*entry)(), int irq_id); // registers an irq handler
 extern void task_register_irq(struct task* task, void (*entry)(), int irq_id); // registers an irq handler
@@ -373,7 +390,7 @@ extern void task_set_sched_head(struct task* task);
 extern void enable_interrupts();
 extern void disable_interrupts();
 extern uint64_t get_ticks();
-extern void usleep(uint32_t usec);
+extern void usleep(uint64_t usec);
 extern void sleep(uint32_t sec);
 extern uint32_t dt_get_u32_prop(const char* device, const char* prop);
 extern uint64_t dt_get_u64_prop(const char* device, const char* prop);
@@ -415,7 +432,7 @@ extern void command_putc(char val);
 extern void command_puts(const char* val);
 
 extern void pongo_syscall_entry(struct task* task, uint32_t sysnr, uint64_t* state);
-
+extern uint64_t vatophys_force(uint64_t kvaddr);
 #ifdef PONGO_PRIVATE
 #define STDOUT_BUFLEN 0x1000
 extern volatile uint8_t command_in_progress;
@@ -442,6 +459,7 @@ extern void disable_mmu_el1();
 extern void lowlevel_cleanup(void);
 extern void lowlevel_setup(uint64_t phys_off, uint64_t phys_size);
 extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
+extern uint64_t linear_kvm_alloc(uint32_t size);
 static inline _Bool is_16k(void)
 {
     return ((get_mmfr0() >> 20) & 0xf) == 0x1;

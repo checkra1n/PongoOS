@@ -31,7 +31,7 @@ caddr_t _sbrk(int size) {
     uint64_t cursor_copy = heap_cursor;
     heap_cursor += size;
     while (heap_cursor > heap_end) {
-        vm_space_map_page_physical_prot(&kernel_vm_space, heap_end, ppage_alloc(), PROT_READ|PROT_WRITE|PROT_EXEC|PROT_KERN_ONLY);
+        vm_space_map_page_physical_prot(&kernel_vm_space, heap_end, ppage_alloc(), PROT_READ|PROT_WRITE|PROT_KERN_ONLY);
         heap_end += 0x4000;
     }
     enable_interrupts();

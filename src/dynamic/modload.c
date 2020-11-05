@@ -183,6 +183,9 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(hexdump),
     EXPORT_SYMBOL(memcmp),
     EXPORT_SYMBOL(map_range),
+    EXPORT_SYMBOL(linear_kvm_alloc),
+    EXPORT_SYMBOL(vm_flush_by_addr_all_asid),
+    EXPORT_SYMBOL(vatophys_force),
     EXPORT_SYMBOL(serial_disable_rx),
     EXPORT_SYMBOL(serial_enable_rx),
     EXPORT_SYMBOL(__memset_chk),
@@ -247,4 +250,24 @@ void* resolve_symbol(const char* name) {
     iprintf("resolve_symbol: missing symbol: %s\n", name);
     iprintf("usbloader-linker could not load this module!!\n");
     return 0;
+}
+static struct pongo_module_info* head;
+struct pongo_module_info* pongo_module_create(uint32_t segmentCount) {
+    struct pongo_module_info* mod = calloc(sizeof (struct pongo_module_info) + sizeof(struct pongo_module_segment_info) * segmentCount, 1);
+    disable_interrupts();
+    mod->next = head;
+    mod->segcount = segmentCount;
+    head = mod;
+    enable_interrupts();
+    return mod;
+}
+void pongo_module_print_list() {
+    struct pongo_module_info* cur = head;
+    while (cur) {
+        iprintf(" | %26s @ 0x%llx->0x%llx\n", cur->name, cur->vm_base, cur->vm_end);
+        for (uint32_t i = 0; i < cur->segcount; i++) {
+            iprintf(" |---> %22s @ 0x%08llx, size 0x%06llx (%s%s%s)\n", cur->segments[i].name, cur->vm_base + cur->segments[i].vm_addr, cur->segments[i].vm_size, cur->segments[i].prot & PROT_READ ? "r" : "-", cur->segments[i].prot & PROT_WRITE ? "w" : "-", cur->segments[i].prot & PROT_EXEC ? "x" : "-");
+        }
+        cur = cur->next;
+    }
 }

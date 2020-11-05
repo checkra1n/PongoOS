@@ -156,6 +156,7 @@ __asm__(
 extern void copy_retn(void);
 extern size_t copy_trap_internal(void* dest, void* src, size_t size);
 uint64_t exception_stack[0x4000/8] = {1};
+uint64_t sched_stack[0x4000/8] = {1};
 size_t memcpy_trap(void* dest, void* src, size_t size) {
     disable_interrupts();
     if (!task_current()) panic("memcpy_trap requires task_current() to be populated");
@@ -260,7 +261,7 @@ int sync_exc_handle(uint64_t* state) {
     uint64_t far = state[0x108/8];
     uint64_t esr = state[0xf8/8];
     uint64_t esr_ec = (esr & 0xFC000000) >> 26;
-    
+
     if (t && ((esr_ec == 0b100101) || // Data abort from current EL
               (esr_ec == 0b100100)    // Data abort from lower EL
               )) {
@@ -314,7 +315,7 @@ int sync_exc_el0(uint64_t* state) {
 
     uint64_t esr = state[0xf8/8];
     if (!(esr & 0x2000000)) panic("sync_exc_el0 from A32 EL0 is unsupported");
-    
+
     uint64_t esr_ec = esr & 0xFC000000;
     if (esr_ec == 0x54000000) {
         pongo_syscall_entry(task_current(), (esr & 0xff), state);
@@ -402,7 +403,7 @@ void spin(uint32_t usec)
     uint64_t eta_wen = eta_now + (24*usec);
     while (1) {
         asm volatile("isb");
-        uint32_t curtime = get_ticks();
+        uint64_t curtime = get_ticks();
         if (eta_now > curtime)
             break;
         if (curtime > eta_wen)
@@ -410,7 +411,7 @@ void spin(uint32_t usec)
     }
     enable_interrupts();
 }
-void usleep(uint32_t usec)
+void usleep(uint64_t usec)
 {
     disable_interrupts();
     uint64_t eta_wen = get_ticks() + (24*usec);
@@ -418,7 +419,7 @@ void usleep(uint32_t usec)
     task_current()->wait_until = eta_wen;
     enable_interrupts();
     while (1) {
-        uint32_t curtime = get_ticks();
+        uint64_t curtime = get_ticks();
         if (curtime > eta_wen)
             break;
         if (curtime > preempt_after)
@@ -427,7 +428,7 @@ void usleep(uint32_t usec)
 }
 void sleep(uint32_t sec)
 {
-    usleep(sec*1000*1000);
+    usleep((uint64_t)sec * 1000000ULL);
 }
 int gAICVersion = -1;
 int gAICStyle = -1;
@@ -662,13 +663,9 @@ cache_clean(void *address, size_t size) { // invalidates too, because Apple
 }
 extern uint64_t heap_base;
 extern uint64_t heap_end;
-
-uint64_t vatophys(uint64_t kvaddr) {
-    if(kvaddr >= 0x8000000000000000) {
-        panic("vatophys: address must be in ttbr0");
-    } else if (kvaddr >= heap_base && kvaddr < heap_end) {
-        panic("vatophys: called on heap, which is non-contiguous!");
-    }
+extern uint64_t linear_kvm_base;
+extern uint64_t linear_kvm_end;
+uint64_t vatophys_force(uint64_t kvaddr) {
     uint64_t par_el1;
     disable_interrupts();
     asm volatile("at s1e1r, %0" : : "r"(kvaddr));
@@ -685,4 +682,13 @@ uint64_t vatophys(uint64_t kvaddr) {
         return (kvaddr & 0xfffULL) | (par_el1 & (~0xfffULL));
     }
 }
-
+uint64_t vatophys(uint64_t kvaddr) {
+    if(kvaddr >= 0x8000000000000000) {
+        panic("vatophys: address must be in ttbr0");
+    } else if (kvaddr >= heap_base && kvaddr < heap_end) {
+        panic("vatophys: called on heap, which is non-contiguous!");
+    } else if (kvaddr >= linear_kvm_base && kvaddr < linear_kvm_end) {
+        panic("vatophys: called on kvm, which is non-contiguous!");
+    }
+    return vatophys_force(kvaddr);
+}

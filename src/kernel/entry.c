@@ -122,10 +122,8 @@ __attribute__((noinline)) void pongo_entry_cached()
     preemption_over = 1;
     gDeviceTree = (void*)((uint64_t)gBootArgs->deviceTreeP - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000 + kCacheableView);
     gIOBase = dt_get_u64_prop_i("arm-io", "ranges", 1);
-    uint64_t max_video_addr = gBootArgs->Video.v_baseAddr + gBootArgs->Video.v_rowBytes * gBootArgs->Video.v_height;
-    uint64_t max_mem_size = max_video_addr - gBootArgs->physBase;
-    if (gBootArgs->memSize > max_mem_size) max_mem_size = gBootArgs->memSize;
-    map_full_ram(gBootArgs->physBase & 0xFFFFFFFF, max_mem_size);
+
+    map_full_ram(gBootArgs->physBase & 0xFFFFFFFF, gBootArgs->memSize);
 
     gDevType = dt_get_prop("arm-io", "device_type", NULL);
     size_t len = strlen(gDevType) - 3;
@@ -260,19 +258,22 @@ __attribute__((noinline)) void pongo_entry_cached()
 
 */
 volatile void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t original_image);
+extern uint64_t gPongoSlide;
 
 void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point))
 {
     gBootArgs = (boot_args*)kernel_args;
     gEntryPoint = entryp;
-    lowlevel_setup(gBootArgs->physBase & 0xFFFFFFFF, 0x1f000000);
-    rebase_pc(kCacheableView - 0x800000000);
+    lowlevel_setup(gBootArgs->physBase & 0xFFFFFFFF, gBootArgs->memSize);
+    rebase_pc(gPongoSlide);
     extern void set_exception_stack_core0();
     set_exception_stack_core0();
     pongo_entry_cached();
-    gFramebuffer = (uint32_t*)gBootArgs->Video.v_baseAddr;
-    rebase_pc(0x800000000 - kCacheableView);
+    extern void lowlevel_set_identity(void);
+    lowlevel_set_identity();
+    rebase_pc(-gPongoSlide);
     set_exception_stack_core0();
+    gFramebuffer = (uint32_t*)gBootArgs->Video.v_baseAddr;
     lowlevel_cleanup();
     if(gBootFlag == BOOT_FLAG_RAW)
     {

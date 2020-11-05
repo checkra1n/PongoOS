@@ -177,28 +177,35 @@ retry:;
     extern uint64_t wired_pages;
     extern uint64_t pages_in_freelist;
     extern uint64_t paging_requests;
+    extern uint64_t heap_base;
+    extern uint64_t heap_end;
+
     // Get these too while we're uninterruptible
     uint64_t a = *(volatile uint64_t*)&served_irqs,
              b = *(volatile uint64_t*)&fiqCount,
              c = *(volatile uint64_t*)&preemption_counter,
              d = (get_ticks() - gBootTimeTicks) / (2400 * 1000),
-             e = ppages, f = free_pages, g = wired_pages, h = pages_in_freelist, i = paging_requests;
+             e = ppages, f = free_pages, g = wired_pages, h = (heap_end - heap_base) >> 14, i = paging_requests;
     enable_interrupts();
 
     // Now dump it all out
-    iprintf("=+= System Information ===\n | served irqs: %lld, caught fiqs: %lld, preempt: %lld, uptime: %lld.%llds\n | free pages: %lld (%lld MB), inuse: %lld (%lld MB), paged: %lld\n | fastbin: %lld (%lld MB), wired: %lld (%lld MB), total: %lld (%lld MB)\n=+=    Process List    ===\n", a, b, c, d/10, d%10, f, f / 0x40, e - f, (e - f) / 0x40, i, h, h / 0x40, g, g / 0x40, e, e / 0x40);
+    iprintf("=+= System Information ===\n | served irqs: %lld, caught fiqs: %lld, preempt: %lld, uptime: %lld.%llds\n | free pages: %lld (%lld MB), inuse: %lld (%lld MB), paged: %lld\n | heap: %lld (%lld MB), wired: %lld (%lld MB), total: %lld (%lld MB)\n=+=    Process List    ===\n", a, b, c, d/10, d%10, f, f / 0x40, e - f, (e - f) / 0x40, i, h, h / 0x40, g, g / 0x40, e, e / 0x40);
     for(int i = 0; i < ntasks; ++i)
     {
         task_info_t *t = &tasks_copy[i];
-        iprintf("%10s | task %d | runcnt = %llx | flags = %s, %s\n", t->name[0] ? t->name : "unknown", t->pid, t->runcnt, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
+        iprintf(" | %7s | task %d | runcnt = %llx | flags = %s, %s\n", t->name[0] ? t->name : "unknown", t->pid, t->runcnt, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
     }
+    iprintf("=+=    IRQ Handlers    ===\n");
     for(int i = 0; i < nirq; ++i)
     {
         task_info_t *t = &irq_copy[i];
         char* nm = t->name[0] ? t->name : "unknown";
-        iprintf("%10s (%d) | runcnt: %lld | irq: %d | irqcnt: %llu | flags: %s, %s\n", nm, t->pid, t->runcnt, i, t->irq_count, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
+        iprintf(" | %7s (%d) | runcnt: %lld | irq: %d | irqcnt: %llu | flags: %s, %s\n", nm, t->pid, t->runcnt, i, t->irq_count, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
     }
-
+    iprintf("=+=   Loaded modules   ===\n");
+    extern void pongo_module_print_list();
+    pongo_module_print_list();
+    iprintf("=+========================\n");
     free(tasks_copy);
     free(irq_copy);
 }
@@ -396,23 +403,62 @@ void task_entry() {
     panic("unreachable");
 }
 volatile uint32_t gPid = 1;
+
+#define KERN_STACK_SIZE 0x8000
+
+void* kernel_stack_allocate_new() {
+    uint64_t stack_size = KERN_STACK_SIZE + 2 * PAGE_SIZE;
+    uint64_t phys_backing = alloc_phys(KERN_STACK_SIZE);
+    uint64_t vma_backing = linear_kvm_alloc(stack_size);
+    
+    vm_space_map_page_physical_prot(&kernel_vm_space, vma_backing, 0, 0); // guard page
+    for (uint64_t offset = 0; offset < stack_size - PAGE_SIZE * 2; offset += PAGE_SIZE) {
+        vm_space_map_page_physical_prot(&kernel_vm_space, vma_backing + PAGE_SIZE + offset, phys_backing + offset, PROT_READ|PROT_WRITE|PROT_KERN_ONLY);
+    }
+    vm_space_map_page_physical_prot(&kernel_vm_space, vma_backing + KERN_STACK_SIZE + PAGE_SIZE, 0, 0); // guard page
+
+    return (void*)(vma_backing + PAGE_SIZE + KERN_STACK_SIZE - 0x400);
+}
+
+void* stack_freelist = NULL;
+
+void* kernel_stack_allocate() {
+    void* stack = NULL;
+    disable_interrupts();
+    if (stack_freelist) {
+        stack = stack_freelist;
+        stack_freelist = *(void**)stack;
+    } else {
+        stack = kernel_stack_allocate_new();
+    }
+    enable_interrupts();
+    return stack;
+}
+void kernel_stack_free(void* stack) {
+    disable_interrupts();
+    *(void**)stack = stack_freelist;
+    stack_freelist = stack;
+    enable_interrupts();
+}
+
+
 void task_alloc_fast_stacks(struct task* task) {
     if (!task->kernel_stack) {
-        task->kernel_stack = (uint64_t)page_alloc();
+        task->kernel_stack = (uint64_t)kernel_stack_allocate();
     }
     if (!task->exception_stack_top) {
-        task->exception_stack_top = (uint64_t)page_alloc();
+        task->exception_stack_top = (uint64_t)kernel_stack_allocate();
     }
-    task->exception_stack = (uint64_t)task->exception_stack_top + 0x3ff0;
+    task->exception_stack = (uint64_t)task->exception_stack_top;
     task->exception_stack &= ~0xf;
-    task->el0_exception_stack = task->kernel_stack + 0x3ff0;
+    task->el0_exception_stack = task->kernel_stack;
     task->el0_exception_stack &= ~0xf;
 }
 void task_set_entry(struct task* task) {
     task_alloc_fast_stacks(task);
 
     task->lr = (uint64_t)task_entry;
-    task->sp = (uint64_t)task->kernel_stack + 0x3ff0;
+    task->sp = (uint64_t)task->kernel_stack;
     task->sp &= ~0xf;
     task->ttbr0 = task->vm_space->ttbr0;
     task->ttbr1 = task->vm_space->ttbr1 | task->vm_space->asid;
@@ -576,8 +622,8 @@ void task_release(struct task* task) {
                 el = &((*el)->proc_task_list_next);
             }
         }
-        page_free((void*)task->kernel_stack);
-        page_free((void*)task->exception_stack_top);
+        kernel_stack_free((void*)task->kernel_stack);
+        kernel_stack_free((void*)task->exception_stack_top);
         vm_deallocate(task->vm_space, task->user_stack, 0x40000);
         task_real_unlink(task);
         vm_release(task->vm_space);
@@ -725,7 +771,6 @@ void event_fire(struct event* ev) {
     ev->task_head = NULL;
     enable_interrupts();
 }
-
 struct proc* proc_create(struct proc* parent, const char* procname, uint32_t flags) {
     struct proc* proc = malloc(sizeof(struct proc));
     bzero(proc, sizeof(struct proc));

@@ -1448,7 +1448,7 @@ ep0_out_interrupt() {
 	if (is_setup) {
 		// We've received a setup packet.
 
-        spin(4); // this is required because this interrupt is asserted *before* the DMA transfer is complete on some devices.. ugh
+        spin(2); // this is required because this interrupt is asserted *before* the DMA transfer is complete on some devices.. ugh
         struct setup_packet *setup = ep_out_recv_setup_done(&ep0_out);
         ep0.setup_packet = *setup;
 
