@@ -50,8 +50,9 @@ uint64_t ttbpage_alloc() {
     if (ttb_freelist) {
         void* page = ttb_freelist;
         ttb_freelist = *(void**)page;
-        bzero(page, is_16k() ? 0x4000 : 0x1000);
         enable_interrupts();
+
+        bzero(page, is_16k() ? 0x4000 : 0x1000);
         return vatophys_static(page);
     }
     enable_interrupts();
@@ -67,7 +68,6 @@ uint64_t ttbpage_alloc() {
 }
 uint64_t ram_phys_off;
 uint64_t ram_phys_size;
-
 uint64_t tt_bits, tg0, t0sz, t1sz;
 uint64_t ttb_alloc_base;
 volatile uint64_t *ttbr0, *ttbr1;

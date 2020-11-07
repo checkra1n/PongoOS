@@ -24,6 +24,7 @@
 #include "font8x8_basic.h"
 
 uint32_t* gFramebuffer;
+uint32_t* gFramebufferCopy;
 uint32_t gWidth;
 uint32_t gHeight;
 uint32_t gRowPixels;
@@ -49,10 +50,7 @@ void screen_clear_all()
     y_cursor = bannerHeight;
     for (int y = bannerHeight; y < gHeight; y++) {
         for (int x = 0; x < gWidth; x++) {
-            uint32_t curcolor = gFramebuffer[x + y * gRowPixels];
-            if ((curcolor & (~0x3fffffff)) != 0x40000000) {
-                gFramebuffer[x + y * gRowPixels] = basecolor;
-            }
+            gFramebuffer[x + y * gRowPixels] = gFramebufferCopy[x + y * gRowPixels];
         }
     }
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
@@ -61,14 +59,69 @@ void screen_clear_row()
 {
     for (int y = 0; y < (1 + 8 * SCALE_FACTOR); y++) {
         for (int x = 0; x < gWidth; x++) {
-            uint32_t curcolor = gFramebuffer[x + ((y + y_cursor) * gRowPixels)];
-            if ((curcolor & (~0x3fffffff)) != 0x40000000) {
-                gFramebuffer[x + ((y + y_cursor) * gRowPixels)] = basecolor;
-            }
+            gFramebuffer[x + ((y + y_cursor) * gRowPixels)] = gFramebufferCopy[x + ((y + y_cursor) * gRowPixels)];
         }
     }
     cache_clean(&gFramebuffer[y_cursor * gRowPixels], (1 + 8 * SCALE_FACTOR) * gRowPixels * 4);
 }
+uint32_t color_compose(uint16_t components[3]) {
+    return ((((uint32_t)components[3]) & 0xff) << 24) | ((((uint32_t)components[2]) & 0xff) << 16) | ((((uint32_t)components[1]) & 0xff) << 8)  | ((((uint32_t)components[0]) & 0xff) << 0); // works on ARGB8,8,8,8 only, i'll add ARGB5,9,9,9 eventually
+}
+uint32_t color_compose_v32(uint32_t components[3]) {
+    return ((((uint32_t)components[3]) & 0xff) << 24) | ((((uint32_t)components[2]) & 0xff) << 16) | ((((uint32_t)components[1]) & 0xff) << 8)  | ((((uint32_t)components[0]) & 0xff) << 0); // works on ARGB8,8,8,8 only, i'll add ARGB5,9,9,9 eventually
+}
+void color_decompose(uint32_t color, uint16_t* components) {
+    components[0] = color & 0xff;
+    components[1] = (color >> 8) & 0xff;
+    components[2] = (color >> 16) & 0xff;
+    components[3] = (color >> 24) & 0xff;
+}
+uint16_t component_darken(float component, float factor) {
+    float mul = (component * factor);
+    uint32_t mulr = mul;
+    if (mulr > 0xff) return 0xff; // clamp to 0xff as max (only works on ARGB8,8,8,8, will fix later)
+    return mulr;
+}
+uint32_t color_darken(uint32_t color, float darkenfactor) {
+    uint16_t components[4];
+    color_decompose(color, components);
+    components[0] = component_darken(components[0], darkenfactor);
+    components[1] = component_darken(components[1], darkenfactor);
+    components[2] = component_darken(components[2], darkenfactor);
+    return color_compose(components);
+}
+uint32_t colors_average(uint32_t color1, uint32_t color2) {
+    uint16_t components[4];
+    uint16_t components1[4];
+    color_decompose(color1, components);
+    color_decompose(color2, components1);
+    components[0] = (components[0] + components1[0]) >> 1;
+    components[1] = (components[1] + components1[1]) >> 1;
+    components[2] = (components[2] + components1[2]) >> 1;
+    return color_compose(components);
+}
+
+uint32_t colors_mix_alpha(uint32_t color1, uint32_t color2) {
+    uint16_t components[4];
+    uint16_t components1[4];
+    uint32_t componentsw[4];
+    color_decompose(color1, components);
+    color_decompose(color2, components1);
+    componentsw[0] = (components[0] * components[3]);
+    componentsw[1] = (components[1] * components[3]);
+    componentsw[2] = (components[2] * components[3]);
+    componentsw[0] += (components1[0] * components1[3]);
+    componentsw[1] += (components1[1] * components1[3]);
+    componentsw[2] += (components1[2] * components1[3]);
+    uint32_t total_alpha = components[3] + components1[3];
+    componentsw[0] /= total_alpha;
+    componentsw[1] /= total_alpha;
+    componentsw[2] /= total_alpha;
+    componentsw[3] = 0xff;
+    
+    return color_compose_v32(componentsw);
+}
+
 void screen_putc(uint8_t c)
 {
     if (!gFramebuffer) return;
@@ -114,17 +167,13 @@ void screen_putc(uint8_t c)
         for (int y = 0; y < (8 * SCALE_FACTOR); y++) {
             if (font8x8_basic[c & 0x7f][y / SCALE_FACTOR] & (1 << (x / SCALE_FACTOR))) {
                 uint32_t ind = (x + local_x_cursor) + ((y + local_y_cursor) * gRowPixels);
-                uint32_t curcolor = basecolor; // gFramebuffer[ind];
-                if (curcolor == basecolor && (curcolor & 0x3fffffff) != 0x40000000) {
-                    curcolor ^= 0xFFFFFFFF;
-                } else {
-                    curcolor ^= 0xFF7F7F7F;
-                }
-                curcolor &= 0x3fffffff;
+                uint32_t curcolor = basecolor;
+                curcolor ^= 0xFFFFFFFF;
                 gFramebuffer[ind] = curcolor;
             } else {
                 uint32_t ind = (x + local_x_cursor) + ((y + local_y_cursor) * gRowPixels);
-                gFramebuffer[ind] = basecolor;
+                uint32_t rcol = gFramebufferCopy[ind];
+                gFramebuffer[ind] = colors_average(rcol, basecolor);
             }
         }
     }
@@ -147,10 +196,11 @@ void screen_mark_banner() {
 void screen_invert() {
     for (int y = 0; y < gHeight; y++) {
         for (int x = 0; x < gWidth; x++) {
-            gFramebuffer[x + y * gRowPixels] ^= 0x3fffffff;
+            gFramebuffer[x + y * gRowPixels] ^= 0xffffffff;
+            gFramebufferCopy[x + y * gRowPixels] ^= 0xffffffff;
         }
     }
-    basecolor ^= 0x3fffffff;
+    basecolor ^= 0xffffffff;
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
 }
 
@@ -175,7 +225,7 @@ void screen_init() {
     }
     map_range(0xfb0000000ULL, fbbase - fboff, fbsize, 3, 1, true);
     gFramebuffer = (uint32_t*)(0xfb0000000ULL + fboff);
-
+    gFramebufferCopy = (uint32_t*)alloc_contig(fbsize);
 
     height &= 0xfff0;
     scale_factor = 2;
@@ -201,15 +251,9 @@ void screen_init() {
             gFramebuffer[ind] = curcolor;
         }
     }
-    for (int x = 0; x < width; x++) {
-        for (int y = 0; y < height; y++) {
-            uint32_t ind = x + y * gRowPixels;
-            uint32_t curcolor = gFramebuffer[ind];
-            curcolor &= 0x3fffffff;
-            curcolor |= 0x40000000;
-            gFramebuffer[ind] = curcolor;
-        }
-    }
+    
+    memcpy(gFramebufferCopy, gFramebuffer, fbsize);
+
     basecolor = gFramebuffer[0];
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
     command_register("fbclear", "clears the framebuffer output (minus banner)", screen_clear_all);
