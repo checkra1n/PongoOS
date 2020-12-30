@@ -25,7 +25,7 @@
  * 
  */
 #include <pongo.h>
-#include "recfg_soc.h"
+#include <recfg/recfg_soc.h>
 
 boot_args * gBootArgs;
 void* gEntryPoint;
@@ -103,7 +103,7 @@ char pongo_sched_tick() {
                 preempt_ctr = 0;
             }
         }
-        
+
     }
 out:
     enable_interrupts();
@@ -161,16 +161,16 @@ __attribute__((noinline)) void pongo_entry_cached()
     */
 
     pongo_reinstall_vbar();
-    
-    
+
+
     extern void _task_set_current(struct task* t);
-    
+
     task_alloc_fast_stacks(&sched_task);
-    
+
     task_link(&sched_task);
     _task_set_current(&sched_task);
     // Setup VM
-    
+
     vm_init();
 
     /*
@@ -178,11 +178,11 @@ __attribute__((noinline)) void pongo_entry_cached()
     */
 
     screen_init();
-    
+
     /*
         Set up main task for scheduling
     */
-    
+
     extern struct vm_space kernel_vm_space;
     task_current()->vm_space = &kernel_vm_space;
     task_current()->cpsr = 0x205;
@@ -190,11 +190,11 @@ __attribute__((noinline)) void pongo_entry_cached()
     task_current()->ttbr1 = kernel_vm_space.ttbr1 | kernel_vm_space.asid;
     task_current()->proc = proc_create(NULL, "kernel", PROC_NO_VM);
     task_current()->proc->vm_space = &kernel_vm_space;
-    
+
     void pongo_main_task();
     task_register(&pongo_task, pongo_main_task);
     task_link(&pongo_task);
-    
+
     /*
         Set up FIQ timer
     */
@@ -230,18 +230,16 @@ __attribute__((noinline)) void pongo_entry_cached()
         }
     }
 
-    // Do this here once we decided to boot, so that we catch potentially modified
-    // AES/IORVBAR config, but still get the benefits of cached memory.
-    recfg_soc_update();
-
     timer_disable();
     usb_teardown();
     disable_interrupts();
     preemption_over = 1;
-    
+
     while (gBootFlag)
     {
         if (gBootFlag == BOOT_FLAG_RAW) {
+            // Needs its own recfg call...
+            recfg_soc_sync();
             screen_fill_basecolor();
             return;
         }
@@ -256,11 +254,14 @@ __attribute__((noinline)) void pongo_entry_cached()
         }
         gBootFlag--;
     }
-    
+
     xnu_loadrd();
     if (sep_boot_hook)
         sep_boot_hook();
-    
+
+    // Flush changes to IORVBAR and the AES engine to recfg as late as possible.
+    recfg_soc_sync();
+
     __asm__ volatile("dsb sy");
     screen_puts("Booting");
 }

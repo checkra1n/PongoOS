@@ -154,13 +154,14 @@ static int recfg_soc_w64(void *a, uint64_t *addr, uint64_t *data)
     return kRecfgSuccess;
 }
 
-void recfg_soc_update(void)
+void recfg_soc_sync(void)
 {
+    // Kinda dirty, but works to skip A7/A8/A8X.
     if(!is_16k())
     {
         return;
     }
-    iprintf("Patching Recfg requence\n");
+    iprintf("Patching Recfg sequence\n");
     const soccfg_t *cfg = NULL;
     for(size_t i = 0; i < sizeof(soccfg)/sizeof(soccfg[0]); ++i)
     {
@@ -172,8 +173,7 @@ void recfg_soc_update(void)
     }
     if(!cfg)
     {
-        iprintf("WARNING: Failed to find SoC Recfg info\n");
-        return;
+        panic("Failed to find SoC Recfg info");
     }
     uint64_t sram_base;
     if(cfg->recfg_base)
@@ -186,11 +186,12 @@ void recfg_soc_update(void)
     }
     else
     {
-        iprintf("WARNING: Need either Recfg base or SRAM base\n");
-        return;
+        panic("Need either Recfg base or SRAM base");
     }
     uint64_t cfg_base = sram_base + (uint64_t)*(cfg->aop_cfg_table);
+#if DEV_BUILD
     iprintf("AOP SRAM: 0x%llx, CFG: 0x%llx\n", sram_base, cfg_base);
+#endif
     volatile uint32_t *table = (volatile uint32_t*)cfg_base;
     cb_arg_t arg = { .cfg = cfg };
     recfg_cb_t cb =
@@ -203,15 +204,43 @@ void recfg_soc_update(void)
     for(size_t i = 0; i < 8; ++i)
     {
         uint64_t seq_base = (uint64_t)table[i] << 4;
-        // recfg_check() prints its own messages on failure.
-        // Ideally we'd treat SRAM as volatile & copy it into a buffer and back,
-        // but getting the right size to copy is a pain, so ehhh whatever.
-        // Also ugly hack to specify biggest size we reasonably can. It's fiiine. Trust me.
-        if(recfg_check((void*)seq_base, 0xfffffffffffffffc - seq_base, NULL) == kRecfgSuccess)
+#if DEV_BUILD
+        iprintf("Recfg seq %lu: 0x%llx\n", i, seq_base);
+#endif
+        // Knowing the actual size requires parsing to begin with, so... just set theoretical max.
+        size_t seq_size = 0x0001000000000000 - seq_base;
+
+        // If this isn't mapped... well, map it.
+        if(vatophys(seq_base) == -1)
         {
+            // Map uncached. And just hope that 0x10000 is enough?
+            map_range(seq_base & ~0x3fffULL, seq_base & ~0x3fffULL, 0x10000, 2, 0, true);
+            // Also adjust max size if we actually can.
+            seq_size = (seq_base & ~0x3fffULL) + 0x10000 - seq_base;
+        }
+
+        volatile uint32_t *p = (volatile uint32_t*)seq_base;
+        for(size_t s = 0; s < 0x40; s += 4)
+        {
+            iprintf("%08x %08x %08x %08x\n", p[s], p[s+1], p[s+2], p[s+3]);
+        }
+
+        // Ideally we'd want to copy MMIO/SRAM to cached DRAM for easier handling, but
+        // as mentioned above, getting the size requires parsing already, so that's pointless.
+        // The recfg driver was simply modified to only do aligned accesses.
+        if(recfg_check((void*)seq_base, seq_size, NULL) == kRecfgSuccess)
+        {
+            // Normally we'd want to panic if recfg_check() fails, but it turns out
+            // certain sequences are unused and can be completely uninitialised
+            // with SRAM holding whatever contents it had on power-on.
             arg.patchedIORVBAR = false;
             arg.patchedAES     = false;
-            recfg_walk((void*)seq_base, 0xfffffffffffffffc - seq_base, &cb, &arg);
+            int r = recfg_walk((void*)seq_base, seq_size, &cb, &arg);
+            if(r != kRecfgSuccess && r != kRecfgUpdate)
+            {
+                // We DO however want to panic if any of the callbacks attempted something that we couldn't support.
+                panic("recfg_walk(%lu) returned: %d", i, r);
+            }
         }
     }
     __asm__ volatile("dmb sy");

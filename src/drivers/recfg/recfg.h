@@ -27,6 +27,39 @@ enum
     kRecfgDelay     = 1,
 };
 
+#ifdef RECFG_VOLATILE
+
+// For use on actual MMIO / uncached memory with alignment restrictions.
+// Refer to the #else case for readable definitions.
+
+typedef struct { volatile uint32_t a;                } recfg_cmd_t, recfg_read_t, recfg_write32_t, recfg_write64_t;
+typedef struct { volatile uint32_t a, b, mask, data; } recfg_read32_t;
+typedef struct { volatile uint32_t a, b;             } recfg_read64_t;
+
+#define RECFG_CMD_CMD_r(_cmd)           (_cmd->a & 0x3)
+#define RECFG_CMD_META_r(_cmd)         ((_cmd->a >> 2) & 0xf)
+#define RECFG_CMD_DATA_r(_cmd)         ((_cmd->a >> 6) & 0x3ffffff)
+#define RECFG_CMD_DATA_w(_cmd, _v)      (_cmd->a = (_cmd->a & 0x3f) | (((_v) << 6) & 0xffffffc0))
+
+#define RECFG_READ_COUNT_r(_cmd)       ((_cmd->a >> 2) & 0x7)
+#define RECFG_READ_LARGE_r(_cmd)       ((_cmd->a >> 5) & 0x1)
+#define RECFG_READ_BASE_r(_cmd)         RECFG_CMD_DATA_r(_cmd)
+#define RECFG_READ_BASE_w(_cmd, _v)     RECFG_CMD_DATA_w(_cmd, _v)
+#define RECFG_READ_OFF_r(_cmd)          (_cmd->b & 0xff)
+#define RECFG_READ_OFF_w(_cmd, _v)      (_cmd->b = (_cmd->b & 0xffffff00) | ((_v) & 0xff))
+#define RECFG_READ_RECNT_r(_cmd)       ((_cmd->b >> 8) & 0xff)
+#define RECFG_READ_RECNT_w(_cmd, _v)    (_cmd->b = (_cmd->b & 0xffff00ff) | (((_v) << 8) & 0xff00))
+#define RECFG_READ_RETRY_r(_cmd)       ((_cmd->b >> 16) & 0x1)
+#define RECFG_READ_RETRY_w(_cmd, _v)    (_cmd->b = (_cmd->b & 0xfffeffff) | (((_v) << 16) & 0x10000))
+
+#define RECFG_WRITE_COUNT_r(_cmd)      ((_cmd->a >> 2) & 0xf)
+#define RECFG_WRITE_BASE_r(_cmd)        RECFG_CMD_DATA_r(_cmd)
+#define RECFG_WRITE_BASE_w(_cmd, _v)    RECFG_CMD_DATA_w(_cmd, _v)
+#define RECFG_WRITE_OFF_r(_cmd, _i)    ((((volatile uint32_t*)(_cmd + 1))[(_i) / 4] >> (((_i) & 0x3) * 8)) & 0xff)
+#define RECFG_WRITE_OFF_w(_cmd, _i, _v) (((volatile uint32_t*)(_cmd + 1))[(_i) / 4] = (((volatile uint32_t*)(_cmd + 1))[(_i) / 4] & ~(0xff << (((_i) & 0x3) * 8))) | ((_v) & (0xff << (((_i) & 0x3) * 8))))
+
+#else
+
 typedef struct
 {
     uint32_t cmd   :  2,
@@ -68,7 +101,6 @@ typedef struct
              __res : 15;
     // uint64_t mask;
     // uint64_t data;
-    uint32_t __aux[];
 } __attribute__((packed)) recfg_read64_t;
 
 typedef struct
@@ -88,6 +120,30 @@ typedef struct
     uint8_t  off[];
     // uint64_t data[];
 } __attribute__((packed)) recfg_write64_t;
+
+#define RECFG_CMD_CMD_r(_cmd)           (_cmd->cmd)
+#define RECFG_CMD_META_r(_cmd)          (_cmd->meta)
+#define RECFG_CMD_DATA_r(_cmd)          (_cmd->data)
+#define RECFG_CMD_DATA_w(_cmd, _v)      (_cmd->data = (_v))
+
+#define RECFG_READ_COUNT_r(_cmd)        (_cmd->count)
+#define RECFG_READ_LARGE_r(_cmd)        (_cmd->large)
+#define RECFG_READ_BASE_r(_cmd)         (_cmd->base)
+#define RECFG_READ_BASE_w(_cmd, _v)     (_cmd->base = (_v))
+#define RECFG_READ_OFF_r(_cmd)          (_cmd->off)
+#define RECFG_READ_OFF_w(_cmd, _v)      (_cmd->off = (_v))
+#define RECFG_READ_RECNT_r(_cmd)        (_cmd->recnt)
+#define RECFG_READ_RECNT_w(_cmd, _v)    (_cmd->recnt = (_v))
+#define RECFG_READ_RETRY_r(_cmd)        (_cmd->retry)
+#define RECFG_READ_RETRY_w(_cmd, _v)    (_cmd->retry = (_v))
+
+#define RECFG_WRITE_COUNT_r(_cmd)       (_cmd->count)
+#define RECFG_WRITE_BASE_r(_cmd)        (_cmd->base)
+#define RECFG_WRITE_BASE_w(_cmd, _v)    (_cmd->base = (_v))
+#define RECFG_WRITE_OFF_r(_cmd, _i)     (_cmd->off[_i])
+#define RECFG_WRITE_OFF_w(_cmd, _i, _v) (_cmd->off[_i] = (_v))
+
+#endif
 
 typedef int (*recfg_generic_cb_t)(void *a, const recfg_cmd_t *cmd);
 typedef int (*recfg_end_cb_t)(void *a);
@@ -114,7 +170,7 @@ typedef struct
  * When using this as a library, define the following macros:
  * - RECFG_IO           to enable error logging to stderr
  * - ERR(str, args...)  to enable error logging to a custom facility
- * - RECFG_REAL_ADDR    to enable address alignment checks meant for real, life reconfig sequences
+ * - RECFG_VOLATILE     to enable address alignment checks meant for real, live reconfig sequences
  *
  * `mem` and `size` should be pointer to and length of the reconfig sequence.
  *

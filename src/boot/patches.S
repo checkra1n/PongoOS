@@ -170,8 +170,8 @@ Before A9, devices go through ROM and LLB after deep sleep and relock, and
 there's nothing we can do about that, except not entering deep sleep, ever.
 On A9 and later this is handled by the AOP reconfig engine, which enables us to
 actually keep this patch persistent, but obviously needs a separate patch (see below).
-On a more curious note, on A11 and later (T2 unknown at this point), the AES_DISABLE
-will actually persist across deep sleep without the aid of the reconfig engine.
+On a more curious note, the AES_DISABLE seems to actually persist across deep sleep
+without the aid of the reconfig engine, yet some SoCs still re-lock it.
 
 
 The AES patch works by finding two calls to security_allow_modes(), which immediately
