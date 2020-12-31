@@ -1,0 +1,3 @@
+_module_entry
+_module_name
+_exported_symbols 

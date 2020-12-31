@@ -1,25 +1,29 @@
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-// 
-//
-//  Copyright (c) 2019-2020 checkra1n team
-//  This file is part of pongoOS.
-//
+/* 
+ * pongoOS - https://checkra.in
+ * 
+ * Copyright (C) 2019-2020 checkra1n team
+ *
+ * This file is part of pongoOS.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ * 
+ */
 #ifndef PONGOH
 #define PONGOH
 #include <mach-o/loader.h>
@@ -48,6 +52,16 @@
 #endif
 
 #define DT_KEY_LEN 0x20
+
+extern int service_cmd(const char* name, int cmd_id, void* data_in, size_t in_size, void* data_out, size_t* out_size);
+
+#define kSerialService "serial"
+// these are for consumers
+#define kSerialRXDequeue 1
+#define kSerialTXQueue 2
+// these are for providers
+#define kSerialRXQueue 3
+#define kSerialTXDequeue 4
 
 struct Boot_Video {
 	unsigned long	v_baseAddr;	/* Base address of video memory */
@@ -159,6 +173,18 @@ extern struct vm_space kernel_vm_space;
 #define PAGING_INFO_ALLOC_ON_FAULT_INFO_MASK  0x000000ff00000000ULL
 #define PAGING_INFO_ALLOC_ON_FAULT_INFO_GET(x) ((x & PAGING_INFO_ALLOC_ON_FAULT_INFO_MASK) >> 32ULL)
 #define PAGING_INFO_ALLOC_ON_FAULT_INFO_SET(to, x) to = ((to & ~PAGING_INFO_ALLOC_ON_FAULT_INFO_MASK) | ((((uint64_t)x) << 32ULL) & PAGING_INFO_ALLOC_ON_FAULT_INFO_MASK));
+
+#undef KERN_SUCCESS
+#undef KERN_FAILURE
+#undef KERN_VM_OOM
+#undef VM_FLAGS_ANYWHERE
+#undef VM_FLAGS_FIXED
+#undef PROT_READ
+#undef PROT_WRITE
+#undef PROT_EXEC
+#undef PROT_KERN_ONLY
+#undef PROT_DEVICE
+#undef PROT_PAGING_INFO
 
 typedef enum {
     KERN_SUCCESS,
@@ -471,6 +497,7 @@ static inline void flush_tlb(void)
     __asm__ volatile("dsb sy");
 }
 extern void task_real_unlink(struct task* task);
+#include "hal/hal.h"
 
 #endif
 

@@ -1,25 +1,29 @@
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-// 
-//
-//  Copyright (c) 2019-2020 checkra1n team
-//  This file is part of pongoOS.
-//
+/* 
+ * pongoOS - https://checkra.in
+ * 
+ * Copyright (C) 2019-2020 checkra1n team
+ *
+ * This file is part of pongoOS.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ * 
+ */
 #include <pongo.h>
 #include <aes/aes_private.h>
 
@@ -55,6 +59,9 @@ void pongo_main_task() {
 
     // Enable serial TX
     serial_early_init();
+    
+    // Setup HAL
+    hal_init();
 
     // Turn on IRQ controller
     interrupt_init();
@@ -80,16 +87,18 @@ void pongo_main_task() {
 
     // Set up AES
     aes_init();
-
+    
+    
     puts("");
     puts("#==================");
     puts("#");
-    iprintf("# pongoOS " PONGO_VERSION " (EL%d)\n", get_el());
+    puts("# pongoOS " PONGO_VERSION);
     puts("#");
     puts("# https://checkra.in");
     puts("#");
     puts("#==================");
     screen_mark_banner();
+    
     iprintf("Booted by: %s\n", dt_get_prop("chosen", "firmware-version", NULL));
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
     strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
@@ -98,7 +107,7 @@ void pongo_main_task() {
 #else
     iprintf("Built with: GCC %s\n", __VERSION__);
 #endif
-    iprintf("Running on: %s\n", soc_name);
+    iprintf("Running on: %s\n", hal_platform_name());
 
     shell_main();
 }

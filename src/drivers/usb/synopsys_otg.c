@@ -1,3 +1,29 @@
+/* 
+ * pongoOS - https://checkra.in
+ * 
+ * Copyright (C) 2019-2020 checkra1n team
+ *
+ * This file is part of pongoOS.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ * 
+ */
 
 //
 // @bazad's synopsysOTG driver
@@ -1779,65 +1805,18 @@ void usb_init() {
     // Can't trust "usb-device" dtre entry, because that can be USB3 and we want USB2
     gSynopsysBase = (gSynopsysOTGBase & ~0xfffULL) + 0x00100000;
     uint32_t otg_irq;
-
-    // Would be nice to use device_clock_by_name() here, but the names are different across devices...
-    switch(socnum)
-    {
-        case 0x8960:
-            reg1 = gIOBase + 0x0e020158;
-            reg2 = gIOBase + 0x0e020160;
-            reg3 = gIOBase + 0x0e020188;
-            otg_irq = 162;
-            break;
-        case 0x7000:
-        case 0x7001:
-            reg1 = gIOBase + 0x0e020248;
-            reg2 = gIOBase + 0x0e020250;
-            reg3 = gIOBase + 0x0e020288;
-            otg_irq = 182;
-            break;
-        case 0x8000:
-        case 0x8003:
-            reg1 = gIOBase + 0x0e080250;
-            reg2 = gIOBase + 0x0e080258;
-            reg3 = gIOBase + 0x0e080290;
-            otg_irq = 214;
-            break;
-        case 0x8001:
-            reg1 = gIOBase + 0x0e080278;
-            reg2 = gIOBase + 0x0e080280;
-            reg3 = gIOBase + 0x0e0802B8;
-            otg_irq = 241;
-            break;
-        case 0x8010:
-            reg1 = gIOBase + 0x0e080268;
-            reg2 = gIOBase + 0x0e080270;
-            reg3 = gIOBase + 0x0e080290;
-            otg_irq = 241;
-            break;
-        case 0x8011:
-            reg1 = gIOBase + 0x0e080288;
-            reg2 = gIOBase + 0x0e080290;
-            reg3 = gIOBase + 0x0e0802a0;
-            otg_irq = 243;
-            break;
-        case 0x8012:
-            reg1 = gIOBase + 0x0e080268;
-            reg2 = gIOBase + 0x0e080270;
-            reg3 = gIOBase + 0x0e080290;
-            otg_irq = 304;
-            break;
-        case 0x8015:
-            reg1 = gIOBase + 0x32080270;
-            reg2 = gIOBase + 0x32080278;
-            reg3 = gIOBase + 0x32080270;
-            otg_irq = 324;
-            break;
-        default:
-            panic("USB: unsupported platform: %x\n - this one's on Siguza\n", socnum);
-            break;
+    
+    struct usb_regs regs;
+    size_t plsz = sizeof(struct usb_regs);
+    if (!hal_get_platform_value("usb_regs", &regs, &plsz)) {
+        panic("synopsys_otg: need usb_regs platform value!");
     }
-
+    
+    reg1 = gIOBase + regs.reg1;
+    reg2 = gIOBase + regs.reg2;
+    reg3 = gIOBase + regs.reg3;
+    otg_irq = regs.otg_irq;
+    
     uint64_t dma_page_v = (uint64_t) alloc_contig(4 * DMA_BUFFER_SIZE);
     uint64_t dma_page_p = vatophys_static((void*)dma_page_v);
     bzero((void*)dma_page_v,4 * DMA_BUFFER_SIZE);

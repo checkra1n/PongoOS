@@ -1,25 +1,29 @@
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-// 
-//
-//  Copyright (c) 2019-2020 checkra1n team
-//  This file is part of pongoOS.
-//
+/* 
+ * pongoOS - https://checkra.in
+ * 
+ * Copyright (C) 2019-2020 checkra1n team
+ *
+ * This file is part of pongoOS.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ * 
+ */
 #include <errno.h>
 #include <stdlib.h>
 #include <pongo.h>
@@ -68,7 +72,7 @@ uint64_t ttbpage_alloc() {
 }
 uint64_t ram_phys_off;
 uint64_t ram_phys_size;
-uint64_t tt_bits, tg0, t0sz, t1sz;
+uint64_t tt_bits, tg0, tg1, t0sz, t1sz;
 uint64_t ttb_alloc_base;
 volatile uint64_t *ttbr0, *ttbr1;
 
@@ -282,12 +286,14 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
 {
     if (is_16k()) {
         tt_bits = 11;
-        tg0 = 0b10;
+        tg0 = 0b10; // 16K
+        tg1 = 0b01; // 16K
         t0sz = 28;
         t1sz = 28;
     } else {
         tt_bits = 9;
-        tg0 = 0b00;
+        tg0 = 0b00; // 4K
+        tg1 = 0b10; // 4K
         t0sz = 25;
         t1sz = 25;
     }
@@ -312,7 +318,7 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     map_range_noflush_rw(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 3, 1, false);
     map_range_noflush_rwx(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 2, 0, false);
     // TLB flush is done by enable_mmu_el1
-    
+
     if (!early_heap_base) {
         early_heap_base = (pongo_base - 0x800000000 + kCacheableView + pongo_size + 0x7fff) & ~0x3fff;
     }
@@ -325,7 +331,7 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     if (!(get_el() == 1)) panic("pongoOS runs in EL1 only! did you skip pongoMon?");
 
     set_vbar_el1((uint64_t)&exception_vector);
-    enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg0 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1);
+    enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1);
 
     kernel_vm_space.ttbr0 = (uint64_t)ttbr0;
     kernel_vm_space.ttbr1 = (uint64_t)ttbr1;
@@ -347,18 +353,18 @@ err_t map_physical_range(struct vm_space* vmspace, uint64_t* va, uint64_t pa, ui
     uint64_t addr = *va;
     err_t rv = vm_allocate(vmspace, &addr, size, flags | VM_FLAGS_NOMAP);
     if (rv) return rv;
-    
+
     uint32_t pagecount = ((size + PAGE_MASK) & ~PAGE_MASK) / PAGE_SIZE;
     for (uint32_t i=0; i < pagecount; i ++) {
         vm_space_map_page_physical_prot(vmspace, addr + i * PAGE_SIZE, pa + i * PAGE_SIZE, prot);
     }
-    
+
     return KERN_SUCCESS;
 }
 
 err_t vm_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_flags_t flags) {
     err_t retn = KERN_VM_OOM;
-    
+
     uint32_t pagecount = ((size + PAGE_MASK) & ~PAGE_MASK) / PAGE_SIZE;
     if (!pagecount) return 0;
     disable_interrupts();
@@ -366,7 +372,7 @@ err_t vm_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_fl
     uint64_t vm_scan_size = (VM_SPACE_SIZE / PAGE_SIZE);
     uint32_t found_pages = 0;
     uint32_t vm_index_start = 0;
-    
+
     if (flags & VM_FLAGS_FIXED) {
         uint64_t vm_offset = *addr - vmspace->vm_space_base;
         if (vm_offset > vmspace->vm_space_end) vm_scan_size = 0;
@@ -377,7 +383,7 @@ err_t vm_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_fl
     } else {
         // VM_FLAGS_ANYWHERE
     }
-    
+
     for (uint32_t i=0; i < vm_scan_size; i ++) {
         uint8_t is_alloc = ((vmspace->vm_space_table[i >> 3]) >> (i & 7)) & 1;
         if (!is_alloc) {
@@ -388,7 +394,7 @@ err_t vm_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_fl
         } else {
             found_pages = 0;
         }
-        
+
         if (found_pages == pagecount) {
             retn = KERN_SUCCESS;
             break;
@@ -405,7 +411,7 @@ err_t vm_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_fl
     } else {
         *addr = 0;
     }
-    
+
     enable_interrupts();
     return retn;
 }
@@ -447,9 +453,9 @@ uint64_t linear_kvm_alloc(uint32_t size) {
     uint64_t va = 0;
     size +=  0x3FFF;
     size &= ~0x3FFF;
-    
+
     if ((linear_kvm_cursor + size) > linear_kvm_end) panic("linear_kvm_alloc: OOM");
-    
+
     disable_interrupts();
     va = linear_kvm_cursor;
     linear_kvm_cursor += size;
@@ -461,7 +467,7 @@ void* jit_alloc(uint32_t size) {
     size +=  0x3FFF;
     size &= ~0x3FFF;
     uint64_t va = linear_kvm_alloc(size);
-    
+
     uint64_t mapped_so_far = 0;
     while (size) {
         uint64_t page = ppage_alloc();
@@ -471,7 +477,7 @@ void* jit_alloc(uint32_t size) {
     }
 
     *(uint32_t*)(va) = size;
-    
+
     return (void*)(va + 4);
 }
 void jit_free(void* alloc) {
@@ -520,7 +526,7 @@ err_t vm_space_map_page_physical_prot(struct vm_space* vmspace, uint64_t vaddr, 
             }
         }
     }
-    
+
     enable_interrupts();
     return KERN_SUCCESS;
 }
@@ -543,7 +549,7 @@ uint64_t asid_alloc() {
 void asid_free(uint64_t asid) {
     uint32_t index = ((uint64_t) asid) >> 48ULL;
     index &= 0xff;
-    
+
     bool is_alloc = !!(asid_table[index>>3] & (1 << (index&0x7)));
     if (!is_alloc) panic("ASID was not allocated?!");
 #if DEBUG_REFCOUNT
@@ -571,10 +577,10 @@ void vm_flush_by_addr_all_asid(uint64_t va) {
 }
 void vm_init() {
     if(kernel_vm_space.vm_space_table) panic("vm_init misuse");
-    
+
     asid_table[0] |= 1; // reserve kernel ASID
     is_16k_v = is_16k();
-    
+
     task_current()->vm_space = &kernel_vm_space;
     kernel_vm_space.vm_space_table = alloc_contig((VM_SPACE_SIZE / PAGE_SIZE) / 8);
     bzero(kernel_vm_space.vm_space_table, (VM_SPACE_SIZE / PAGE_SIZE) / 8);
@@ -641,21 +647,21 @@ void phys_unlink_contiguous(uint64_t pa, uint64_t size) {
 
     size += 0x3fff;
     size &= ~0x3fff;
-    
+
     uint64_t fpages = size >> 14;
     if (pa & 0x3fff) panic("phys_unlink_contiguous only works with aligned PAs");
     pa >>= 14;
-    
+
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
         if (i > ppages) panic("OOB phys_unlink_contiguous: 0x%llx", i << 14ULL);
         uint64_t* pa_v = phystokv((i << 14ULL) + gBootArgs->physBase);
-        
+
         if ((phys_get_entry((i << 14ULL) + gBootArgs->physBase) & PAGE_REFBITS) != PAGE_FREE) panic("phys_unlink_contiguous: ppage (pa: %llx) is not free!", (i << 14ULL) + gBootArgs->physBase);
 
         uint64_t pa_next = pa_v[0];
         uint64_t pa_prev = pa_v[1];
-        
+
         if (pa_next) {
             if ((phys_get_entry(pa_next) & PAGE_REFBITS) != PAGE_FREE) panic("phys_unlink_contiguous: ppage (next: %llx) is not free!", pa_next);
             uint64_t* pa_next_v = phystokv(pa_next);
@@ -677,7 +683,7 @@ void mark_phys_wired(uint64_t pa, uint64_t size) {
     uint64_t fpages = size >> 14;
     if (pa & 0x3fff) panic("mark_phys_wired only works with aligned PAs (pa: %llx)", pa);
     pa >>= 14;
-    
+
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
         if ((phys_get_entry((i << 14ULL) + gBootArgs->physBase) & PAGE_REFBITS) != PAGE_FREE) panic("mark_phys_wired: ppage (pa: %llx) is not free!", (i << 14ULL) + gBootArgs->physBase);
@@ -728,7 +734,7 @@ void phys_force_free(uint64_t pa, uint64_t size) {
     uint64_t fpages = size >> 14;
     if (pa & 0x3fff) panic("phys_force_free only works with aligned PAs");
     pa >>= 14;
-    
+
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
         if (i > ppages) panic("OOB phys_force_free: 0x%llx", i << 14ULL);
@@ -750,7 +756,7 @@ void phys_reference(uint64_t pa, uint64_t size) {
     uint64_t fpages = size >> 14;
     if (pa & 0x3fff) panic("phys_reference only works with aligned PAs");
     pa >>= 14;
-    
+
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
         if (i > ppages) panic("OOB phys_reference: 0x%llx", i << 14ULL);
@@ -787,10 +793,10 @@ void phys_dereference(uint64_t pa, uint64_t size) {
 
 void alloc_init() {
     if (alloc_static_base) return;
-    
+
     uint64_t memory_size = gBootArgs->memSize;
     ppages = memory_size >> 14;
-    
+
     uint64_t early_heap = early_heap_base;
 #ifdef AUTOBOOT
     uint64_t* _autoboot_block = (uint64_t*)0x419000000;
@@ -803,7 +809,7 @@ void alloc_init() {
         bzero(_autoboot_block, _autoboot_block[1] + 0x20);
     }
 #endif
-    
+
     ppage_list = (uint32_t*)early_heap;
     early_heap += 4 * ppages;
     early_heap = ((early_heap + 0x3fff) & (~0x3fff));
@@ -819,7 +825,7 @@ void alloc_init() {
         phys_force_free(vatophys_static((void*)alloc_static_hardcap), alloc_static_end - alloc_static_hardcap);
         alloc_static_end = alloc_static_hardcap;
     }
-    
+
     uint64_t alloc_heap_base = (((uint64_t)early_heap) + 0x7fff) & (~0x3fff);
     uint64_t alloc_heap_end = (((uint64_t)(phystokv(gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
 
@@ -846,7 +852,7 @@ uint64_t alloc_phys(uint32_t size) {
     bool found = false;
     uint64_t rv = 0;
     disable_interrupts();
-    
+
     if (size == PAGE_SIZE) {
         // O(1) fastpath
         rv = ppage_alloc();
