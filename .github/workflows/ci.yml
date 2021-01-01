@@ -13,5 +13,8 @@ jobs:
     runs-on: macos-11.0
     steps:
       - uses: actions/checkout@v2
-      - name: Make
-        run: make clean all
+      - run: make clean all
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build
+          path: build
