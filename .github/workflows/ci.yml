@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0' STRIP=llvm-strip make clean all
+      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0 -fuse-ld=ld64.lld' STRIP=llvm-strip make clean all
       - uses: actions/upload-artifact@v2
         with:
           name: build
