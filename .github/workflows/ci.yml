@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - run: |
-          echo 'deb https://apt.llvm.org/focal/ llvm-toolchain-focal main' | sudo tee /etc/apt/sources.list.d/llvm-12.list
-          sudo apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
+          echo 'deb https://assets.checkra.in/debian /' | sudo tee /etc/apt/sources.list.d/checkra1n.list
+          sudo apt-key adv --fetch-keys https://assets.checkra.in/debian/archive.key
           sudo apt-get update
-          sudo apt-get install -y lld-12
+          sudo apt-get install -y ld64
       - uses: actions/checkout@v2
-      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64.lld-12' STRIP=llvm-strip make clean all
+      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64' STRIP=llvm-strip make clean all
       - uses: actions/upload-artifact@v2
         with:
           name: build
