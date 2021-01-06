@@ -16,9 +16,9 @@ jobs:
           echo 'deb https://assets.checkra.in/debian /' | sudo tee /etc/apt/sources.list.d/checkra1n.list
           sudo apt-key adv --fetch-keys https://assets.checkra.in/debian/archive.key
           sudo apt-get update
-          sudo apt-get install -y ld64
+          sudo apt-get install -y ld64 cctools-strip
       - uses: actions/checkout@v2
-      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64' STRIP=llvm-strip-10 make clean all
+      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64' STRIP=cctools-strip make clean all
       - uses: actions/upload-artifact@v2
         with:
           name: build
