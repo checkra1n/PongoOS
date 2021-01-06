@@ -18,7 +18,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ld64
       - uses: actions/checkout@v2
-      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64' STRIP=llvm-strip make clean all
+      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64' STRIP=llvm-strip-10 make clean all
       - uses: actions/upload-artifact@v2
         with:
           name: build
