@@ -1,0 +1,2 @@
+language = "bash"
+run = "docker pull docker.pkg.github.com/checkra1n/pongoos/build-pongo:latest"
