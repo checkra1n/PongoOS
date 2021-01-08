@@ -34,7 +34,7 @@ ifeq ($(HOST_OS),Darwin)
 	STAT                ?= stat -L -f %z
 else
 ifeq ($(HOST_OS),Linux)
-	EMBEDDED_CC         ?= arm64-apple-ios12.0.0-clang -arch arm64
+	EMBEDDED_CC         ?= clang --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64
 	STRIP               ?= cctools-strip
 	STAT                ?= stat -L -c %s
 endif
