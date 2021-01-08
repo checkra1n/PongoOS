@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2020 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <errno.h>
 #include <pthread.h>
@@ -222,62 +222,70 @@ static void FoundDevice(void *refCon, io_iterator_t it)
         }
         else
         {
-            IOUSBFindInterfaceRequest request =
-            {
-                .bInterfaceClass = kIOUSBFindInterfaceDontCare,
-                .bInterfaceSubClass = kIOUSBFindInterfaceDontCare,
-                .bInterfaceProtocol = kIOUSBFindInterfaceDontCare,
-                .bAlternateSetting = kIOUSBFindInterfaceDontCare,
-            };
-            io_iterator_t iter = MACH_PORT_NULL;
-            ret = (*stuff->dev)->CreateInterfaceIterator(stuff->dev, &request, &iter);
+            ret = (*stuff->dev)->SetConfiguration(stuff->dev, 1);
             if(ret != KERN_SUCCESS)
             {
-                ERR("CreateInterfaceIterator: %s", mach_error_string(ret));
+                ERR("SetConfiguration: %s", mach_error_string(ret));
             }
             else
             {
-                io_service_t usbIntf = MACH_PORT_NULL;
-                while((usbIntf = IOIteratorNext(iter)))
+                IOUSBFindInterfaceRequest request =
                 {
-                    ret = IOCreatePlugInInterfaceForService(usbIntf, kIOUSBInterfaceUserClientTypeID, kIOCFPlugInInterfaceID, &plugin, &score);
-                    IOObjectRelease(usbIntf);
-                    if(ret != KERN_SUCCESS)
-                    {
-                        ERR("IOCreatePlugInInterfaceForService(usbIntf): %s", mach_error_string(ret));
-                        continue;
-                    }
-                    result = (*plugin)->QueryInterface(plugin, CFUUIDGetUUIDBytes(kIOUSBInterfaceInterfaceID), (LPVOID*)&stuff->intf);
-                    (*plugin)->Release(plugin);
-                    if(result != 0)
-                    {
-                        ERR("QueryInterface(intf): 0x%x", result);
-                        continue;
-                    }
-                    ret = (*stuff->intf)->USBInterfaceOpen(stuff->intf);
-                    if(ret != KERN_SUCCESS)
-                    {
-                        ERR("USBInterfaceOpen: %s", mach_error_string(ret));
-                    }
-                    else
-                    {
-                        int r = pthread_create(&stuff->th, NULL, &io_main, stuff);
-                        if(r != 0)
-                        {
-                            ERR("pthread_create: %s", strerror(r));
-                            exit(-1);
-                        }
-                        stuff->regID = regID;
-                        while((usbIntf = IOIteratorNext(iter))) IOObjectRelease(usbIntf);
-                        IOObjectRelease(iter);
-                        while((usbDev = IOIteratorNext(it))) IOObjectRelease(usbDev);
-                        IOObjectRelease(usbDev);
-                        return;
-                    }
-                    (*stuff->intf)->Release(stuff->intf);
-                    stuff->intf = NULL;
+                    .bInterfaceClass = kIOUSBFindInterfaceDontCare,
+                    .bInterfaceSubClass = kIOUSBFindInterfaceDontCare,
+                    .bInterfaceProtocol = kIOUSBFindInterfaceDontCare,
+                    .bAlternateSetting = kIOUSBFindInterfaceDontCare,
+                };
+                io_iterator_t iter = MACH_PORT_NULL;
+                ret = (*stuff->dev)->CreateInterfaceIterator(stuff->dev, &request, &iter);
+                if(ret != KERN_SUCCESS)
+                {
+                    ERR("CreateInterfaceIterator: %s", mach_error_string(ret));
                 }
-                IOObjectRelease(iter);
+                else
+                {
+                    io_service_t usbIntf = MACH_PORT_NULL;
+                    while((usbIntf = IOIteratorNext(iter)))
+                    {
+                        ret = IOCreatePlugInInterfaceForService(usbIntf, kIOUSBInterfaceUserClientTypeID, kIOCFPlugInInterfaceID, &plugin, &score);
+                        IOObjectRelease(usbIntf);
+                        if(ret != KERN_SUCCESS)
+                        {
+                            ERR("IOCreatePlugInInterfaceForService(usbIntf): %s", mach_error_string(ret));
+                            continue;
+                        }
+                        result = (*plugin)->QueryInterface(plugin, CFUUIDGetUUIDBytes(kIOUSBInterfaceInterfaceID), (LPVOID*)&stuff->intf);
+                        (*plugin)->Release(plugin);
+                        if(result != 0)
+                        {
+                            ERR("QueryInterface(intf): 0x%x", result);
+                            continue;
+                        }
+                        ret = (*stuff->intf)->USBInterfaceOpen(stuff->intf);
+                        if(ret != KERN_SUCCESS)
+                        {
+                            ERR("USBInterfaceOpen: %s", mach_error_string(ret));
+                        }
+                        else
+                        {
+                            int r = pthread_create(&stuff->th, NULL, &io_main, stuff);
+                            if(r != 0)
+                            {
+                                ERR("pthread_create: %s", strerror(r));
+                                exit(-1);
+                            }
+                            stuff->regID = regID;
+                            while((usbIntf = IOIteratorNext(iter))) IOObjectRelease(usbIntf);
+                            IOObjectRelease(iter);
+                            while((usbDev = IOIteratorNext(it))) IOObjectRelease(usbDev);
+                            IOObjectRelease(usbDev);
+                            return;
+                        }
+                        (*stuff->intf)->Release(stuff->intf);
+                        stuff->intf = NULL;
+                    }
+                    IOObjectRelease(iter);
+                }
             }
         }
 
