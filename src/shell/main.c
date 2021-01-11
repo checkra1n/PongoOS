@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2020 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,15 +22,10 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
 uint32_t autoboot_count;
-#define BOOT_FLAG_DEFAULT 0
-#define BOOT_FLAG_HARD 1
-#define BOOT_FLAG_HOOK 2
-#define BOOT_FLAG_LINUX 3
-#define BOOT_FLAG_RAW 4
 
 extern volatile char gBootFlag;
 
@@ -102,7 +97,7 @@ void start_host_shell() {
 void hexdump(void *mem, unsigned int len)
 {
         unsigned int i;
-        
+
         for(i = 0; i < len + ((len % HEXDUMP_COLS) ? (HEXDUMP_COLS - len % HEXDUMP_COLS) : 0); i++)
         {
                 /* print offset */
@@ -110,7 +105,7 @@ void hexdump(void *mem, unsigned int len)
                 {
                         iprintf("0x%09llx: ", (((uint64_t)mem)+i));
                 }
- 
+
                 /* print hex data */
                 if(i < len)
                 {
@@ -120,7 +115,7 @@ void hexdump(void *mem, unsigned int len)
                 {
                         iprintf("   ");
                 }
-                
+
                 if(i % HEXDUMP_COLS == (HEXDUMP_COLS - 1))
                 {
                         iprintf("\n");
@@ -198,7 +193,7 @@ void spawn_cmd(const char* cmd, char* args) {
     uint64_t sysc = strtoull(args, NULL, 16);
 
     uint64_t shc_addr = 0;
-    
+
     struct proc* umproc = proc_create(NULL, "usermode", 0);
     vm_allocate(umproc->vm_space, &shc_addr, 0x4000, VM_FLAGS_ANYWHERE | VM_FLAGS_NOMAP);
     uint64_t phys = ppage_alloc();
@@ -210,19 +205,19 @@ void spawn_cmd(const char* cmd, char* args) {
     ins[ic++] = 0xd4000841;
     ins[ic++] = 0xa8c17bfd;
     ins[ic++] = 0xd65f03c0;
-    
+
     invalidate_icache();
     vm_space_map_page_physical_prot(umproc->vm_space, shc_addr, phys, PROT_READ | PROT_WRITE | PROT_EXEC);
-    
+
     struct task* umtask = proc_create_task(umproc, (void*)shc_addr);
 
     if (arg1)
         umtask->initial_state[0] = strtoull(arg1, NULL, 16);
 
     umtask->initial_state[15] = sysc;
-    
+
     task_link(umtask); // implicitly consumes the reference (ie. once the task exits, it will drop the last reference and get free'd)
-    
+
     proc_release(umproc); // the proc will be held alive by the reference in the task, which will be dropped once it gets free'd
 }
 
@@ -254,7 +249,7 @@ void shell_main() {
     /*
         Load command handler
     */
-    
+
     extern void task_list(const char *, char*);
     command_register("panic", "calls panic()", panic_cmd);
     command_register("ps", "lists current tasks and irq handlers", task_list);

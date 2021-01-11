@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2020 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,15 +22,9 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
-uint32_t autoboot_count;
-#define BOOT_FLAG_DEFAULT 0
-#define BOOT_FLAG_HARD 1
-#define BOOT_FLAG_HOOK 2
-#define BOOT_FLAG_LINUX 3
-#define BOOT_FLAG_RAW 4
 
 extern volatile char gBootFlag;
 
@@ -42,7 +36,6 @@ extern volatile char gBootFlag;
  */
 extern void * fdt;
 extern bool fdt_initialized;
-#define LINUX_DTREE_SIZE 65536
 
 void fdt_cmd() {
     if (!loader_xfer_recv_count) {
