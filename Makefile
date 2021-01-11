@@ -29,12 +29,13 @@ ifndef $(HOST_OS)
 endif
 
 ifeq ($(HOST_OS),Darwin)
-	EMBEDDED_CC         ?= xcrun -sdk iphoneos clang -arch arm64
+	EMBEDDED_CC         ?= xcrun -sdk iphoneos clang
 	STRIP               ?= strip
 	STAT                ?= stat -L -f %z
 else
 ifeq ($(HOST_OS),Linux)
-	EMBEDDED_CC         ?= clang --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64
+	EMBEDDED_CC         ?= clang
+	EMBEDDED_LDFLAGS    ?= -fuse-ld=/usr/bin/ld64
 	STRIP               ?= cctools-strip
 	STAT                ?= stat -L -c %s
 endif
@@ -44,18 +45,19 @@ PONGO_VERSION           := 2.4.5-$(shell git log -1 --pretty=format:"%H" | cut -
 ROOT                    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 SRC                     := $(ROOT)/src
 AUX                     := $(ROOT)/tools
-LIB                     := $(ROOT)/aarch64-none-darwin
+DEP                     := $(ROOT)/newlib
+LIB                     := $(DEP)/aarch64-none-darwin
 INC                     := $(ROOT)/include
 BUILD                   := $(ROOT)/build
 RA1N                    := $(ROOT)/checkra1n/kpf
 
 # General options
-EMBEDDED_LDFLAGS        ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z
-EMBEDDED_CC_FLAGS       ?= -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -I$(LIB)/include $(EMBEDDED_LDFLAGS) $(EMBEDDED_CFLAGS)
+EMBEDDED_LD_FLAGS       ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDEDLD_FLAGS)
+EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
 
 # Pongo options
-PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -lg -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
-PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt -I $(LIB)/libDER $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8
+PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
+PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8
 
 # KPF options
 CHECKRA1N_LDFLAGS       ?= -Wl,-kext
@@ -84,7 +86,7 @@ endif
 CHECKRA1N_CC            ?= $(EMBEDDED_CC)
 
 
-.PHONY: all clean
+.PHONY: all always clean distclean
 
 all: $(BUILD)/PongoConsolidated.bin | $(BUILD)
 
@@ -94,10 +96,10 @@ $(BUILD)/PongoConsolidated.bin: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo 
 $(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
 	$(BUILD)/vmacho -f $(BUILD)/Pongo $@
 
-$(BUILD)/Pongo: $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) | $(BUILD)
+$(BUILD)/Pongo: $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS) $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C)
 
-$(BUILD)/checkra1n-kpf-pongo: $(CHECKRA1N_C) | $(BUILD)
+$(BUILD)/checkra1n-kpf-pongo: $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(CHECKRA1N_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(CHECKRA1N_CC_FLAGS) $(CHECKRA1N_C)
 	$(STRIP) -x $@ -s $(CHECKRA1N_NOSTRIP)
 	$(STRIP) -u $@ -s $(CHECKRA1N_NOSTRIP)
@@ -108,5 +110,11 @@ $(BUILD)/vmacho: $(AUX)/vmacho.c | $(BUILD)
 $(BUILD):
 	mkdir -p $@
 
+$(LIB)/lib/libc.a: always
+	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) all
+
 clean:
 	rm -rf $(BUILD)
+
+distclean: | clean
+	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) distclean

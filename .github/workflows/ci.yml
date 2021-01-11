@@ -12,16 +12,31 @@ jobs:
   build:
     runs-on: ubuntu-20.04
     steps:
-      - run: |
+      - name: Install toolchain
+        run: |
           echo 'deb https://assets.checkra.in/debian /' | sudo tee /etc/apt/sources.list.d/checkra1n.list
           sudo apt-key adv --fetch-keys https://assets.checkra.in/debian/archive.key
           sudo apt-get update
           sudo apt-get install -y ld64 cctools-strip
-      - uses: actions/checkout@v2
-      - run: EMBEDDED_CC='clang-10 --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64' make clean all
-      - uses: actions/upload-artifact@v2
+      - name: Checkout repository
+        uses: actions/checkout@v2
         with:
-          name: build
+          submodules: true
+      - name: Voodoo magic
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-newlib
+        with:
+          key: newlib
+          path: |
+            newlib/aarch64-none-darwin
+            newlib/build
+      - name: Compile
+        run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make all
+      - name: Archive
+        uses: actions/upload-artifact@v2
+        with:
+          name: PongoOS
           path: |
             build/checkra1n-kpf-pongo
             build/Pongo

@@ -1,0 +1,3 @@
+[submodule "newlib"]
+	path = newlib
+	url = https://github.com/checkra1n/newlib.git

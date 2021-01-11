@@ -5,7 +5,7 @@ A pre-boot execution environment for Apple boards built on top of checkra1n.
 ## Building on macOS
 
 - Install Xcode + command-line utilities
-- Run `make clean all`
+- Run `make all`
 
 ## Building on Linux
 
@@ -19,11 +19,11 @@ A pre-boot execution environment for Apple boards built on top of checkra1n.
     sudo apt-get install -y ld64 cctools-strip
     ```
   - On other Linux flavours you'll likely have to build them yourself. Maybe [this repo](https://github.com/Siguza/ld64) will help you.
-- Run `make clean all`
+- Run `make all`
 
 If `clang`, `ld64` or `cctools-strip` don't have their default names/paths, you'll want to change their invocation. For reference, the default variables are equivalent to:
 
-    EMBEDDED_CC='clang --target=arm64-apple-ios12.0 -fuse-ld=/usr/bin/ld64' STRIP=cctools-strip make clean all
+    EMBEDDED_CC=clang EMBEDDED_LDFLAGS=-fuse-ld=/usr/bin/ld64 STRIP=cctools-strip make all
 
 ## Build artifacts
 
