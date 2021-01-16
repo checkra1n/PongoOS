@@ -1,4 +1,5 @@
-**License for pongoOS as a whole**:
+**License for pongoOS as a whole**
+Except the third-party software used as part of pongoOS which have their licenses copied below.
 
 The MIT License (MIT)
 
