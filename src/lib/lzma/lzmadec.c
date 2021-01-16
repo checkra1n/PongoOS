@@ -1,3 +1,5 @@
+/* LzmaDec.h -- LZMA Decoder
+2009-02-07 : Igor Pavlov : Public domain */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
