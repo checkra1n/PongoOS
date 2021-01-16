@@ -328,10 +328,15 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     ram_phys_off = kCacheableView + phys_off;
     ram_phys_size = phys_size;
 
-    if (!(get_el() == 1)) panic("pongoOS runs in EL1 only! did you skip pongoMon?");
-
-    set_vbar_el1((uint64_t)&exception_vector);
-    enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1);
+    if (get_el() == 2) {
+        set_vbar_el2((uint64_t)&exception_vector_el2);
+        enable_mmu_el2((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1);
+    } else if (get_el() == 1) {
+        set_vbar_el1((uint64_t)&exception_vector);
+        enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1);
+    } else {
+        panic("pongoOS runs in EL1/2 only! did you skip pongoMon?");
+    }
 
     kernel_vm_space.ttbr0 = (uint64_t)ttbr0;
     kernel_vm_space.ttbr1 = (uint64_t)ttbr1;
@@ -344,7 +349,13 @@ void lowlevel_set_identity(void)
 void lowlevel_cleanup(void)
 {
     cache_clean_and_invalidate((void*)ram_phys_off, ram_phys_size);
-    disable_mmu_el1();
+    if (get_el() == 2) {
+        disable_mmu_el2();
+    } else if (get_el() == 1) {
+        disable_mmu_el1();
+    } else {
+        panic("pongoOS runs in EL1/2 only! did you skip pongoMon?");
+    }
 }
 struct vm_space* task_vm_space(struct task* task) {
     return task->vm_space;
@@ -556,21 +567,50 @@ void asid_free(uint64_t asid) {
     fiprintf(stderr, "freeing asid: %llx\n", asid);
 #endif
     asid_table[index >> 3] &= ~(1 << (index&0x7));
+    
+    if (get_el() == 2) {
+        __asm__ volatile("isb");
+        __asm__ volatile("tlbi alle2\n");
+        __asm__ volatile("dsb sy");
+        return;
+    }
+
     asm volatile("ISB");
     asm volatile("TLBI ASIDE1IS, %0" : : "r"(asid));
     asm volatile("DSB SY");
 }
 void vm_flush(struct vm_space* fl) {
+    if (get_el() == 2) {
+        __asm__ volatile("isb");
+        __asm__ volatile("tlbi alle2\n");
+        __asm__ volatile("dsb sy");
+        return;
+    }
+
     asm volatile("ISB");
     asm volatile("TLBI ASIDE1IS, %0" : : "r"(fl->asid));
     asm volatile("DSB SY");
 }
 void vm_flush_by_addr(struct vm_space* fl, uint64_t va) {
+    if (get_el() == 2) {
+        __asm__ volatile("isb");
+        __asm__ volatile("tlbi alle2\n");
+        __asm__ volatile("dsb sy");
+        return;
+    }
+
     asm volatile("ISB");
     asm volatile("TLBI VAE1, %0" : : "r"(fl->asid | ((va >> 12) & 0xFFFFFFFFFFF)));
     asm volatile("DSB SY");
 }
 void vm_flush_by_addr_all_asid(uint64_t va) {
+    if (get_el() == 2) {
+        __asm__ volatile("isb");
+        __asm__ volatile("tlbi alle2\n");
+        __asm__ volatile("dsb sy");
+        return;
+    }
+
     asm volatile("ISB");
     asm volatile("TLBI VAAE1, %0" : : "r"((va >> 12) & 0xFFFFFFFFFFF));
     asm volatile("DSB SY");

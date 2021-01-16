@@ -475,6 +475,8 @@ extern void interrupt_init();
 extern void interrupt_teardown();
 extern void task_irq_teardown();
 extern uint32_t exception_vector[];
+extern uint32_t exception_vector_el2[];
+extern void set_vbar_el2(uint64_t vec);
 extern void set_vbar_el1(uint64_t vec);
 extern void rebase_pc(uint64_t vec);
 extern void rebase_sp(uint64_t vec);
@@ -484,6 +486,8 @@ extern uint64_t get_mpidr(void);
 extern void set_migsts(uint64_t val);
 extern void enable_mmu_el1(uint64_t ttbr0, uint64_t tcr, uint64_t mair, uint64_t ttbr1);
 extern void disable_mmu_el1();
+extern void enable_mmu_el2(uint64_t ttbr0, uint64_t tcr, uint64_t mair, uint64_t ttbr1);
+extern void disable_mmu_el2();
 extern void lowlevel_cleanup(void);
 extern void lowlevel_setup(uint64_t phys_off, uint64_t phys_size);
 extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
@@ -494,9 +498,15 @@ static inline _Bool is_16k(void)
 }
 static inline void flush_tlb(void)
 {
-    __asm__ volatile("isb");
-    __asm__ volatile("tlbi vmalle1\n");
-    __asm__ volatile("dsb sy");
+    if (get_el() == 2) {
+        __asm__ volatile("isb");
+        __asm__ volatile("tlbi alle2\n");
+        __asm__ volatile("dsb sy");
+    } else {
+        __asm__ volatile("isb");
+        __asm__ volatile("tlbi vmalle1\n");
+        __asm__ volatile("dsb sy");
+    }
 }
 extern void task_real_unlink(struct task* task);
 #include "hal/hal.h"

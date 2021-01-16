@@ -57,7 +57,7 @@ EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -Wall -Wunused-label -We
 
 # Pongo options
 PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
-PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8
+PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8 -mcpu=cortex-a76
 
 # KPF options
 CHECKRA1N_LDFLAGS       ?= -Wl,-kext

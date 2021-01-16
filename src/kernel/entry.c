@@ -270,6 +270,14 @@ extern uint64_t gPongoSlide;
 
 void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point))
 {
+
+    uint64_t hcr_el2 = 0, hcr_el2_orig = 0;
+    asm volatile("mrs %0, hcr_el2" : "=r"(hcr_el2));
+    hcr_el2_orig = hcr_el2;
+    hcr_el2 |= 1ULL << 27; // TGE
+    hcr_el2 |= 1ULL << 34; // E2H
+    asm volatile("msr hcr_el2, %0" : : "r"(hcr_el2));
+
     gBootArgs = (boot_args*)kernel_args;
     gEntryPoint = entryp;
     lowlevel_setup(gBootArgs->physBase & 0xFFFFFFFF, gBootArgs->memSize);
@@ -283,6 +291,9 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
     set_exception_stack_core0();
     gFramebuffer = (uint32_t*)gBootArgs->Video.v_baseAddr;
     lowlevel_cleanup();
+    
+    asm volatile("msr hcr_el2, %0" : : "r"(hcr_el2_orig));
+
     if(gBootFlag == BOOT_FLAG_RAW)
     {
         jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000000, (uint64_t)gBootArgs, (uint64_t)gEntryPoint);
