@@ -290,4 +290,9 @@ void shell_main() {
     task_register(&pongo_lock_test2, pongo_lock_test2_entry);
 #endif
 //    gBootFlag = BOOT_FLAG_HOOK;
+    
+    while (1) {
+        queue_rx_string("ps\n");
+        sleep(1);
+    }
 }

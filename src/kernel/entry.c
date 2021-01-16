@@ -141,6 +141,7 @@ __attribute__((noinline)) void pongo_entry_cached()
     else if(strcmp(soc_name, "t8011") == 0) socnum = 0x8011;
     else if(strcmp(soc_name, "t8012") == 0) socnum = 0x8012;
     else if(strcmp(soc_name, "t8015") == 0) socnum = 0x8015;
+    else if(strcmp(soc_name, "t8103") == 0) socnum = 0x8103;
     else if(strcmp(soc_name, "s8000") == 0)
     {
         const char *sgx = dt_get_prop("sgx", "compatible", NULL);
@@ -274,8 +275,8 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
     uint64_t hcr_el2 = 0, hcr_el2_orig = 0;
     asm volatile("mrs %0, hcr_el2" : "=r"(hcr_el2));
     hcr_el2_orig = hcr_el2;
-    hcr_el2 |= 1ULL << 27; // TGE
-    hcr_el2 |= 1ULL << 34; // E2H
+    hcr_el2 |= (1ULL << 27); // VHE
+    hcr_el2 |= (1ULL << 34); // E2H
     asm volatile("msr hcr_el2, %0" : : "r"(hcr_el2));
 
     gBootArgs = (boot_args*)kernel_args;

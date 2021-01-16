@@ -352,35 +352,64 @@ exc_handler:
     str d30, [sp,#0x310]
     str d31, [sp,#0x320]
 
-    mrs x16, currentel
-    cmp x16, #0x8
+    mrs x0, currentel
+    cmp x0, #0x8
     b.eq 2f
-    msr elr_el1, x0
-    msr spsr_el1, x3
-    mrs x0, tpidr_el1
+
+mrs x29, esr_el1
+stp x30,x29,[sp,#0xf0]
+mrs x0, elr_el1
+mrs x1, far_el1
+stp x0,x1,[sp,#0x100]
+mrs x1, spsr_el1
+str x1, [sp, #0x110]
+
+// Need to keep x29 valid for panic()
+add x29, sp, #0xe8
+mov x0, sp
+blr x16
+
+cmp x0, #1
+b.ne 6f
+bl _task_yield_preemption
+
+6:
+ldp x0,x1,[sp,#0x100]
+msr elr_el1, x0
+msr far_el1, x1
+
+ldr x1, [sp, #0x110]
+msr spsr_el1, x1
+
+
     b 1f
 2:
-    msr elr_el2, x0
-    msr spsr_el2, x3
-    mrs x0, tpidr_el2
+
+mrs x29, esr_el2
+stp x30,x29,[sp,#0xf0]
+mrs x0, elr_el2
+mrs x1, far_el2
+stp x0,x1,[sp,#0x100]
+mrs x1, spsr_el2
+str x1, [sp, #0x110]
+
+// Need to keep x29 valid for panic()
+add x29, sp, #0xe8
+mov x0, sp
+blr x16
+
+cmp x0, #1
+b.ne 6f
+bl _task_yield_preemption
+
+6:
+ldp x0,x1,[sp,#0x100]
+msr elr_el2, x0
+msr far_el2, x1
+
+ldr x1, [sp, #0x110]
+msr spsr_el2, x1
 1:
-
-    // Need to keep x29 valid for panic()
-    add x29, sp, #0xe8
-    mov x0, sp
-    blr x16
-
-    cmp x0, #1
-    b.ne exc_done
-    bl _task_yield_preemption
-
-exc_done:
-    ldp x0,x1,[sp,#0x100]
-    msr elr_el1, x0
-    msr far_el1, x1
-
-    ldr x1, [sp, #0x110]
-    msr spsr_el1, x1
     
     mov x0, sp
     

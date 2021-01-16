@@ -45,7 +45,10 @@ void shell_main();
 
 uint64_t gBootTimeTicks;
 void pongo_main_task() {
-    *(uint64_t*)0x414141 = 0x41414142;
+    if (!socnum) {
+        iprintf("unknown platform: %s, will likely crash soon...\n", soc_name);
+    }
+    
     gBootTimeTicks = get_ticks();
 
     // Setup GPIO Base

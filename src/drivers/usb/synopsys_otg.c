@@ -1781,6 +1781,13 @@ void usb_bringup() {
 }
 
 void usb_init() {
+    struct usb_regs regs;
+    size_t plsz = sizeof(struct usb_regs);
+    if (!hal_get_platform_value("usb_regs", &regs, &plsz)) {
+        puts("synopsys_otg: need usb_regs platform value! not initializing..");
+        return;
+    }
+
     gSynopsysOTGBase = 0;
     uint32_t sz = 0;
     uint64_t *reg = dt_get_prop("otgphyctrl", "reg", &sz);
@@ -1806,11 +1813,6 @@ void usb_init() {
     gSynopsysBase = (gSynopsysOTGBase & ~0xfffULL) + 0x00100000;
     uint32_t otg_irq;
     
-    struct usb_regs regs;
-    size_t plsz = sizeof(struct usb_regs);
-    if (!hal_get_platform_value("usb_regs", &regs, &plsz)) {
-        panic("synopsys_otg: need usb_regs platform value!");
-    }
     
     reg1 = gIOBase + regs.reg1;
     reg2 = gIOBase + regs.reg2;
