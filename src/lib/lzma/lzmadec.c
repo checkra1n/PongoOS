@@ -954,9 +954,6 @@ SRes LzmaDecode(Byte *dest, SizeT *destLen, const Byte *src, SizeT *srcLen,
 
     *destLen = p.dicPos;
 
-    if(res == SZ_OK && *status == LZMA_STATUS_NEEDS_MORE_INPUT)
-	res = SZ_ERROR_INPUT_EOF;
-
     LzmaDec_FreeProbs(&p, alloc);
 
     return res;
