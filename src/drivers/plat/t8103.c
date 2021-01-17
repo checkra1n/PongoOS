@@ -32,19 +32,31 @@ static bool t8103_probe(struct hal_platform_driver* device_driver, struct hal_pl
     }
     return false;
 }
-/*
+
 static struct usb_regs t8103_usb_regs = {
     .reg1 = 0x32080270,
     .reg2 = 0x32080278,
     .reg3 = 0x32080270,
-    .otg_irq = 324
+    .otg_irq = 0x307
 };
-*/
+
+static struct usb_dart_regs t8103_usb_dart_regs = {
+    //.synopsysOTGBase = 0x239000000,
+};
+
 static bool t8103_get_platform_value(const char* name, void* value, size_t* size) {
-    /*if (strcmp(name, "usb_regs") == 0 && *size == sizeof(struct usb_regs)) {
+    if (strcmp(name, "usb_regs") == 0 && *size == sizeof(struct usb_regs)) {
+        return false; // not yet
+
         memcpy(value, &t8103_usb_regs, sizeof(struct usb_regs));
         return true;
-    }*/
+    } else
+    if (strcmp(name, "usb_dart") == 0 && *size == sizeof(struct usb_dart_regs)) {
+        return false; // not yet
+        
+        memcpy(value, &t8103_usb_dart_regs, sizeof(struct usb_dart_regs));
+        return true;
+    }
     return false;
 }
 

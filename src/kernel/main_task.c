@@ -92,7 +92,7 @@ void pongo_main_task() {
     puts("");
     puts("#==================");
     puts("#");
-    puts("# pongoOS " PONGO_VERSION);
+    iprintf("# pongoOS " PONGO_VERSION " (EL%d)\n", get_el());
     puts("#");
     puts("# https://checkra.in");
     puts("#");

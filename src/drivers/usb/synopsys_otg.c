@@ -1741,23 +1741,31 @@ void usb_main() {
 static uint64_t reg1=0, reg2=0, reg3=0;
 
 void usb_bringup() {
-    clock_gate(reg1, 0);
-    clock_gate(reg2, 0);
-    clock_gate(reg3, 0);
+    if (reg1)
+        clock_gate(reg1, 0);
+    if (reg2)
+        clock_gate(reg2, 0);
+    if (reg3)
+        clock_gate(reg3, 0);
     spin(1000);
-    clock_gate(reg1, 1);
-    clock_gate(reg2, 1);
-    clock_gate(reg3, 1);
+    if (reg1)
+        clock_gate(reg1, 1);
+    if (reg2)
+        clock_gate(reg2, 1);
+    if (reg3)
+        clock_gate(reg3, 1);
     // t8011 is really just cursed...
-    if (socnum == 0x8011) {
-        *(volatile uint32_t*)(gSynopsysComplexBase + 0x00) = 1;
-        *(volatile uint32_t*)(gSynopsysComplexBase + 0x24) = 0x3000088;
-    } else {
-        *(volatile uint32_t*)(gSynopsysComplexBase + 0x1c) = 0x108;
-        *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
+    if (gSynopsysComplexBase) {
+        if (socnum == 0x8011) {
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x00) = 1;
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x24) = 0x3000088;
+        } else {
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x1c) = 0x108;
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
+        }
     }
-    *(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = dt_get_u32_prop("otgphyctrl", "cfg0-device");
-    *(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = dt_get_u32_prop("otgphyctrl", "cfg1-device");
+    //*(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = dt_get_u32_prop("otgphyctrl", "cfg0-device");
+    //*(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = dt_get_u32_prop("otgphyctrl", "cfg1-device");
     *(volatile uint32_t*)(gSynopsysOTGBase) |= 1;
     spin(20);
     *(volatile uint32_t*)(gSynopsysOTGBase) &= 0xFFFFFFF3;
@@ -1767,15 +1775,9 @@ void usb_bringup() {
     *(volatile uint32_t*)(gSynopsysOTGBase + 0x4) &= ~2;
     spin(1500);
 }
+uint32_t otg_irq;
 
-void usb_init() {
-    struct usb_regs regs;
-    size_t plsz = sizeof(struct usb_regs);
-    if (!hal_get_platform_value("usb_regs", &regs, &plsz)) {
-        puts("synopsys_otg: need usb_regs platform value! not initializing..");
-        return;
-    }
-
+void usb_legacy_init() {
     gSynopsysOTGBase = 0;
     uint32_t sz = 0;
     uint64_t *reg = dt_get_prop("otgphyctrl", "reg", &sz);
@@ -1799,13 +1801,31 @@ void usb_init() {
     gSynopsysComplexBase = gIOBase + dt_get_u32_prop("usb-complex", "reg");
     // Can't trust "usb-device" dtre entry, because that can be USB3 and we want USB2
     gSynopsysBase = (gSynopsysOTGBase & ~0xfffULL) + 0x00100000;
-    uint32_t otg_irq;
-    
-    
+}
+
+void usb_init() {
+    struct usb_regs regs;
+    size_t plsz = sizeof(struct usb_regs);
+    if (!hal_get_platform_value("usb_regs", &regs, &plsz)) {
+        puts("synopsys_otg: need usb_regs platform value! not initializing..");
+        return;
+    }
     reg1 = gIOBase + regs.reg1;
     reg2 = gIOBase + regs.reg2;
     reg3 = gIOBase + regs.reg3;
     otg_irq = regs.otg_irq;
+
+    bool isUSBDART = false;
+    struct usb_dart_regs dartregs;
+    plsz = sizeof(struct usb_dart_regs);
+
+    if (hal_get_platform_value("usb_dart", &dartregs, &plsz)) {
+        gSynopsysOTGBase = dartregs.synopsysOTGBase;
+        gSynopsysBase = (gSynopsysOTGBase & ~0xfffULL) + 0x00100000;
+        isUSBDART = true;
+    } else {
+        usb_legacy_init();
+    }
     
     uint64_t dma_page_v = (uint64_t) alloc_contig(4 * DMA_BUFFER_SIZE);
     uint64_t dma_page_p = vatophys_static((void*)dma_page_v);
@@ -1815,7 +1835,12 @@ void usb_init() {
     disable_interrupts();
     usb_irq_mode = 1;
     usb_usbtask_handoff_mode = 0;
-    usb_bringup();
+    
+    if (isUSBDART) {
+
+    } else {
+        usb_bringup();
+    }
 
     gSynopsysCoreVersion = reg_read(rGSNPSID) & 0xffff;
     USB_DEBUG(USB_DEBUG_STANDARD, "gSynopsysCoreVersion: 0x%x", gSynopsysCoreVersion);

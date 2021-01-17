@@ -830,11 +830,17 @@ void phys_dereference(uint64_t pa, uint64_t size) {
     }
     enable_interrupts();
 }
-
+uint64_t gMemSize = 0;
 void alloc_init() {
     if (alloc_static_base) return;
 
     uint64_t memory_size = gBootArgs->memSize;
+    if (memory_size > 0x100000000) memory_size = 0x100000000; // force pongo to use at most 4GB (FIXME: remove when we support >4G ram)
+    gMemSize = memory_size;
+    
+    uint64_t pbase = gBootArgs->physBase;
+    memory_size -= pbase - 0x800000000;
+    
     ppages = memory_size >> 14;
 
     uint64_t early_heap = early_heap_base;
@@ -867,7 +873,7 @@ void alloc_init() {
     }
 
     uint64_t alloc_heap_base = (((uint64_t)early_heap) + 0x7fff) & (~0x3fff);
-    uint64_t alloc_heap_end = (((uint64_t)(phystokv(gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
+    uint64_t alloc_heap_end = (((uint64_t)(phystokv(gBootArgs->physBase) + memory_size)) + 0x3fff) & (~0x3fff) - 1024*1024;
 
     phys_force_free(vatophys_static((void*)alloc_heap_base), alloc_heap_end - alloc_heap_base);
 }
@@ -935,8 +941,8 @@ void* phystokv(uint64_t paddr) {
 }
 uint64_t vatophys_static(void* kva) {
     uint64_t kva_check = (uint64_t) kva;
-    if (!((kva_check >= kCacheableView) && (kva_check < (kCacheableView + 0x100000000)))) {
-        panic("vatophys_static must be called on kCacheableView map addresses");
+    if (!((kva_check >= kCacheableView) && (kva_check < (kCacheableView + gMemSize)))) {
+        panic("vatophys_static must be called on kCacheableView map addresses! addr = %llx", kva_check);
     }
     return (((uint64_t)kva) - kCacheableView + 0x800000000);
 }

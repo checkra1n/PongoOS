@@ -291,8 +291,5 @@ void shell_main() {
 #endif
 //    gBootFlag = BOOT_FLAG_HOOK;
     
-    while (1) {
-        queue_rx_string("ps\n");
-        sleep(1);
-    }
+    queue_rx_string("ps\n");
 }
