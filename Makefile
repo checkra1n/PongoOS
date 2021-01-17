@@ -88,7 +88,10 @@ CHECKRA1N_CC            ?= $(EMBEDDED_CC)
 
 .PHONY: all always clean distclean
 
-all: $(BUILD)/Pongo.bin | $(BUILD)
+all: $(BUILD)/Pongo.bin $(BUILD)/pongoOS.AppleSi.macho | $(BUILD)
+
+$(BUILD)/pongoOS.AppleSi.macho:  $(BUILD)/Pongo.bin $(BUILD)/machopack | $(BUILD)
+	$(BUILD)/machopack $(BUILD)/Pongo.bin $@
 
 $(BUILD)/PongoConsolidated.bin: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo | $(BUILD)
 	bash -c "echo 6175746F626F6F740000200000000000 | xxd -ps -r | cat $(BUILD)/Pongo.bin <(dd if=/dev/zero bs=1 count="$$(((8 - ($$($(STAT) $(BUILD)/Pongo.bin) % 8)) % 8))") /dev/stdin $(BUILD)/checkra1n-kpf-pongo > $@"
@@ -105,6 +108,9 @@ $(BUILD)/checkra1n-kpf-pongo: $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(STRIP) -u $@ -s $(CHECKRA1N_NOSTRIP)
 
 $(BUILD)/vmacho: $(AUX)/vmacho.c | $(BUILD)
+	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
+
+$(BUILD)/machopack: $(AUX)/machopack.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
 
 $(BUILD):
