@@ -97,16 +97,6 @@ static int dart_service_op(struct hal_device_service* svc, struct hal_device* de
             
             return 0;
         }
-    } else if (method == DART_CLOCK_GATE_ON || method == DART_CLOCK_GATE_OFF) {
-        int32_t clock_gate_id = hal_get_clock_gate_id(device->parent, 0);
-        if (clock_gate_id > 0) {
-            uint64_t clock = device_clock_by_id(clock_gate_id);
-            if (clock) {
-                clock_gate(clock, method == DART_CLOCK_GATE_ON);
-                return 0;
-            }
-        }
-        return -1;
     }
     return -1;
 }

@@ -30,13 +30,6 @@ struct hal_device _gRootDevice = {
 };
 struct hal_device* gRootDevice, * gDeviceTreeDevice;
 
-#define HAL_LOAD_XNU_DTREE 0
-#define HAL_LOAD_DTREE_CHILDREN 1
-#define HAL_CREATE_CHILD_DEVICE 2
-#define HAL_GET_MAPPER 3
-#define HAL_MAP_REGISTERS 4
-#define HAL_GET_IRQNR 5
-
 void hal_probe_hal_services(struct hal_device* device) ;
 
 static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
@@ -133,6 +126,21 @@ static int hal_service_op(struct hal_device_service* svc, struct hal_device* dev
         ((void**)data_out)[1] = (void*)regs[index].size;
 
         return 0;
+    } else if (method == HAL_DEVICE_CLOCK_GATE_ON || method == HAL_DEVICE_CLOCK_GATE_OFF) {
+        int32_t count = hal_get_clock_gate_size(device);
+        if (count > 0) {
+            for (int i=0; i < count; i++) {
+                int32_t clock_gate_id = hal_get_clock_gate_id(device, i);
+                if (clock_gate_id > 0) {
+                    uint64_t clock = device_clock_by_id(clock_gate_id);
+                    if (clock) {
+                        clock_gate(clock, method == HAL_DEVICE_CLOCK_GATE_ON);
+                    }
+                }
+            }
+            return 0;
+        }
+        return -1;
     }
     
     return -1;
@@ -181,6 +189,13 @@ int32_t hal_get_clock_gate_id(struct hal_device* device, uint32_t index) {
         return -1;
     }
     return val[index];
+}
+int32_t hal_get_clock_gate_size(struct hal_device* device) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (!node) return -1;
+    dt_prop(node, "clock-gates", &len);
+    return len / 4;
 }
 
 int32_t hal_get_irqno(struct hal_device* device, uint32_t index) {

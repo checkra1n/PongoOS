@@ -552,9 +552,9 @@ typedef struct
 
 typedef struct
 {
-    uint32_t flg : 8,
+    uint32_t flg :  8,
              a   : 16,
-             id  : 8;
+             id1 :  8;
     uint32_t b;
     uint32_t c   : 16,
              idx :  8,
@@ -562,7 +562,8 @@ typedef struct
     uint32_t d;
     uint32_t e;
     uint32_t f;
-    uint32_t g;
+    uint32_t g   : 16,
+             id2 : 16;
     uint32_t h;
     char name[0x10];
 } pmgr_dev_t;
@@ -647,11 +648,18 @@ const char* device_clock_name_by_id(uint32_t idx)
     for(uint32_t i = 0; i < gPMGRdevlen; ++i)
     {
         pmgr_dev_t *d = &gPMGRdev[i];
-        if(d->id != idx)
+        uint32_t cid = 0;
+        
+        if (d->id1) {
+            cid = d->id1;
+        } else {
+            cid = d->id2;
+        }
+        if(cid != idx)
         {
             continue;
         }
-        
+
         return d->name;
     }
     return NULL;
@@ -662,11 +670,25 @@ uint64_t device_clock_by_id(uint32_t id)
     for(uint32_t i = 0; i < gPMGRdevlen; ++i)
     {
         pmgr_dev_t *d = &gPMGRdev[i];
-        if(d->id != id)
+        uint32_t cid = 0;
+        
+        if (d->id1) {
+            cid = d->id1;
+        } else {
+            cid = d->id2;
+        }
+        if(cid != id)
         {
             continue;
         }
-        if((d->flg & 0x10) || d->map >= gPMGRmaplen)
+        
+        if(d->flg & 0x10) {
+            if (d->b) {
+                return device_clock_by_id(d->b);
+            }
+            break;
+        }
+        if (d->map >= gPMGRmaplen)
         {
             break;
         }
@@ -690,7 +712,13 @@ uint64_t device_clock_by_name(const char *name)
         {
             continue;
         }
-        if((d->flg & 0x10) || d->map >= gPMGRmaplen)
+        if(d->flg & 0x10) {
+            if (d->b) {
+                return device_clock_by_id(d->b);
+            }
+            break;
+        }
+        if(d->map >= gPMGRmaplen)
         {
             break;
         }

@@ -99,3 +99,15 @@ extern void * hal_map_registers(struct hal_device* device, uint32_t index, size_
 extern int32_t hal_get_irqno(struct hal_device* device, uint32_t index);
 extern uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size);
 extern int32_t hal_get_clock_gate_id(struct hal_device* device, uint32_t index);
+extern int32_t hal_get_clock_gate_size(struct hal_device* device);
+
+
+#define HAL_LOAD_XNU_DTREE 0
+#define HAL_LOAD_DTREE_CHILDREN 1
+#define HAL_CREATE_CHILD_DEVICE 2
+#define HAL_GET_MAPPER 3
+#define HAL_MAP_REGISTERS 4
+#define HAL_GET_IRQNR 5
+#define HAL_DEVICE_CLOCK_GATE_ON 6
+#define HAL_DEVICE_CLOCK_GATE_OFF 7
+

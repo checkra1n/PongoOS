@@ -62,19 +62,7 @@ static bool register_drd(struct hal_device* device, void** context) {
     // DesignWare DWC3 Dual Role Device
     struct drd* drd = calloc(sizeof(struct drd), 1);
     drd->mapper = hal_get_mapper(device, 0);
-
-    hal_invoke_service_op(drd->mapper, "dart", DART_CLOCK_GATE_ON, NULL, 0, NULL, NULL);
-
-    clock_gate(0x23b700420, 1);
-    clock_gate(0x23d280088, 1);
-    clock_gate(0x23d280098, 1);
-    
-    hal_invoke_service_op(drd->mapper, "dart", DART_ENTER_BYPASS_MODE, NULL, 0, NULL, NULL);
-    drd->regBase = (uint64_t)hal_map_registers(device, 0, NULL);
     drd->device = device;
-    drd->irq_task = task_create_extended("uart", drd_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
-
-    task_bind_to_irq(drd->irq_task, hal_get_irqno(device, 0));
 
     uint32_t len = 0;
     uint32_t* val = dt_prop(device->node, "atc-phy-parent", &len);
@@ -84,6 +72,16 @@ static bool register_drd(struct hal_device* device, void** context) {
     } else {
         panic("unknown atc-phy-parent!");
     }
+
+    hal_invoke_service_op(drd->mapper->parent, "hal", HAL_DEVICE_CLOCK_GATE_ON, NULL, 0, NULL, NULL);
+    hal_invoke_service_op(drd->atc_device, "hal", HAL_DEVICE_CLOCK_GATE_ON, NULL, 0, NULL, NULL);
+    hal_invoke_service_op(drd->device, "hal", HAL_DEVICE_CLOCK_GATE_ON, NULL, 0, NULL, NULL);
+
+    hal_invoke_service_op(drd->mapper, "dart", DART_ENTER_BYPASS_MODE, NULL, 0, NULL, NULL);
+    drd->regBase = (uint64_t)hal_map_registers(device, 0, NULL);
+    drd->irq_task = task_create_extended(device->name, drd_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
+
+    task_bind_to_irq(drd->irq_task, hal_get_irqno(device, 0));
     
     *context = drd;
     return true;
