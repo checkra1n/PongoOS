@@ -62,8 +62,6 @@ static bool register_dart_mapper(struct hal_device* device, void** context) {
     return false;
 }
 
-
-
 static bool dart_probe(struct hal_service* svc, struct hal_device* device, void** context) {
     uint32_t len = 0;
     dt_node_t* node = device->node;

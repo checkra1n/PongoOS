@@ -126,7 +126,7 @@ static int hal_service_op(struct hal_device_service* svc, struct hal_device* dev
             uint64_t size;
         }* regs = val;
         
-        uint64_t regbase = regs[index].base + gIOBase;
+        uint64_t regbase = regs[index].base;
         uint64_t size = regs[index].size;
 
         ((void**)data_out)[0] = (void*)hal_map_physical_mmio(regbase, size);
@@ -137,11 +137,31 @@ static int hal_service_op(struct hal_device_service* svc, struct hal_device* dev
     
     return -1;
 }
+
+struct range_translation_entry {
+    uint64_t reg_base;
+    uint64_t phys_base;
+    uint64_t size;
+} range_translation [64];
+
+uint32_t range_translation_entries = 0;
+
+uint64_t translate_register_address(uint64_t address) {
+    for (int i=0; i < range_translation_entries; i++) {
+        if (address >= range_translation[i].reg_base && address < range_translation[i].reg_base + range_translation[i].size) {
+            return address - range_translation[i].reg_base + range_translation[i].phys_base;
+        }
+    }
+    panic("couldn't find address %llx in arm-io map", address);
+    return -1;
+}
+
 uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size) {
     size +=  0x3FFF;
     size &= ~0x3FFF;
     uint64_t va = linear_kvm_alloc(size);
-
+    regbase = translate_register_address(regbase);
+    
     map_range_map((uint64_t*)kernel_vm_space.ttbr0, va, regbase, size, 3, 0, 1, 0, PROT_READ|PROT_WRITE, !!(va & 0x7000000000000000));
 
     for (uint32_t i=0; i < size; i+=0x1000) {
@@ -333,6 +353,8 @@ void hal_register_phandle_device(uint32_t phandle, struct hal_device* dev) {
     
     phandle_table[phandle] = dev;
 }
+
+
 struct hal_device* hal_get_phandle_device(uint32_t phandle) {
     while (phandle < phandle_table_size) {
         return phandle_table[phandle];
@@ -340,10 +362,27 @@ struct hal_device* hal_get_phandle_device(uint32_t phandle) {
     return NULL;
 }
 
-
 void hal_init() {
     gPlatform = NULL;
     gRootDevice = &_gRootDevice;
+    
+    dt_node_t* dev = dt_find(gDeviceTree, "arm-io");
+    if (!dev) panic("invalid devicetree: no arm-io!");
+    uint32_t len = 0;
+    
+    uint64_t* val = dt_prop(dev, "ranges", &len);
+    if (!val) panic("invalid devicetree: no prop!");
+
+    len /= 0x18;
+    
+    for (int i=0; i < len; i++) { // basically a memcpy but for clarity...
+        range_translation[i].reg_base = val[i*3];
+        range_translation[i].phys_base = val[i*3 + 1];
+        range_translation[i].size = val[i*3 + 2];
+        range_translation_entries++;
+        if (range_translation_entries > 64) panic("too many entries in arm-io");
+    }
+    
     
     extern struct driver drivers[] __asm("section$start$__DATA$__drivers");
     extern struct driver drivers_end[]  __asm("section$end$__DATA$__drivers");

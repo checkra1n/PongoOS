@@ -120,12 +120,13 @@ __asm__(
     "    isb sy\n"
     "    ret\n"
 
+    ".arch v8.4a\n"
     "_enable_mmu_el2:\n"
     "    dsb sy\n"
     "    msr mair_el2, x2\n"
     "    msr tcr_el2, x1\n"
     "    msr ttbr0_el2, x0\n"
-    ".long 0xd51c2023\n" // "    msr ttbr1_el2, x3\n" iphonesdk is not a fan of this opcode for some reason?
+    "    msr ttbr1_el2, x3\n"
     "    isb sy\n"
     "    tlbi alle2\n"
     "    isb sy\n"
