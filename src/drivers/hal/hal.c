@@ -144,6 +144,10 @@ uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size) {
 
     map_range_map((uint64_t*)kernel_vm_space.ttbr0, va, regbase, size, 3, 0, 1, 0, PROT_READ|PROT_WRITE, !!va & 0x7000000000000000);
 
+    for (uint32_t i=0; i < size; i+=0x1000) {
+        vm_flush_by_addr_all_asid(va + i);
+    }
+
     return va;
 }
 int32_t hal_get_irqno(struct hal_device* device, uint32_t index) {

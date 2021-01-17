@@ -568,49 +568,21 @@ void asid_free(uint64_t asid) {
 #endif
     asid_table[index >> 3] &= ~(1 << (index&0x7));
     
-    if (get_el() == 2) {
-        __asm__ volatile("isb");
-        __asm__ volatile("tlbi alle2\n");
-        __asm__ volatile("dsb sy");
-        return;
-    }
-
     asm volatile("ISB");
     asm volatile("TLBI ASIDE1IS, %0" : : "r"(asid));
     asm volatile("DSB SY");
 }
 void vm_flush(struct vm_space* fl) {
-    if (get_el() == 2) {
-        __asm__ volatile("isb");
-        __asm__ volatile("tlbi alle2\n");
-        __asm__ volatile("dsb sy");
-        return;
-    }
-
     asm volatile("ISB");
     asm volatile("TLBI ASIDE1IS, %0" : : "r"(fl->asid));
     asm volatile("DSB SY");
 }
 void vm_flush_by_addr(struct vm_space* fl, uint64_t va) {
-    if (get_el() == 2) {
-        __asm__ volatile("isb");
-        __asm__ volatile("tlbi alle2\n");
-        __asm__ volatile("dsb sy");
-        return;
-    }
-
     asm volatile("ISB");
     asm volatile("TLBI VAE1, %0" : : "r"(fl->asid | ((va >> 12) & 0xFFFFFFFFFFF)));
     asm volatile("DSB SY");
 }
 void vm_flush_by_addr_all_asid(uint64_t va) {
-    if (get_el() == 2) {
-        __asm__ volatile("isb");
-        __asm__ volatile("tlbi alle2\n");
-        __asm__ volatile("dsb sy");
-        return;
-    }
-
     asm volatile("ISB");
     asm volatile("TLBI VAAE1, %0" : : "r"((va >> 12) & 0xFFFFFFFFFFF));
     asm volatile("DSB SY");
