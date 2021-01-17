@@ -298,7 +298,6 @@ void shell_main() {
     sleep(4);
     struct hal_device* dev = hal_device_by_name("disp0");
     struct hal_device* mapper = hal_get_mapper(dev, 0);
-    
     hal_invoke_service_op(mapper, "dart", DART_ENTER_BYPASS_MODE, NULL, 0, NULL, NULL);
 #endif
 }

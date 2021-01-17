@@ -574,42 +574,87 @@ static pmgr_reg_t *gPMGRreg = NULL;
 static pmgr_map_t *gPMGRmap = NULL;
 static pmgr_dev_t *gPMGRdev = NULL;
 
-void pmgr_init()
-{
-    struct hal_device* pmgrdevice = hal_device_by_name("pmgr");
-    if (pmgrdevice) {
-        void* pmreg = dt_prop(pmgrdevice->node, "reg", &gPMGRreglen);
-        gPMGRreg = malloc(gPMGRreglen);
-        memcpy(gPMGRreg, pmreg, gPMGRreglen);
-        
-        gPMGRmap = dt_prop(pmgrdevice->node, "ps-regs", &gPMGRmaplen);
-        gPMGRdev = dt_prop(pmgrdevice->node, "devices", &gPMGRdevlen);
-        gPMGRreglen /= sizeof(*gPMGRreg);
-        gPMGRmaplen /= sizeof(*gPMGRmap);
-        gPMGRdevlen /= sizeof(*gPMGRdev);
-        
-        for (int i=0; i < gPMGRreglen; i++) {
-            gPMGRreg[i].addr = (uint64_t) hal_map_physical_mmio(gPMGRreg[i].addr, gPMGRreg[i].size);
-        }
-        gPMGRBase = gPMGRreg[0].addr;
-    }
-    struct hal_device* wdtdevice = hal_device_by_name("wdt");
-    if (wdtdevice) {
-        gWDTBase = (uint64_t) hal_map_registers(wdtdevice, 0, NULL);
-    }
-    command_register("reset", "resets the device", wdt_reset);
-    command_register("crash", "branches to an invalid address", (void*)0x41414141);
-}
-void interrupt_init() {
-    struct hal_device* aic = hal_device_by_name("aic");
-    gInterruptBase = (uint64_t) hal_map_registers(aic, 0, NULL);
 
-    interrupt_or_config(0xE0000000);
-    interrupt_or_config(1); // enable interrupt
-}
 void interrupt_teardown() {
     wdt_disable();
     task_irq_teardown();
+}
+
+static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, void** context) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (node) {
+        void* val = dt_prop(node, "name", &len);
+        if (val && strcmp(val, "aic") == 0) {
+            if (gInterruptBase) panic("multiple aic probes! unsupported.");
+            
+            gInterruptBase = (uint64_t) hal_map_registers(device, 0, NULL);
+
+            interrupt_or_config(0xE0000000);
+            interrupt_or_config(1); // enable interrupt
+            return true;
+        } else
+        if (val && strcmp(val, "pmgr") == 0) {
+            if (gPMGRreg) panic("multiple pmgr probes! unsupported.");
+
+            void* pmreg = dt_prop(device->node, "reg", &gPMGRreglen);
+            gPMGRreg = malloc(gPMGRreglen);
+            memcpy(gPMGRreg, pmreg, gPMGRreglen);
+            
+            gPMGRmap = dt_prop(device->node, "ps-regs", &gPMGRmaplen);
+            gPMGRdev = dt_prop(device->node, "devices", &gPMGRdevlen);
+            gPMGRreglen /= sizeof(*gPMGRreg);
+            gPMGRmaplen /= sizeof(*gPMGRmap);
+            gPMGRdevlen /= sizeof(*gPMGRdev);
+            
+            for (int i=0; i < gPMGRreglen; i++) {
+                gPMGRreg[i].addr = (uint64_t) hal_map_physical_mmio(gPMGRreg[i].addr, gPMGRreg[i].size);
+            }
+            gPMGRBase = gPMGRreg[0].addr;
+
+            return true;
+        } else
+        if (val && strcmp(val, "wdt") == 0) {
+            if (gWDTBase) panic("multiple wdt probes! unsupported.");
+            
+            gWDTBase = (uint64_t) hal_map_registers(device, 0, NULL);
+            command_register("reset", "resets the device", wdt_reset);
+            command_register("crash", "branches to an invalid address", (void*)0x41414141);
+            return true;
+        }
+    }
+    return false;
+}
+
+static int lowlevel_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
+    return -1;
+}
+
+static struct hal_service lowlevel_svc = {
+    .name = "lowlevel",
+    .probe = lowlevel_probe,
+    .service_op = lowlevel_service_op
+};
+
+static void lowlevel_init(struct driver* driver) {
+    hal_register_hal_service(&lowlevel_svc);
+}
+
+REGISTER_DRIVER(lowlevel, lowlevel_init, NULL, 0);
+
+const char* device_clock_name_by_id(uint32_t idx)
+{
+    for(uint32_t i = 0; i < gPMGRdevlen; ++i)
+    {
+        pmgr_dev_t *d = &gPMGRdev[i];
+        if(d->id != idx)
+        {
+            continue;
+        }
+        
+        return d->name;
+    }
+    return NULL;
 }
 
 uint64_t device_clock_by_id(uint32_t id)

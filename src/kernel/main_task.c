@@ -63,14 +63,8 @@ void pongo_main_task() {
     // Enable serial TX
     serial_early_init();
 
-    // Turn on IRQ controller
-    interrupt_init();
-
     // Enable IRQ serial RX
     serial_init();
-
-    // Initialize pmgr
-    pmgr_init();
 
     /*
         Initialize display

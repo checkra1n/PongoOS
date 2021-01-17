@@ -333,6 +333,7 @@ extern uint64_t xnu_rebase_va(uint64_t va);
 extern uint64_t kext_rebase_va(uint64_t va);
 extern struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, const char* kext_bundle_id);
 extern void xnu_pf_apply_each_kext(struct mach_header_64* kheader, xnu_pf_patchset_t* patchset);
+extern const char* device_clock_name_by_id(uint32_t idx);
 
 #ifdef OVERRIDE_CACHEABLE_VIEW
 #   define kCacheableView OVERRIDE_CACHEABLE_VIEW

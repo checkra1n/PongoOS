@@ -170,6 +170,19 @@ uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size) {
 
     return va;
 }
+
+int32_t hal_get_clock_gate_id(struct hal_device* device, uint32_t index) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (!node) return -1;
+
+    int32_t* val = dt_prop(node, "clock-gates", &len);
+    if (!val || index * 4 >= len) {
+        return -1;
+    }
+    return val[index];
+}
+
 int32_t hal_get_irqno(struct hal_device* device, uint32_t index) {
     uint32_t len = 0;
     dt_node_t* node = device->node;
@@ -372,7 +385,7 @@ void hal_init() {
     
     uint64_t* val = dt_prop(dev, "ranges", &len);
     if (!val) panic("invalid devicetree: no prop!");
-
+    
     len /= 0x18;
     
     for (int i=0; i < len; i++) { // basically a memcpy but for clarity...
@@ -382,7 +395,6 @@ void hal_init() {
         range_translation_entries++;
         if (range_translation_entries > 64) panic("too many entries in arm-io");
     }
-    
     
     extern struct driver drivers[] __asm("section$start$__DATA$__drivers");
     extern struct driver drivers_end[]  __asm("section$end$__DATA$__drivers");

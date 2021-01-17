@@ -38,10 +38,17 @@ static bool register_dart_mapper(struct hal_device* device, void** context) {
     dt_node_t* pnode = device->parent->node;
 
     if (strcmp(dt_prop(pnode, "compatible", &len), "dart,t8020") == 0) {
+        uint32_t* regid = dt_prop(node, "reg", &len);
+        if (len != 4) regid = NULL;
+        
         void* val = dt_prop(node, "name", &len);
 
         uint32_t reg_index = device->phandle - device->parent->phandle;
         reg_index--;
+        
+        if (regid) {
+            reg_index = *regid;
+        }
 
         void* regs = hal_map_registers(device->parent, reg_index, NULL);
         
@@ -76,6 +83,7 @@ static bool dart_probe(struct hal_service* svc, struct hal_device* device, void*
 
 static int dart_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     struct t8020_dart* dart = ((struct t8020_dart*)svc->context);
+    
     if (method == DART_ENTER_BYPASS_MODE) {
         if (dart->dart_type == 0x8020) {
             *(volatile uint32_t*)(dart->dart_regbase + 0x100) = 0x80000 | 0x10;
@@ -89,6 +97,16 @@ static int dart_service_op(struct hal_device_service* svc, struct hal_device* de
             
             return 0;
         }
+    } else if (method == DART_CLOCK_GATE_ON || method == DART_CLOCK_GATE_OFF) {
+        int32_t clock_gate_id = hal_get_clock_gate_id(device->parent, 0);
+        if (clock_gate_id > 0) {
+            uint64_t clock = device_clock_by_id(clock_gate_id);
+            if (clock) {
+                clock_gate(clock, method == DART_CLOCK_GATE_ON);
+                return 0;
+            }
+        }
+        return -1;
     }
     return -1;
 }
