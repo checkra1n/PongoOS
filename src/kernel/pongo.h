@@ -126,6 +126,7 @@ extern volatile char gBootFlag;
 #define BOOT_FLAG_RAW 4
 
 #define LINUX_DTREE_SIZE 262144
+#define LINUX_CMDLINE_SIZE 4096
 
 typedef uint64_t lock;
 extern void lock_take(lock* lock); // takes a lock spinning initially but after being pre-empted once it will start yielding until it acquires it
