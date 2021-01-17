@@ -50,6 +50,9 @@ void pongo_main_task() {
     }
     
     gBootTimeTicks = get_ticks();
+    
+    // Setup HAL
+    hal_init();
 
     // Setup GPIO Base
     gpio_early_init();
@@ -59,9 +62,6 @@ void pongo_main_task() {
 
     // Enable serial TX
     serial_early_init();
-
-    // Setup HAL
-    hal_init();
 
     // Turn on IRQ controller
     interrupt_init();

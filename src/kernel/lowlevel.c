@@ -475,8 +475,6 @@ void sleep(uint32_t sec)
 {
     usleep((uint64_t)sec * 1000000ULL);
 }
-int gAICVersion = -1;
-int gAICStyle = -1;
 
 __attribute__((used)) static void interrupt_or_config(uint32_t bits) {
     *(volatile uint32_t*)(gInterruptBase + 0x10) |= bits;
@@ -577,23 +575,33 @@ static pmgr_dev_t *gPMGRdev = NULL;
 
 void pmgr_init()
 {
-    dt_node_t *pmgr = dt_find(gDeviceTree, "pmgr");
-    gPMGRreg = dt_prop(pmgr, "reg",     &gPMGRreglen);
-    gPMGRmap = dt_prop(pmgr, "ps-regs", &gPMGRmaplen);
-    gPMGRdev = dt_prop(pmgr, "devices", &gPMGRdevlen);
-    gPMGRreglen /= sizeof(*gPMGRreg);
-    gPMGRmaplen /= sizeof(*gPMGRmap);
-    gPMGRdevlen /= sizeof(*gPMGRdev);
-    gPMGRBase = gIOBase + gPMGRreg[0].addr;
-    gWDTBase  = gIOBase + dt_get_u64_prop("wdt", "reg");
+    struct hal_device* pmgrdevice = hal_device_by_name("pmgr");
+    if (pmgrdevice) {
+        void* pmreg = dt_prop(pmgrdevice->node, "reg", &gPMGRreglen);
+        gPMGRreg = malloc(gPMGRreglen);
+        memcpy(gPMGRreg, pmreg, gPMGRreglen);
+        
+        gPMGRmap = dt_prop(pmgrdevice->node, "ps-regs", &gPMGRmaplen);
+        gPMGRdev = dt_prop(pmgrdevice->node, "devices", &gPMGRdevlen);
+        gPMGRreglen /= sizeof(*gPMGRreg);
+        gPMGRmaplen /= sizeof(*gPMGRmap);
+        gPMGRdevlen /= sizeof(*gPMGRdev);
+        
+        for (int i=0; i < gPMGRreglen; i++) {
+            gPMGRreg[i].addr = (uint64_t) hal_map_physical_mmio(gPMGRreg[i].addr, gPMGRreg[i].size);
+        }
+        gPMGRBase = gPMGRreg[0].addr;
+    }
+    struct hal_device* wdtdevice = hal_device_by_name("wdt");
+    if (wdtdevice) {
+        gWDTBase = (uint64_t) hal_map_registers(wdtdevice, 0, NULL);
+    }
     command_register("reset", "resets the device", wdt_reset);
     command_register("crash", "branches to an invalid address", (void*)0x41414141);
 }
 void interrupt_init() {
-    gInterruptBase = dt_get_u32_prop("aic", "reg");
-    gInterruptBase += gIOBase;
-
-    gAICVersion = dt_get_u32_prop("aic", "aic-version");
+    struct hal_device* aic = hal_device_by_name("aic");
+    gInterruptBase = (uint64_t) hal_map_registers(aic, 0, NULL);
 
     interrupt_or_config(0xE0000000);
     interrupt_or_config(1); // enable interrupt
@@ -622,7 +630,7 @@ uint64_t device_clock_by_id(uint32_t id)
         {
             break;
         }
-        return gIOBase + r->addr + m->off + (d->idx << 3);
+        return r->addr + m->off + (d->idx << 3);
     }
     return 0;
 }
@@ -646,7 +654,7 @@ uint64_t device_clock_by_name(const char *name)
         {
             break;
         }
-        return gIOBase + r->addr + m->off + (d->idx << 3);
+        return r->addr + m->off + (d->idx << 3);
     }
     return 0;
 }

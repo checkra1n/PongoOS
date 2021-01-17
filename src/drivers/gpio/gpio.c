@@ -36,8 +36,10 @@ struct task gpio_task = {.name = "gpio"};
 
 uint64_t gGpioBase;
 void gpio_early_init() {
-    gGpioBase = dt_get_u32_prop("gpio", "reg");
-    gGpioBase += gIOBase;
+    struct hal_device* gpio_dev = hal_device_by_name("gpio");
+    if (gpio_dev) {
+        gGpioBase = (uint64_t) hal_map_registers(gpio_dev, 0, NULL);
+    }
 }
 
 void gpio_init() {

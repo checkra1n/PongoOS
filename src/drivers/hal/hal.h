@@ -96,3 +96,5 @@ extern int hal_invoke_service_op(struct hal_device* device, const char* svc_name
 extern struct hal_device * hal_get_mapper(struct hal_device* device, uint32_t index);
 extern struct hal_device * hal_device_by_name(const char* name);
 extern void * hal_map_registers(struct hal_device* device, uint32_t index, size_t *size);
+extern int32_t hal_get_irqno(struct hal_device* device, uint32_t index);
+extern uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size);

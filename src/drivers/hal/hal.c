@@ -35,6 +35,7 @@ struct hal_device* gRootDevice, * gDeviceTreeDevice;
 #define HAL_CREATE_CHILD_DEVICE 2
 #define HAL_GET_MAPPER 3
 #define HAL_MAP_REGISTERS 4
+#define HAL_GET_IRQNR 5
 
 void hal_probe_hal_services(struct hal_device* device) ;
 
@@ -124,23 +125,37 @@ static int hal_service_op(struct hal_device_service* svc, struct hal_device* dev
             uint64_t base;
             uint64_t size;
         }* regs = val;
-
-        uint64_t size = regs[index].size;
-        size +=  0x3FFF;
-        size &= ~0x3FFF;
-        uint64_t va = linear_kvm_alloc(size);
         
         uint64_t regbase = regs[index].base + gIOBase;
+        uint64_t size = regs[index].size;
 
-        map_range_map((uint64_t*)kernel_vm_space.ttbr0, va, regbase, size, 3, 0, 1, 0, PROT_READ|PROT_WRITE, !!va & 0x7000000000000000);
-
-        ((void**)data_out)[0] = (void*)va;
+        ((void**)data_out)[0] = (void*)hal_map_physical_mmio(regbase, size);
         ((void**)data_out)[1] = (void*)regs[index].size;
 
         return 0;
     }
     
     return -1;
+}
+uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size) {
+    size +=  0x3FFF;
+    size &= ~0x3FFF;
+    uint64_t va = linear_kvm_alloc(size);
+
+    map_range_map((uint64_t*)kernel_vm_space.ttbr0, va, regbase, size, 3, 0, 1, 0, PROT_READ|PROT_WRITE, !!va & 0x7000000000000000);
+
+    return va;
+}
+int32_t hal_get_irqno(struct hal_device* device, uint32_t index) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (!node) return -1;
+
+    int32_t* val = dt_prop(node, "interrupts", &len);
+    if (!val || index * 4 >= len) {
+        return -1;
+    }
+    return val[index];
 }
 
 void * hal_map_registers(struct hal_device* device, uint32_t index, size_t *size) {

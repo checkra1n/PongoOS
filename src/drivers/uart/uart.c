@@ -90,11 +90,13 @@ static inline void put_serial_modifier(const char* str) {
 }
 
 uint64_t gUartBase;
+struct hal_device* gUartDevice;
 extern uint32_t gLogoBitmap[32];
 void serial_early_init() {
+    gUartDevice = hal_device_by_name("uart0");
+    gUartBase = (uint64_t) hal_map_registers(gUartDevice, 0, NULL);
+
     disable_interrupts();
-    gUartBase = dt_get_u32_prop("uart0", "reg");
-    gUartBase += gIOBase;
     rULCON0 = 3;
     rUCON0 = 0x405;
     rUFCON0 = 0;
@@ -140,9 +142,9 @@ void serial_enable_rx() {
 char uart_irq_driven = 0;
 void serial_init() {
     struct task* irq_task = task_create_extended("uart", uart_main, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
-
+    
     disable_interrupts();
-    uart_irq = dt_get_u32_prop("uart0", "interrupts");
+    uart_irq = hal_get_irqno(gUartDevice, 0);
     serial_disable_rx();
     task_bind_to_irq(irq_task, uart_irq);
     uart_irq_driven = 0;

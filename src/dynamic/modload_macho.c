@@ -69,7 +69,7 @@ void modload_cmd() {
                     vmsz_needed -= base_vmaddr;
                     //iprintf("need %llx, got %llx\n", filesz_expected, loader_xfer_recv_count);
                     if (!(filesz_expected > loader_xfer_recv_count)) {
-                        uint64_t entrypoint;
+                        uint64_t entrypoint = 0;
                         uint8_t * allocto = alloc_contig((vmsz_needed + 0x3FFF) & ~0x3FFF);
                         uint64_t vma_base = linear_kvm_alloc(vmsz_needed);
                         struct pongo_module_info* module = pongo_module_create(segmentCount);

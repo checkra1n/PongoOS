@@ -291,8 +291,9 @@ void shell_main() {
 #endif
 //    gBootFlag = BOOT_FLAG_HOOK;
     
-#define DART_TEST
-    
+    sleep(5);
+    queue_rx_string("ps\n");
+
 #ifdef DART_TEST
     sleep(4);
     struct hal_device* dev = hal_device_by_name("disp0");
