@@ -46,7 +46,6 @@
 #include "libDER/DER_Decode.h"
 #include "libDER/asn1Types.h"
 #include "libDER/oids.h"
-#include "img4/img4.h"
 #include "mipi/mipi.h"
 #include "aes/aes.h"
 #endif
