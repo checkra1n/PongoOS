@@ -111,7 +111,7 @@ $(BUILD)/vmacho: $(AUX)/vmacho.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
 
 $(BUILD)/machopack: $(AUX)/machopack.c | $(BUILD)
-	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
+	$(CC) -Wall -Iapple-include -O3 -o $@ $^ $(CFLAGS)
 
 $(BUILD):
 	mkdir -p $@
