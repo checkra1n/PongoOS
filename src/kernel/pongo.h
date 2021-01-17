@@ -37,6 +37,7 @@
 #ifdef PONGO_PRIVATE
 #include "framebuffer/fb.h"
 #include "usb/usb.h"
+#include "dart/dart.h"
 #include "uart/uart.h"
 #include "gpio/gpio.h"
 #include "timer/timer.h"
@@ -133,6 +134,7 @@ extern void lock_release(lock* lock); // releases ownership on a lock
 
 extern int dt_check(void* mem, uint32_t size, uint32_t* offp);
 extern int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg);
+extern int dt_parse_ex(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg, uint32_t flags);
 extern dt_node_t* dt_find(dt_node_t* node, const char* name);
 extern void* dt_prop(dt_node_t* node, const char* key, uint32_t* lenp);
 extern void* dt_get_prop(const char* device, const char* prop, uint32_t* size);

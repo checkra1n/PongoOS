@@ -33,6 +33,7 @@ struct hal_device* gRootDevice, * gDeviceTreeDevice;
 #define HAL_LOAD_XNU_DTREE 0
 #define HAL_LOAD_DTREE_CHILDREN 1
 #define HAL_CREATE_CHILD_DEVICE 2
+#define HAL_GET_MAPPER 3
 
 void hal_probe_hal_services(struct hal_device* device) ;
 
@@ -45,6 +46,7 @@ static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
     if (val) {
         struct hal_device* device = malloc(sizeof(struct hal_device));
         device->next = parentDevice->down;
+        device->parent = parentDevice;
         parentDevice->down = device;
         device->node = node;
         device->down = NULL;
@@ -58,16 +60,17 @@ static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
     return 0;
 }
 
-static int hal_service_op(struct hal_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
+static int hal_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     if (method == HAL_LOAD_XNU_DTREE) {
         device->node = gDeviceTree;
         return 0;
     } else if (method == HAL_LOAD_DTREE_CHILDREN && device->node) {
         // int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg)
-        return dt_parse(device->node, 0, NULL, hal_load_dtree_child_node, device, NULL, NULL);
+        return dt_parse_ex(device->node, 0, NULL, hal_load_dtree_child_node, device, NULL, NULL, 1);
     } else if (method == HAL_CREATE_CHILD_DEVICE && data_out_size && *data_out_size == 8) {
         struct hal_device* ndevice = malloc(sizeof(struct hal_device));
         ndevice->next = device->down;
+        ndevice->parent = device;
         device->down = ndevice;
         ndevice->node = NULL;
         ndevice->down = NULL;
@@ -78,9 +81,39 @@ static int hal_service_op(struct hal_service* svc, struct hal_device* device, ui
         *(void**)data_out = ndevice;
         
         return 0;
+    } else if (method == HAL_GET_MAPPER && data_in && data_in_size == 4 && data_out && *data_out_size == 8) {
+        uint32_t index = *(uint32_t*)data_in;
+        *(void**)data_out = NULL;
+        
+        uint32_t len = 0;
+        dt_node_t* node = device->node;
+        if (!node) return -1;
+        
+        uint32_t* val = dt_prop(node, "iommu-parent", &len);
+        if (!val) {
+            return -1;
+        }
+        
+        if (index >= len / 4) {
+            return -1;
+        }
+        
+        uint32_t phandle = val[index];
+        *(struct hal_device **)data_out = hal_get_phandle_device(phandle);
+        return 0;
     }
     
     return -1;
+}
+
+struct hal_device * hal_get_mapper(struct hal_device* device, uint32_t index) {
+    struct hal_device * rv = NULL;
+    size_t osz = 8;
+    
+    if (hal_invoke_service_op(device, "hal", HAL_GET_MAPPER, &index, 4, &rv, &osz)) {
+        return NULL;
+    }
+    return rv;
 }
 
 static bool hal_service_probe(struct hal_service* svc, struct hal_device* device, void** context) {
@@ -96,7 +129,9 @@ int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint3
     struct hal_device_service* svc = device->services;
     while (svc) {
         if (svc_name == svc->name || strcmp(svc_name, svc->name) == 0) {
-            return svc->service->service_op(svc->service, device, method, data_in, data_in_size, data_out, data_out_size);
+            if (svc->service->service_op) {
+                return svc->service->service_op(svc, device, method, data_in, data_in_size, data_out, data_out_size);
+            }
         }
         svc = svc->next;
     }
@@ -113,6 +148,16 @@ void hal_register_hal_service(struct hal_service* svc) {
 }
 void hal_probe_hal_services(struct hal_device* device) {
     lock_take(&hal_service_lock);
+    
+    if (device && device->node) {
+        uint32_t llen = 0;
+        uint32_t* phandle = dt_prop(device->node, "AAPL,phandle", &llen);
+        if (phandle && llen == 4) {
+            hal_register_phandle_device(*phandle, device);
+            device->phandle = *phandle;
+        }
+    }
+    
     struct hal_service* svc = hal_service_head;
     while (svc) {
         if (svc->probe) {
@@ -176,6 +221,55 @@ void lsdev_cmd(const char *cmd, char *args)
 {
     recurse_device(gRootDevice, 0, lsdev_cb);
 }
+static struct hal_device * hal_device_by_name_recursive(struct hal_device* dev, int depth, const char* name) {
+    struct hal_device* nxt = dev->down;
+    if (strcmp(dev->name, name) == 0) {
+        return dev;
+    }
+    
+    while (nxt) {
+        struct hal_device* rv = hal_device_by_name_recursive(nxt, depth+1, name);
+        if (rv) {
+            return rv;
+        }
+        nxt = nxt->next;
+    }
+    return NULL;
+}
+struct hal_device * hal_device_by_name(const char* name) {
+    return hal_device_by_name_recursive(gRootDevice, 0, name);
+}
+
+struct hal_device** phandle_table;
+uint32_t phandle_table_size;
+
+void hal_register_phandle_device(uint32_t phandle, struct hal_device* dev) {
+    if (!phandle_table_size) {
+        phandle_table_size = 0x100;
+        phandle_table = calloc(phandle_table_size, 8);
+    }
+
+    uint32_t phandle_table_size_new = phandle_table_size;
+    while (phandle > phandle_table_size_new) {
+        phandle_table_size_new *= 2;
+    }
+    
+    if (phandle_table_size != phandle_table_size_new) {
+        struct hal_device** phandle_table_new = calloc(phandle_table_size_new, 8);
+        memcpy(phandle_table_new, phandle_table, phandle_table_size_new * 8);
+        phandle_table = phandle_table_new;
+        phandle_table_size = phandle_table_size_new;
+    }
+    
+    phandle_table[phandle] = dev;
+}
+struct hal_device* hal_get_phandle_device(uint32_t phandle) {
+    while (phandle < phandle_table_size) {
+        return phandle_table[phandle];
+    }
+    return NULL;
+}
+
 
 void hal_init() {
     gPlatform = NULL;
@@ -216,13 +310,16 @@ void hal_init() {
     
     if (0 != hal_invoke_service_op(gRootDevice, "hal", HAL_CREATE_CHILD_DEVICE, "dtree", 6, &gDeviceTreeDevice, &ssz))
         panic("hal_init: HAL_CREATE_CHILD_DEVICE failed!");
-
     if (0 != hal_invoke_service_op(gDeviceTreeDevice, "hal", HAL_LOAD_XNU_DTREE, NULL, 0, NULL, NULL))
         panic("hal_init: HAL_LOAD_XNU_DTREE failed!");
     if (0 != hal_invoke_service_op(gDeviceTreeDevice, "hal", HAL_LOAD_DTREE_CHILDREN, NULL, 0, NULL, NULL))
         panic("hal_init: HAL_LOAD_DTREE_CHILDREN failed!");
 
+    
+    if (gPlatform->bound_platform_driver->late_init) {
+        gPlatform->bound_platform_driver->late_init();
+    }
+    
     command_register("lsdev", "prints hal devices tree", lsdev_cmd);
-
 }
 

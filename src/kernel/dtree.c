@@ -53,12 +53,21 @@ int dt_check(void* mem, uint32_t size, uint32_t* offp)
     return 0;
 }
 
-int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg)
+
+int dt_parse_ex(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg, uint32_t flags)
 {
     if (cb_node) {
-        int r = cb_node(cbn_arg, node);
-        if (r != 0)
-            return r;
+        if (flags & 1) { // only enumerate children in cb_node
+            if (depth == 1) {
+                int r = cb_node(cbn_arg, node);
+                if (r != 0)
+                    return r;
+            }
+        } else {
+            int r = cb_node(cbn_arg, node);
+            if (r != 0)
+                return r;
+        }
     }
     if (depth >= 0 || cb_prop) {
         uint32_t off = sizeof(dt_node_t);
@@ -75,7 +84,7 @@ int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, d
         if (depth >= 0) {
             for (uint32_t i = 0, max = node->nchld; i < max; ++i) {
                 uint32_t add = 0;
-                int r = dt_parse((dt_node_t*)((uintptr_t)node + off), depth + 1, &add, cb_node, cbn_arg, cb_prop, cbp_arg);
+                int r = dt_parse_ex((dt_node_t*)((uintptr_t)node + off), depth + 1, &add, cb_node, cbn_arg, cb_prop, cbp_arg, flags);
                 if (r != 0)
                     return r;
                 off += add;
@@ -86,7 +95,10 @@ int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, d
     }
     return 0;
 }
-
+int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg)
+{
+    return dt_parse_ex(node,depth,offp,cb_node,cbn_arg,cb_prop,cbp_arg,0);
+}
 static int dt_find_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len)
 {
     dt_find_cb_t* arg = a;

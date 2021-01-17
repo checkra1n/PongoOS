@@ -47,14 +47,18 @@ struct hal_platform_driver {
     void* context;
     bool (*probe)(struct hal_platform_driver* device_driver, struct hal_platform* device);
     bool (*get_platform_value)(const char* name, void* value, size_t* size);
+    void (*late_init)();
 };
 
 struct hal_device {
     struct hal_device* next;
     struct hal_device* down;
+    struct hal_device* parent;
     const char* name;
     dt_node_t* node;
     struct hal_device_service* services;
+
+    uint32_t phandle;
 };
 
 struct hal_device_service {
@@ -68,10 +72,12 @@ struct hal_service {
     struct hal_service* next;
     const char* name;
     bool (*probe)(struct hal_service* svc, struct hal_device* device, void** context);
-    int (*service_op)(struct hal_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size);
+    int (*service_op)(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size);
 };
 
 extern void hal_register_hal_service(struct hal_service* svc);
+extern void hal_register_phandle_device(uint32_t phandle, struct hal_device* dev);
+extern struct hal_device* hal_get_phandle_device(uint32_t phandle);
 
 struct hal_platform {
     uint32_t cpid;
@@ -87,3 +93,5 @@ extern void hal_register_platform_driver(struct hal_platform_driver* driver);
 extern const char* hal_platform_name();
 extern bool hal_get_platform_value(const char* name, void* value, size_t* size);
 extern int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size);
+extern struct hal_device * hal_get_mapper(struct hal_device* device, uint32_t index);
+extern struct hal_device * hal_device_by_name(const char* name);

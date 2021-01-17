@@ -1,0 +1,2 @@
+#define DART_ENTER_BYPASS_MODE 0
+#define DART_FLUSH_CACHE 1
