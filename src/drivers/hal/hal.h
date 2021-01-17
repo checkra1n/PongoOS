@@ -95,3 +95,4 @@ extern bool hal_get_platform_value(const char* name, void* value, size_t* size);
 extern int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size);
 extern struct hal_device * hal_get_mapper(struct hal_device* device, uint32_t index);
 extern struct hal_device * hal_device_by_name(const char* name);
+extern void * hal_map_registers(struct hal_device* device, uint32_t index, size_t *size);

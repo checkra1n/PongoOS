@@ -32,11 +32,6 @@ struct t8020_dart {
     uint64_t dart_regbase;
 };
 
-struct dart_regs {
-    uint64_t base;
-    uint64_t size;
-};
-
 static bool register_dart_mapper(struct hal_device* device, void** context) {
     uint32_t len = 0;
     dt_node_t* node = device->node;
@@ -45,25 +40,19 @@ static bool register_dart_mapper(struct hal_device* device, void** context) {
     if (strcmp(dt_prop(pnode, "compatible", &len), "dart,t8020") == 0) {
         void* val = dt_prop(node, "name", &len);
 
-        uint32_t reglen = 0;
-        struct dart_regs* regs = dt_prop(pnode, "reg", &reglen);
-        if (!regs) return false;
-        if (reglen & 0xf) {
-            panic("invalid dtre! reglen %x not aligned", reglen);
-        }
-        reglen /= 0x10;
-        
         uint32_t reg_index = device->phandle - device->parent->phandle;
         reg_index--;
+
+        void* regs = hal_map_registers(device->parent, reg_index, NULL);
         
-        if (reg_index >= reglen) {
-            iprintf("invalid dtre! %s: reg_index > reglen (%d > %d)\n", val, reg_index, reglen);
+        if (!regs) {
+            iprintf("Couldn't map MMIO for 8020 dart-mapper: %s\n", val);
             return false;
         }
-
+        
         struct t8020_dart* dart = calloc(sizeof(struct t8020_dart), 1);
         dart->dart_type = 0x8020;
-        dart->dart_regbase = regs[reg_index].base + gIOBase;
+        dart->dart_regbase = (uint64_t) regs;
         iprintf("Found 8020 dart-mapper: %s @ %llx\n", val, dart->dart_regbase);
 
         *context = dart;

@@ -34,6 +34,7 @@ struct hal_device* gRootDevice, * gDeviceTreeDevice;
 #define HAL_LOAD_DTREE_CHILDREN 1
 #define HAL_CREATE_CHILD_DEVICE 2
 #define HAL_GET_MAPPER 3
+#define HAL_MAP_REGISTERS 4
 
 void hal_probe_hal_services(struct hal_device* device) ;
 
@@ -101,11 +102,61 @@ static int hal_service_op(struct hal_device_service* svc, struct hal_device* dev
         uint32_t phandle = val[index];
         *(struct hal_device **)data_out = hal_get_phandle_device(phandle);
         return 0;
+    } else if (method == HAL_MAP_REGISTERS && data_in && data_in_size == 4 && data_out && *data_out_size == 16) {
+        uint32_t index = *(uint32_t*)data_in;
+        ((void**)data_out)[0] = NULL;
+        ((void**)data_out)[1] = NULL;
+
+        uint32_t len = 0;
+        dt_node_t* node = device->node;
+        if (!node) return -1;
+        
+        void* val = dt_prop(node, "reg", &len);
+        if (!val) {
+            return -1;
+        }
+        
+        if (index * 0x10 >= len) {
+            return -1;
+        }
+    
+        struct device_regs {
+            uint64_t base;
+            uint64_t size;
+        }* regs = val;
+
+        uint64_t size = regs[index].size;
+        size +=  0x3FFF;
+        size &= ~0x3FFF;
+        uint64_t va = linear_kvm_alloc(size);
+        
+        uint64_t regbase = regs[index].base + gIOBase;
+
+        map_range_map((uint64_t*)kernel_vm_space.ttbr0, va, regbase, size, 3, 0, 1, 0, PROT_READ|PROT_WRITE, !!va & 0x7000000000000000);
+
+        ((void**)data_out)[0] = (void*)va;
+        ((void**)data_out)[1] = (void*)regs[index].size;
+
+        return 0;
     }
     
     return -1;
 }
 
+void * hal_map_registers(struct hal_device* device, uint32_t index, size_t *size) {
+    struct {
+        void* base;
+        size_t size;
+    } rv;
+    size_t osz = 0x10;
+    if (size) *size = 0;
+    
+    if (hal_invoke_service_op(device, "hal", HAL_MAP_REGISTERS, &index, 4, &rv, &osz)) {
+        return NULL;
+    }
+    if (size) *size = rv.size;
+    return rv.base;
+}
 struct hal_device * hal_get_mapper(struct hal_device* device, uint32_t index) {
     struct hal_device * rv = NULL;
     size_t osz = 8;
