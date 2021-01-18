@@ -36,6 +36,7 @@ extern volatile char gBootFlag;
  */
 extern void * fdt;
 extern bool fdt_initialized;
+extern char gLinuxCmdLine[LINUX_CMDLINE_SIZE];
 
 void fdt_cmd() {
     if (!loader_xfer_recv_count) {
@@ -48,6 +49,21 @@ void fdt_cmd() {
     memcpy(fdt, loader_xfer_recv_data, loader_xfer_recv_count);
     fdt_initialized = 1;
     loader_xfer_recv_count = 0;
+}
+
+void linux_cmdline_cmd(const char* cmd, char* args) {
+    if (!*args) {
+        iprintf("linux_cmdline usage: linux_cmdline [cmdline]\n");
+        return;
+    }
+
+    size_t len = strlen(args);
+    if (len > LINUX_CMDLINE_SIZE) {
+        iprintf("Provided command line length is greater than LINUX_CMDLINE_SIZE (%lu > %lu)\n", len, (size_t) LINUX_CMDLINE_SIZE);
+        return;
+    }
+
+    memcpy(gLinuxCmdLine, args, len);
 }
 
 /*
@@ -68,5 +84,6 @@ void pongo_boot_linux() {
 
 void linux_commands_register() {
     command_register("bootl", "boots linux", pongo_boot_linux);
+    command_register("linux_cmdline", "update linux kernel command line", linux_cmdline_cmd);
     command_register("fdt", "load linux fdt from usb", fdt_cmd);
 }
