@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2020 checkra1n team
+ * Copyright (C) 2019-2020 checkra1n team, Copyright (c) 2016 The Fuchsia Authors
  *
  * This file is part of pongoOS.
  *
