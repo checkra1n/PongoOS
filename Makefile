@@ -53,7 +53,7 @@ RA1N                    := $(ROOT)/checkra1n/kpf
 
 # General options
 EMBEDDED_LD_FLAGS       ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
-EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -mcpu=cyclone -mtune=cyclone -Wall -Wunused-label -Werror -O3 -ffreestanding -U__nonnull -nostdlibinc -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
+EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
 
 # Pongo options
 PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
