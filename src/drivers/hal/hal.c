@@ -165,10 +165,15 @@ uint64_t translate_register_address(uint64_t address) {
 }
 
 uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size) {
+    regbase = translate_register_address(regbase);
+    uint64_t offset = regbase & 0x3fff;
+    regbase &= ~0x3fff;
+
+    size += offset;
+
     size +=  0x3FFF;
     size &= ~0x3FFF;
     uint64_t va = linear_kvm_alloc(size);
-    regbase = translate_register_address(regbase);
     
     map_range_map((uint64_t*)kernel_vm_space.ttbr0, va, regbase, size, 3, 0, 1, 0, PROT_READ|PROT_WRITE, !!(va & 0x7000000000000000));
 
@@ -176,7 +181,7 @@ uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size) {
         vm_flush_by_addr_all_asid(va + i);
     }
 
-    return va;
+    return va + offset;
 }
 
 int32_t hal_get_clock_gate_id(struct hal_device* device, uint32_t index) {
