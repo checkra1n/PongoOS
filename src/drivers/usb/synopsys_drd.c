@@ -28,7 +28,7 @@
 // cleanroom from  https://edc.intel.com/content/www/us/en/design/products-and-solutions/processors-and-chipsets/comet-lake-u/intel-400-series-chipset-on-package-platform-controller-hub-register-database/global-core-control-gctl-offset-c110/
 
 #include <pongo.h>
-//#define REG_LOG
+#define REG_LOG
 
 struct drd {
     uint64_t regBase;
@@ -60,6 +60,13 @@ __unused static uint32_t atc_reg_read(struct drd* drd, uint32_t offset) {
 #endif
     return rv;
 }
+__unused static uint32_t pipehandler_reg_read(struct drd* drd, uint32_t offset) {
+    uint32_t rv = *(volatile uint32_t *)(drd->pipeHandlerRegBase + offset);
+#ifdef REG_LOG
+    fiprintf(stderr, "pipehandler_reg_read(%x) = %x\n", offset, rv);
+#endif
+    return rv;
+}
 
 __unused static void drd_reg_write(struct drd* drd, uint32_t offset, uint32_t value) {
 #ifdef REG_LOG
@@ -72,6 +79,12 @@ __unused static void atc_reg_write(struct drd* drd, uint32_t offset, uint32_t va
     fiprintf(stderr, "atc_reg_write(%x) = %x\n", offset, value);
 #endif
     *(volatile uint32_t *)(drd->atcRegBase + offset) = value;
+}
+__unused static void pipehandler_reg_write(struct drd* drd, uint32_t offset, uint32_t value) {
+#ifdef REG_LOG
+    fiprintf(stderr, "pipehandler_reg_write(%x) = %x\n", offset, value);
+#endif
+    *(volatile uint32_t *)(drd->pipeHandlerRegBase + offset) = value;
 }
 
 __unused static void drd_reg_and(struct drd* drd, uint32_t offset, uint32_t value) {
@@ -86,6 +99,12 @@ __unused static void atc_reg_and(struct drd* drd, uint32_t offset, uint32_t valu
 #endif
     *(volatile uint32_t *)(drd->atcRegBase + offset) &= value;
 }
+__unused static void pipehandler_reg_and(struct drd* drd, uint32_t offset, uint32_t value) {
+#ifdef REG_LOG
+    fiprintf(stderr, "pipehandler_reg_and(%x) = %x\n", offset, value);
+#endif
+    *(volatile uint32_t *)(drd->pipeHandlerRegBase + offset) &= value;
+}
 
 __unused static void drd_reg_or(struct drd* drd, uint32_t offset, uint32_t value) {
 #ifdef REG_LOG
@@ -98,6 +117,12 @@ __unused static void atc_reg_or(struct drd* drd, uint32_t offset, uint32_t value
     fiprintf(stderr, "atc_reg_or(%x) = %x\n", offset, value);
 #endif
     *(volatile uint32_t *)(drd->atcRegBase + offset) |= value;
+}
+__unused static void pipehandler_reg_or(struct drd* drd, uint32_t offset, uint32_t value) {
+#ifdef REG_LOG
+    fiprintf(stderr, "pipehandler_reg_or(%x) = %x\n", offset, value);
+#endif
+    *(volatile uint32_t *)(drd->pipeHandlerRegBase + offset) |= value;
 }
 
 #include "synopsys_drd_regs.h"
@@ -149,9 +174,43 @@ static void atc_bringup(struct drd* drd) {
     atc_enable_device(drd, true);
 }
 static void drd_bringup(struct drd* drd) {
-    drd_reg_or(drd, G_GCTL, G_GCTL_DSBLCLKGTNG);
-    drd_reg_or(drd, G_GCTL, G_GCTL_CORESOFTRESET);
-    drd_reg_and(drd, G_GCTL, ~G_GCTL_CORESOFTRESET);
+    uint32_t reg;
+    
+    pipehandler_reg_and(drd, P_PHY_MUX_SELECT, ~PIPE_CLK_EN);
+
+    pipehandler_reg_and(drd, P_PHY_MUX_SELECT, ~PIPE_MODE);
+
+    reg = pipehandler_reg_read(drd, P_PHY_MUX_SELECT);
+    reg &= ~PIPE_CLK_EN;
+    reg |= 0x8;
+    pipehandler_reg_write(drd, P_PHY_MUX_SELECT, reg);
+
+    reg = pipehandler_reg_read(drd, P_PHY_MUX_SELECT);
+    reg &= ~PIPE_MODE;
+    reg |= 0x2;
+    pipehandler_reg_write(drd, P_PHY_MUX_SELECT, reg);
+
+    reg = pipehandler_reg_read(drd, P_PHY_MUX_SELECT);
+    reg &= ~PIPE_CLK_EN;
+    reg |= 0x20;
+    pipehandler_reg_write(drd, P_PHY_MUX_SELECT, reg);
+
+    pipehandler_reg_and(drd, P_LOCK_PIPE_IF_REQ, ~1);
+    
+    while (pipehandler_reg_read(drd, P_LOCK_PIPE_IF_ACK) & 1) {
+        ;;
+    }
+    
+    drd_reg_and(drd, G_GUSB2PHYCFG, ~SUSPENDUSB20);
+    drd_reg_and(drd, G_GUSB3PIPECTL, ~SUSPENDENABLE);
+    
+    pipehandler_reg_and(drd, P_AON_GENERAL_REGS, ~ATC_USB31_DRD_FORCE_CLAMP_EN);
+    
+    pipehandler_reg_or(drd, P_AON_GENERAL_REGS, ATC_USB31_DRD_SW_VCC_RESET);
+
+    drd_reg_or(drd, G_GCTL, GCTL_DSBLCLKGTNG);
+    drd_reg_or(drd, G_GCTL, GCTL_CORESOFTRESET);
+    drd_reg_and(drd, G_GCTL, ~GCTL_CORESOFTRESET);
 }
 
 
