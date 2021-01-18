@@ -7,11 +7,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#ifdef __APPLE__
-#include <mach-o/loader.h>
-#else
 #include "../apple-include/mach-o/loader.h"
-#endif
 
 int main(int argc, char** argv) {
     if (argc != 3) {
