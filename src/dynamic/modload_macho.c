@@ -107,15 +107,15 @@ void modload_cmd() {
                             lc = (struct load_command*)(((char*)lc) + lc->cmdsize);
                         }
                         
-                        const struct relocation_info *extrel = (void *)((uintptr_t)loader_xfer_recv_data + dysymtab->extreloff);
-                        const struct relocation_info *locrel = (void *)((uintptr_t)loader_xfer_recv_data + dysymtab->locreloff);
-                        const struct nlist_64 *nlist = (struct nlist_64 *)((uintptr_t)loader_xfer_recv_data + symtab->symoff);
+                        const struct relocation_info *extrel = (void *)((uintptr_t)mh + dysymtab->extreloff);
+                        const struct relocation_info *locrel = (void *)((uintptr_t)mh + dysymtab->locreloff);
+                        const struct nlist_64 *nlist = (struct nlist_64 *)((uintptr_t)mh + symtab->symoff);
                         const char** modname = NULL;
                         struct pongo_exports* exports = NULL;
                         for (uint32_t sym_idx = 0; sym_idx < symtab->nsyms; sym_idx++) {
                             const struct nlist_64 *nl = &nlist[sym_idx];
                             uint32_t strx = nl->n_un.n_strx;
-                            const char *name = (const char *)((uintptr_t)loader_xfer_recv_data + symtab->stroff + strx);
+                            const char *name = (const char *)((uintptr_t)mh + symtab->stroff + strx);
                             // Check to see if this is the entry point symbol.
                             int cmp = strcmp(name, "_module_entry");
                             if (cmp == 0) {
