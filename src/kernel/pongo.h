@@ -226,6 +226,7 @@ extern void proc_reference(struct proc*);
 extern void proc_release(struct proc*);
 extern struct task* proc_create_task(struct proc* proc, void* entrypoint);
 #define PROC_NO_VM 1
+extern void fb_reset_cursor();
 extern uint32_t loader_xfer_recv_size;
 extern void resize_loader_xfer_data(uint32_t newsz);
 extern bool vm_fault(struct vm_space* vmspace, uint64_t vma, vm_protect_t fault_prot);
