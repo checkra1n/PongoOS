@@ -75,6 +75,20 @@ __unused static uint32_t ausb_reg_read(struct drd* drd, uint32_t offset) {
 #endif
     return rv;
 }
+__unused static uint32_t configreg_reg_read(struct drd* drd, uint32_t offset) {
+    uint32_t rv = *(volatile uint32_t *)(drd->configRegBase + offset);
+#ifdef REG_LOG
+    fiprintf(stderr, "configreg_reg_read(%x) = %x\n", offset, rv);
+#endif
+    return rv;
+}
+__unused static uint32_t coreevt_reg_read(struct drd* drd, uint32_t offset) {
+        uint32_t rv = *(volatile uint32_t *)(drd->coreEvtRegBase + offset);
+    #ifdef REG_LOG
+        fiprintf(stderr, "coreevt_reg_read(%x) = %x\n", offset, rv);
+    #endif
+        return rv;
+}
 
 __unused static void drd_reg_write(struct drd* drd, uint32_t offset, uint32_t value) {
 #ifdef REG_LOG
@@ -169,6 +183,8 @@ static void USB_DEBUG_PRINT_REGISTERS(struct drd* drd) {
     USB_DEBUG_REG_VALUE(G_GSTS);
     USB_DEBUG_REG_VALUE(G_GPMSTS);
     USB_DEBUG_REG_VALUE(G_GUSB2PHYCFG);
+    USB_DEBUG_REG_VALUE(G_GEVNTADRLO(0));
+    USB_DEBUG_REG_VALUE(G_GEVNTADRHI(0));
     USB_DEBUG_REG_VALUE(G_GEVNTCOUNT(0));
     USB_DEBUG_REG_VALUE(G_GEVNTSIZ(0));
     USB_DEBUG_REG_VALUE(G_GPMSTS);
@@ -299,17 +315,20 @@ static void drd_bringup(struct drd* drd) {
     drd_reg_and(drd, G_GUSB2PHYCFG, ~SUSPENDUSB20);
     drd_reg_and(drd, G_GUSB3PIPECTL, ~SUSPENDENABLE);
     
-//    ausb_reg_and(drd, AUSBC_FORCE_CLK_ON, ~0x1f);
+    ausb_reg_and(drd, AUSBC_FORCE_CLK_ON, ~0x1f);
 
-//    pipehandler_reg_or(drd, P_NON_SELECTED_OVERRIDE, 0x8000);
+    pipehandler_reg_or(drd, BLK_PIPE_HANDLER_NON_SELECTED_OVERRIDE, DUMMY_PHY_READY);
 
     pipehandler_reg_and(drd, P_AON_GENERAL_REGS, ~ATC_USB31_DRD_FORCE_CLAMP_EN);
     pipehandler_reg_or(drd, P_AON_GENERAL_REGS, ATC_USB31_DRD_SW_VCC_RESET);
-
-    while (pipehandler_reg_read(drd, P_NON_SELECTED_OVERRIDE) & 0x40000000) {
+    
+    drd_reg_and(drd, G_GUSB2PHYCFG, ~SUSPENDUSB20);
+    drd_reg_and(drd, G_GUSB3PIPECTL, ~SUSPENDENABLE);
+    
+    while (!(configreg_reg_read(drd, USB31DRD_PIPE) & PHY_READY)) {
         ;;
     }
-    
+
     drd_reg_write(drd, G_DCTL, DCTL_SOFTRESET);
     while (drd_reg_read(drd, G_DCTL) & DCTL_SOFTRESET) {
         ;;
@@ -317,23 +336,17 @@ static void drd_bringup(struct drd* drd) {
     
     drd_reg_write(drd, G_GCTL, GCTL_DSBLCLKGTNG | GCTL_PRTCAPDIR(true) | GCTL_PWRDNSCALE(2));
     
-    drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17) | (hal_get_irqno(drd->device, 0) << DCFG_INTRNUM_SHIFT));
+    drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17));
 
-
-    uint32_t eventc = (drd_reg_read(drd, G_GHWPARAMS(1)) >> 15) & 0x3f;
-
-    drd->virtBaseDMA = alloc_contig(eventc * 0x4000);
+    drd->virtBaseDMA = alloc_contig(0x4000);
     uint64_t dartBaseDMA = drd->physBaseDMA = vatophys_static((void*)drd->virtBaseDMA);
     dartBaseDMA -= 0x800000000;
     
-    
-    for (int i=0; i < eventc; i++) {
-        uint64_t eventBufferBase = dartBaseDMA + i * 0x4000;
-        drd_reg_write(drd, G_GEVNTADRLO(i), eventBufferBase & 0xffffffff);
-        drd_reg_write(drd, G_GEVNTADRHI(i), (eventBufferBase >> 32ULL) & 0xffffffff);
-        drd_reg_write(drd, G_GEVNTSIZ(i), 0x4000); // implicitly unmask interrupt
-    }
-    
+    drd_reg_write(drd, G_GEVNTADRLO(0), dartBaseDMA & 0xffffffff);
+    drd_reg_write(drd, G_GEVNTADRHI(0), (dartBaseDMA >> 32ULL) & 0xffffffff);
+    drd_reg_write(drd, G_GEVNTSIZ(0), 0x4000);
+    drd_reg_write(drd, G_GEVNTCOUNT(0), 0);
+
     enable_endpoint(drd, ENDPOINT_EP0_OUT);
 
     drd_reg_or(drd, G_DEVTEN, DEVTEN_USBRSTEVTEN|DEVTEN_DISSCONNEVTEN|DEVTEN_CONNECTDONEEVTEN|DEVTEN_ULSTCNGEN|DEVTEN_WKUPEVTEN|DEVTEN_ERRTICERREVTEN|DEVTEN_VENDEVTSTRCVDEN);
@@ -394,6 +407,10 @@ static bool register_drd(struct hal_device* device, void** context) {
     USB_DEBUG_PRINT_REGISTERS(drd);
     sleep(1);
     USB_DEBUG_PRINT_REGISTERS(drd);
+    
+    
+    cache_invalidate(drd->virtBaseDMA, 0x4000);
+    iprintf("evq: %x\n", *(uint32_t*)drd->virtBaseDMA);
 
     *context = drd;
     return true;

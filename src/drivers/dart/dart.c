@@ -48,18 +48,10 @@ static bool register_dart_mapper(struct hal_device* device, void** context) {
     dt_node_t* pnode = device->parent->node;
 
     if (strcmp(dt_prop(pnode, "compatible", &len), "dart,t8020") == 0) {
-        uint32_t* regid = dt_prop(node, "reg", &len);
-        if (len != 4) regid = NULL;
-        
         void* val = dt_prop(node, "name", &len);
 
-        uint32_t reg_index = device->phandle - device->parent->phandle;
-        reg_index--;
+        uint32_t reg_index = 0;
         
-        if (regid) {
-            reg_index = *regid;
-        }
-
         void* regs = hal_map_registers(device->parent, reg_index, NULL);
         
         if (!regs) {
@@ -108,7 +100,7 @@ static int dart_service_op(struct hal_device_service* svc, struct hal_device* de
     
     if (method == DART_ENTER_BYPASS_MODE) {
         if (dart->dart_type == 0x8020) {
-            *(volatile uint32_t*)(dart->dart_regbase + 0x100) = 0x80000 | 0x10;
+            *(volatile uint32_t*)(dart->dart_regbase + 0x100) = 0x100;
             return dart_service_op(svc, device, DART_FLUSH_CACHE, NULL, 0, NULL, 0);
         }
     } else if (method == DART_FLUSH_CACHE) {
