@@ -49,7 +49,10 @@ struct hal_platform_driver {
     bool (*get_platform_value)(const char* name, void* value, size_t* size);
     void (*late_init)();
 };
-
+struct device_regs {
+    uint64_t base;
+    uint64_t size;
+};
 struct hal_device {
     struct hal_device* next;
     struct hal_device* down;
@@ -58,6 +61,9 @@ struct hal_device {
     dt_node_t* node;
     struct hal_device_service* services;
 
+    struct device_regs * device_maps;
+    uint32_t nr_device_maps;
+    
     uint32_t phandle;
     uint32_t flags;
 };
@@ -78,7 +84,6 @@ struct hal_service {
     int flags;
 };
 #define SERVICE_FLAGS_EARLY_PROBE 1
-
 extern void hal_register_hal_service(struct hal_service* svc);
 extern void hal_register_phandle_device(uint32_t phandle, struct hal_device* dev);
 extern struct hal_device* hal_get_phandle_device(uint32_t phandle);
@@ -104,6 +109,7 @@ extern int32_t hal_get_irqno(struct hal_device* device, uint32_t index);
 extern uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size);
 extern int32_t hal_get_clock_gate_id(struct hal_device* device, uint32_t index);
 extern int32_t hal_get_clock_gate_size(struct hal_device* device);
+extern int hal_apply_tunables(struct hal_device* device, const char* tunable_dt_entry_name);
 
 
 #define HAL_LOAD_XNU_DTREE 0

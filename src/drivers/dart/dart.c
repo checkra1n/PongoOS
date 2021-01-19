@@ -100,7 +100,7 @@ static int dart_service_op(struct hal_device_service* svc, struct hal_device* de
     
     if (method == DART_ENTER_BYPASS_MODE) {
         if (dart->dart_type == 0x8020) {
-            *(volatile uint32_t*)(dart->dart_regbase + 0x100) = 0x100;
+//            *(volatile uint32_t*)(dart->dart_regbase + 0x100) = 0x80000 | 0x100;
             return dart_service_op(svc, device, DART_FLUSH_CACHE, NULL, 0, NULL, 0);
         }
     } else if (method == DART_FLUSH_CACHE) {

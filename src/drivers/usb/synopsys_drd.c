@@ -263,6 +263,9 @@ static void atc_enable_device(struct drd* drd, bool enable) {
         reg = (atc_reg_read(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL) & ~USB_MODE_MASK) | 0;
     }
     atc_reg_write(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL, reg);
+    
+    hal_apply_tunables(drd->atc_device, "tunable-device");
+
 }
 static void atc_bringup(struct drd* drd) {
     atc_reg_or(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_SIG, VBUS_DETECT_FORCE_VAL | VBUS_DETECT_FORCE_EN | VBUS_VALID_EXT_FORCE_VAL | VBUS_VALID_EXT_FORCE_EN);
@@ -311,7 +314,7 @@ static void drd_bringup(struct drd* drd) {
     while (pipehandler_reg_read(drd, P_LOCK_PIPE_IF_ACK) & 1) {
         ;;
     }
-    
+        
     drd_reg_and(drd, G_GUSB2PHYCFG, ~SUSPENDUSB20);
     drd_reg_and(drd, G_GUSB3PIPECTL, ~SUSPENDENABLE);
     
@@ -335,7 +338,6 @@ static void drd_bringup(struct drd* drd) {
     }
     
     drd_reg_write(drd, G_GCTL, GCTL_DSBLCLKGTNG | GCTL_PRTCAPDIR(true) | GCTL_PWRDNSCALE(2));
-    
     drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17));
 
     drd->virtBaseDMA = alloc_contig(0x4000);
@@ -350,6 +352,8 @@ static void drd_bringup(struct drd* drd) {
     enable_endpoint(drd, ENDPOINT_EP0_OUT);
 
     drd_reg_or(drd, G_DEVTEN, DEVTEN_USBRSTEVTEN|DEVTEN_DISSCONNEVTEN|DEVTEN_CONNECTDONEEVTEN|DEVTEN_ULSTCNGEN|DEVTEN_WKUPEVTEN|DEVTEN_ERRTICERREVTEN|DEVTEN_VENDEVTSTRCVDEN);
+
+    hal_apply_tunables(drd->device, "tunables");
 
     drd_reg_write(drd, G_DCTL, DCTL_RUN_STOP);
 }

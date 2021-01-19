@@ -101,6 +101,13 @@ static int hal_service_op(struct hal_device_service* svc, struct hal_device* dev
         ((void**)data_out)[0] = NULL;
         ((void**)data_out)[1] = NULL;
 
+        if (index < device->nr_device_maps && device->device_maps[index].size) {
+            struct device_regs * regs = &device->device_maps[index];
+            ((void**)data_out)[0] = (void*)regs->base;
+            ((void**)data_out)[1] = (void*)regs->size;
+            return 0;
+        }
+        
         uint32_t len = 0;
         dt_node_t* node = device->node;
         if (!node) return -1;
@@ -114,17 +121,35 @@ static int hal_service_op(struct hal_device_service* svc, struct hal_device* dev
             return -1;
         }
     
-        struct device_regs {
-            uint64_t base;
-            uint64_t size;
-        }* regs = val;
+        struct device_regs * regs = val;
         
         uint64_t regbase = regs[index].base;
         uint64_t size = regs[index].size;
 
-        ((void**)data_out)[0] = (void*)hal_map_physical_mmio(regbase, size);
+        void* pmap = ((void**)data_out)[0] = (void*)hal_map_physical_mmio(regbase, size);
         ((void**)data_out)[1] = (void*)regs[index].size;
 
+        uint32_t old_maps_size = device->nr_device_maps;
+        uint32_t new_maps_size = old_maps_size;
+        if (!new_maps_size) new_maps_size = 8;
+
+        while (index >= new_maps_size) {
+            new_maps_size *= 2;
+        }
+
+        if (old_maps_size != new_maps_size) {
+            struct device_regs * new_map_regs = calloc(sizeof(struct device_regs), new_maps_size);
+            if (old_maps_size) {
+                memcpy(new_map_regs, device->device_maps, sizeof(struct device_regs) * old_maps_size);
+            }
+            device->device_maps = new_map_regs;
+            device->nr_device_maps = new_maps_size;
+        }
+        
+        device->device_maps[index].base = (uint64_t)pmap;
+        device->device_maps[index].size = size;
+
+        
         return 0;
     } else if (method == HAL_DEVICE_CLOCK_GATE_ON || method == HAL_DEVICE_CLOCK_GATE_OFF) {
         int32_t count = hal_get_clock_gate_size(device);
@@ -162,6 +187,49 @@ uint64_t translate_register_address(uint64_t address) {
     }
     panic("couldn't find address %llx in arm-io map", address);
     return -1;
+}
+
+int hal_apply_tunables(struct hal_device* device, const char* tunable_dt_entry_name) {
+    if (!tunable_dt_entry_name) {
+        tunable_dt_entry_name = "tunables";
+    }
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (!node) return -1;
+    
+    struct tunable_array {
+        uint32_t reg_index;
+        uint32_t reg_offset;
+        uint32_t reg_bits_to_clear;
+        uint32_t reg_bits_to_set;
+    };
+    
+    struct tunable_array* val = dt_prop(node, tunable_dt_entry_name, &len);
+    if (!val) {
+        return -1;
+    }
+    if (len & 0xf) {
+        panic("hal_apply_tunables: my understanding of tunables is 4x uint32_t, but len is not a multiple of 0x10...");
+    }
+    
+    uint32_t tunable_cnt = len / 0x10;
+    for (uint32_t i=0; i < tunable_cnt; i++) {
+        size_t sz = 0;
+        uint64_t regbase = (uint64_t) hal_map_registers(device, val[i].reg_index, &sz);
+        if (!regbase) {
+            panic("hal_apply_tunables: invalid reg_index (%d)", val[i].reg_index);
+        }
+        if ((val[i].reg_offset + 4) > sz) {
+            panic("hal_apply_tunables: OOB access (%d > %d)", val[i].reg_offset, sz);
+        }
+        uint32_t value = *(volatile uint32_t*)(regbase + val[i].reg_offset);
+
+        value &= ~val[i].reg_bits_to_clear;
+        value |= val[i].reg_bits_to_set;
+
+        *(volatile uint32_t*)(regbase + val[i].reg_offset) = value;
+    }
+    return 0;
 }
 
 uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size) {

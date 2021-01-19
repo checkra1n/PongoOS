@@ -490,16 +490,17 @@ __attribute__((used)) static void interrupt_and_config(uint32_t bits) {
     *(volatile uint32_t*)(gInterruptBase + 0x10) &= bits;
 }
 uint32_t interrupt_masking_base = 0;
-void set_interrupt_affinity(uint32_t reg, uint32_t cpunr) {
+void set_interrupt_affinity(uint32_t reg, uint32_t cpus) {
     if (reg > irq_count) {
         panic("set_interrupt_affinity: irqno out of bounds (%d > %d)", reg, irq_count);
     }
-    (*(volatile uint32_t *)(gInterruptBase + 0x3000 + reg * 4)) = (1 << ((reg) & 0x1F));
+    (*(volatile uint32_t *)(gInterruptBase + 0x3000 + reg * 4)) = 1 << cpus;
 }
 void unmask_interrupt(uint32_t reg) {
     if (reg > irq_count) {
         panic("unmask_interrupt: irqno out of bounds (%d > %d)", reg, irq_count);
     }
+    set_interrupt_affinity(reg, 0);
     (*(volatile uint32_t *)(gInterruptBase + 0x4180 + ((reg >> 5) * 4))) = (1 << ((reg) & 0x1F));
 }
 void mask_interrupt(uint32_t reg) {
