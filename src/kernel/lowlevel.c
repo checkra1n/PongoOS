@@ -375,9 +375,11 @@ int sync_exc_el0(uint64_t* state) {
     dis_int_count = 0;
     return sync_exc(state);
 }
+
 uint32_t interrupt_vector() {
     return (*(volatile uint32_t *)(gInterruptBase + 0x2004));
 }
+
 uint64_t interruptCount = 0, fiqCount = 0;
 uint32_t do_preempt = 1;
 void disable_preemption() {
@@ -477,6 +479,10 @@ void sleep(uint32_t sec)
     usleep((uint64_t)sec * 1000000ULL);
 }
 
+struct task** irqvecs;
+void** irqctx;
+uint32_t irq_count;
+
 __attribute__((used)) static void interrupt_or_config(uint32_t bits) {
     *(volatile uint32_t*)(gInterruptBase + 0x10) |= bits;
 }
@@ -484,12 +490,26 @@ __attribute__((used)) static void interrupt_and_config(uint32_t bits) {
     *(volatile uint32_t*)(gInterruptBase + 0x10) &= bits;
 }
 uint32_t interrupt_masking_base = 0;
+void set_interrupt_affinity(uint32_t reg, uint32_t cpunr) {
+    if (reg > irq_count) {
+        panic("set_interrupt_affinity: irqno out of bounds (%d > %d)", reg, irq_count);
+    }
+    (*(volatile uint32_t *)(gInterruptBase + 0x3000 + reg * 4)) = (1 << ((reg) & 0x1F));
+}
 void unmask_interrupt(uint32_t reg) {
+    if (reg > irq_count) {
+        panic("unmask_interrupt: irqno out of bounds (%d > %d)", reg, irq_count);
+    }
     (*(volatile uint32_t *)(gInterruptBase + 0x4180 + ((reg >> 5) * 4))) = (1 << ((reg) & 0x1F));
-
 }
 void mask_interrupt(uint32_t reg) {
+    if (reg > irq_count) {
+        panic("mask_interrupt: irqno out of bounds (%d > %d)", reg, irq_count);
+    }
     (*(volatile uint32_t *)(gInterruptBase + 0x4100 + ((reg >> 3) * 4))) = (1 << ((reg) & 0x1F));
+}
+uint32_t count_interrupts() {
+    return *(volatile uint32_t *)(gInterruptBase + 4);
 }
 
 #define WDT_CHIP_TMR (*(volatile uint32_t*)(gWDTBase + 0x0))
@@ -581,6 +601,21 @@ void interrupt_teardown() {
     task_irq_teardown();
 }
 
+void interrupt_associate_context(uint32_t irqno, void* context) {
+    if (irqno > irq_count) {
+        panic("interrupt_associate_context: irqno out of bounds (%d > %d)", irqno, irq_count);
+    }
+
+    irqctx[irqno] = context;
+}
+void* interrupt_context(uint32_t irqno) {
+    if (irqno > irq_count) {
+        panic("interrupt_context: irqno out of bounds (%d > %d)", irqno, irq_count);
+    }
+
+    return irqctx[irqno];
+}
+
 static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, void** context) {
     uint32_t len = 0;
     dt_node_t* node = device->node;
@@ -591,8 +626,13 @@ static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, v
             
             gInterruptBase = (uint64_t) hal_map_registers(device, 0, NULL);
 
+            irq_count = count_interrupts();
+            irqvecs = calloc(irq_count, sizeof(struct task*));
+            irqctx = calloc(irq_count, sizeof(void*));
+
             interrupt_or_config(0xE0000000);
             interrupt_or_config(1); // enable interrupt
+            
             return true;
         } else
         if (val && strcmp(val, "pmgr") == 0) {
@@ -634,7 +674,8 @@ static int lowlevel_service_op(struct hal_device_service* svc, struct hal_device
 static struct hal_service lowlevel_svc = {
     .name = "lowlevel",
     .probe = lowlevel_probe,
-    .service_op = lowlevel_service_op
+    .service_op = lowlevel_service_op,
+    .flags = SERVICE_FLAGS_EARLY_PROBE
 };
 
 static void lowlevel_init(struct driver* driver) {

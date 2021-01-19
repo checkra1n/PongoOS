@@ -171,7 +171,10 @@ static void USB_DEBUG_PRINT_REGISTERS(struct drd* drd) {
     USB_DEBUG_REG_VALUE(G_GUSB2PHYCFG);
     USB_DEBUG_REG_VALUE(G_GEVNTCOUNT(0));
     USB_DEBUG_REG_VALUE(G_GEVNTSIZ(0));
-    
+    USB_DEBUG_REG_VALUE(G_GPMSTS);
+    USB_DEBUG_REG_VALUE(BUSERRADDR_LO);
+    USB_DEBUG_REG_VALUE(BUSERRADDR_HI);
+
     enable_interrupts();
 }
 
@@ -216,7 +219,7 @@ void drd_endpoint_start_configuration(struct drd* drd, uint32_t ep, uint32_t rsr
     }
 }
 void drd_endpoint_set_configuration(struct drd* drd, uint32_t ep, uint32_t ep_type, uint32_t packetsz) {
-    if (drd_endpoint_command(drd, ep, DEPCFG, DEPCFG_ACTION_INITIALIZE | DEPCFG_MAX_PACKET_SIZE(packetsz) | DEPCFG_EP_TYPE(ep_type), DEPCFG_EP_NUMBER(ep) | DEPCFG_XFER_NOT_READY_EN | DEPCFG_XFER_COMPLETE_EN | DEPCFG_INTR_NUM(0), 0)) {
+    if (drd_endpoint_command(drd, ep, DEPCFG, DEPCFG_ACTION_INITIALIZE | DEPCFG_MAX_PACKET_SIZE(packetsz) | DEPCFG_EP_TYPE(ep_type), DEPCFG_FIFO_BASED | DEPCFG_EP_NUMBER(ep) | DEPCFG_XFER_NOT_READY_EN | DEPCFG_XFER_COMPLETE_EN | DEPCFG_INTR_NUM(0), 0)) {
         panic("drd_endpoint_set_configuration: drd_endpoint_command failed!");
     }
 }
@@ -314,16 +317,16 @@ static void drd_bringup(struct drd* drd) {
     
     drd_reg_write(drd, G_GCTL, GCTL_DSBLCLKGTNG | GCTL_PRTCAPDIR(true) | GCTL_PWRDNSCALE(2));
     
-    drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17) | (1 << DCFG_INTRNUM_SHIFT));
+    drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17) | (hal_get_irqno(drd->device, 0) << DCFG_INTRNUM_SHIFT));
 
 
     uint32_t eventc = (drd_reg_read(drd, G_GHWPARAMS(1)) >> 15) & 0x3f;
 
     drd->virtBaseDMA = alloc_contig(eventc * 0x4000);
     uint64_t dartBaseDMA = drd->physBaseDMA = vatophys_static((void*)drd->virtBaseDMA);
-
     dartBaseDMA -= 0x800000000;
-
+    
+    
     for (int i=0; i < eventc; i++) {
         uint64_t eventBufferBase = dartBaseDMA + i * 0x4000;
         drd_reg_write(drd, G_GEVNTADRLO(i), eventBufferBase & 0xffffffff);

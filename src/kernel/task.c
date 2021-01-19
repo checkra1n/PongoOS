@@ -60,10 +60,13 @@ void task_timer_fired() {
     task_timer_ctr ++;
 }
 
-struct task* irqvecs[0x800];
+extern struct task** irqvecs;
+extern uint32_t irq_count;
+
 void register_irq_handler(uint16_t irq_v, struct task* irq_handler)
 {
-    if (irq_v >= 0x7ff) panic("invalid irq");
+    if (irq_v >= irq_count) panic("invalid irq");
+    
     if (irqvecs[irq_v]) task_release(irqvecs[irq_v]);
     if (irq_handler) task_reference(irq_handler);
     irqvecs[irq_v] = irq_handler;
@@ -214,13 +217,15 @@ retry:;
     free(irq_copy);
 }
 void task_irq_teardown() {
-    for (int i=0; i<0x7ff; i++) {
+    for (int i=0; i<irq_count; i++) {
         if (irqvecs[i]) {
             mask_interrupt(i);
         }
     }
 }
-
+void* task_current_interrupt_context() {
+    return interrupt_context(task_current()->irq_type);
+}
 __attribute__((noinline)) void task_switch_irq(struct task* new)
 {
     if (!(new->flags & TASK_IRQ_HANDLER)) panic("we are not entering an irq task");
@@ -237,7 +242,7 @@ __attribute__((noinline)) void task_switch_irq(struct task* new)
     _task_switch(new);
     if (new->irq_ret != task_current()) {
         puts("======== IRQ SCHEDULER FAULT ========");
-        iprintf("cur_task: %p != irq_ret: %p\n", task_current(), new->irq_ret);
+        fiprintf(stderr, "cur_task: %p != irq_ret: %p\n", task_current(), new->irq_ret);
         panic("task_current() is not set correctly");
     }
     new->irq_ret = NULL;
@@ -246,12 +251,15 @@ __attribute__((noinline)) void task_switch_irq(struct task* new)
     served_irqs++;
 }
 __attribute__((noinline)) void task_irq_dispatch(uint32_t intr) {
-    struct task* irq_handler = irqvecs[intr & 0x7FF];
+    if (intr > irq_count) {
+        panic("unmask_interrupt: irqno out of bounds (%d > %d)", intr, irq_count);
+    }
+    struct task* irq_handler = irqvecs[intr];
     if (irq_handler) {
-        irq_handler->irq_type = intr & 0x7FF;
+        irq_handler->irq_type = intr;
         task_switch_irq(irq_handler);
     } else {
-        iprintf("couldn't find irq handler for %x\n", intr);
+        fiprintf(stderr, "couldn't find irq handler for %x\n", intr);
         panic("task_irq_dispatch");
     }
 }

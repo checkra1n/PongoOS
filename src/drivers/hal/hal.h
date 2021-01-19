@@ -59,7 +59,9 @@ struct hal_device {
     struct hal_device_service* services;
 
     uint32_t phandle;
+    uint32_t flags;
 };
+#define DEVICE_HAS_BEEN_PROBED_EARLY 1
 
 struct hal_device_service {
     struct hal_device_service* next;
@@ -73,7 +75,9 @@ struct hal_service {
     const char* name;
     bool (*probe)(struct hal_service* svc, struct hal_device* device, void** context);
     int (*service_op)(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size);
+    int flags;
 };
+#define SERVICE_FLAGS_EARLY_PROBE 1
 
 extern void hal_register_hal_service(struct hal_service* svc);
 extern void hal_register_phandle_device(uint32_t phandle, struct hal_device* dev);

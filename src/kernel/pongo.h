@@ -267,6 +267,10 @@ extern void mark_phys_wired(uint64_t pa, uint64_t size);
 extern void phys_force_free(uint64_t pa, uint64_t size);
 extern void phys_reference(uint64_t pa, uint64_t size);
 extern void phys_dereference(uint64_t pa, uint64_t size);
+extern void interrupt_associate_context(uint32_t irqno, void* context);
+extern void* interrupt_context(uint32_t irqno);
+extern void* task_interrupt_context();
+extern void* task_current_interrupt_context();
 
 typedef struct xnu_pf_range {
     uint64_t va;

@@ -30,7 +30,7 @@ struct hal_device _gRootDevice = {
 };
 struct hal_device* gRootDevice, * gDeviceTreeDevice;
 
-void hal_probe_hal_services(struct hal_device* device) ;
+void hal_probe_hal_services(struct hal_device* device, bool isEarlyProbe) ;
 
 static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
     struct hal_device* parentDevice = arg;
@@ -47,7 +47,7 @@ static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
         device->down = NULL;
         device->name = strdup(val);
         
-        hal_probe_hal_services(device);
+        hal_probe_hal_services(device, true);
         
         if (0 != hal_invoke_service_op(device, "hal", HAL_LOAD_DTREE_CHILDREN, NULL, 0, NULL, NULL))
             panic("hal_load_dtree_child_node: HAL_LOAD_DTREE_CHILDREN failed!");
@@ -71,7 +71,7 @@ static int hal_service_op(struct hal_device_service* svc, struct hal_device* dev
         ndevice->down = NULL;
         ndevice->name = strdup(data_in);
         
-        hal_probe_hal_services(ndevice);
+        hal_probe_hal_services(ndevice, false);
         
         *(void**)data_out = ndevice;
         
@@ -245,7 +245,8 @@ static bool hal_service_probe(struct hal_service* svc, struct hal_device* device
 struct hal_service hal_service = {
     .name = "hal",
     .probe = hal_service_probe,
-    .service_op = hal_service_op
+    .service_op = hal_service_op,
+    .flags = SERVICE_FLAGS_EARLY_PROBE
 };
 
 int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
@@ -269,7 +270,7 @@ void hal_register_hal_service(struct hal_service* svc) {
     hal_service_head = svc;
     lock_release(&hal_service_lock);
 }
-void hal_probe_hal_services(struct hal_device* device) {
+void hal_probe_hal_services(struct hal_device* device, bool isEarlyProbe) {
     lock_take(&hal_service_lock);
     
     if (device && device->node) {
@@ -283,6 +284,17 @@ void hal_probe_hal_services(struct hal_device* device) {
     
     struct hal_service* svc = hal_service_head;
     while (svc) {
+        if (!(svc->flags & SERVICE_FLAGS_EARLY_PROBE)) {
+            if (isEarlyProbe) {
+                svc = svc->next;
+                continue;
+            }
+        } else {
+            if (device->flags & DEVICE_HAS_BEEN_PROBED_EARLY) {
+                svc = svc->next;
+                continue;
+            }
+        }
         if (svc->probe) {
             void* ctx = NULL;
             if (svc->probe(svc, device, &ctx)) {
@@ -296,6 +308,11 @@ void hal_probe_hal_services(struct hal_device* device) {
         }
         svc = svc->next;
     }
+    
+    if (isEarlyProbe) {
+        device->flags |= DEVICE_HAS_BEEN_PROBED_EARLY;
+    }
+
     lock_release(&hal_service_lock);
 }
 struct hal_platform _gPlatform;
@@ -344,6 +361,17 @@ void lsdev_cmd(const char *cmd, char *args)
 {
     recurse_device(gRootDevice, 0, lsdev_cb);
 }
+
+
+void hal_late_probe_hal_services_cb(struct hal_device* dev, int depth) {
+    if (gDeviceTreeDevice == dev) return;
+    
+    hal_probe_hal_services(dev, false);
+}
+void hal_late_probe_hal_services() {
+    recurse_device(gDeviceTreeDevice, 0, hal_late_probe_hal_services_cb);
+}
+
 static struct hal_device * hal_device_by_name_recursive(struct hal_device* dev, int depth, const char* name) {
     struct hal_device* nxt = dev->down;
     if (strcmp(dev->name, name) == 0) {
@@ -446,7 +474,7 @@ void hal_init() {
     hal_init_late();
     hal_register_hal_service(&hal_service);
 
-    hal_probe_hal_services(gRootDevice);
+    hal_probe_hal_services(gRootDevice, true);
     size_t ssz = 8;
     
     if (0 != hal_invoke_service_op(gRootDevice, "hal", HAL_CREATE_CHILD_DEVICE, "dtree", 6, &gDeviceTreeDevice, &ssz))
@@ -456,10 +484,11 @@ void hal_init() {
     if (0 != hal_invoke_service_op(gDeviceTreeDevice, "hal", HAL_LOAD_DTREE_CHILDREN, NULL, 0, NULL, NULL))
         panic("hal_init: HAL_LOAD_DTREE_CHILDREN failed!");
 
-    
     if (gPlatform->bound_platform_driver->late_init) {
         gPlatform->bound_platform_driver->late_init();
     }
+    
+    hal_late_probe_hal_services();
     
     command_register("lsdev", "prints hal devices tree", lsdev_cmd);
 }

@@ -32,6 +32,16 @@ struct t8020_dart {
     uint64_t dart_regbase;
 };
 
+struct task* dart_irq_task;
+
+void dart_irq_handler() {
+    while (1) {
+        // struct t8020_dart* dart = task_current_interrupt_context();
+        panic("DART IRQ received!");
+        task_exit_irq();
+    }
+}
+
 static bool register_dart_mapper(struct hal_device* device, void** context) {
     uint32_t len = 0;
     dt_node_t* node = device->node;
@@ -60,6 +70,18 @@ static bool register_dart_mapper(struct hal_device* device, void** context) {
         struct t8020_dart* dart = calloc(sizeof(struct t8020_dart), 1);
         dart->dart_type = 0x8020;
         dart->dart_regbase = (uint64_t) regs;
+        
+        int dart_irq = hal_get_irqno(device->parent, 0);
+        if (dart_irq > 0) {
+            if (!interrupt_context(dart_irq)) {
+                if (!dart_irq_task) {
+                    dart_irq_task = task_create_extended("dart", dart_irq_handler, TASK_IRQ_HANDLER, 0);
+                }
+                task_bind_to_irq(dart_irq_task, dart_irq);
+                interrupt_associate_context(dart_irq, dart);
+            }
+        }
+        
         iprintf("Found 8020 dart-mapper: %s @ %llx\n", val, dart->dart_regbase);
 
         *context = dart;
