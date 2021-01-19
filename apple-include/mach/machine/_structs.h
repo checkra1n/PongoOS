@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000-2007 Apple Inc. All rights reserved.
+ * Copyright (c) 2017 Apple Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  *
@@ -26,13 +26,13 @@
  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 
-#ifndef _MACH_MACHINE_VM_TYPES_H_
-#define _MACH_MACHINE_VM_TYPES_H_
+#ifndef _MACH_MACHINE__STRUCTS_H_
+#define _MACH_MACHINE__STRUCTS_H_
 
 #if   defined (__arm__) || defined (__arm64__)
-#include "mach/arm/vm_types.h"
+#include "mach/arm/_structs.h"
 #else
 #error architecture not supported
 #endif
 
-#endif /* _MACH_MACHINE_VM_TYPES_H_ */
+#endif /* _MACH_MACHINE__STRUCTS_H_ */

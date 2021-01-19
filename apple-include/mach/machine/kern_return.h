@@ -26,13 +26,13 @@
  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 
-#ifndef _MACH_MACHINE_VM_TYPES_H_
-#define _MACH_MACHINE_VM_TYPES_H_
+#ifndef _MACH_MACHINE_KERN_RETURN_H_
+#define _MACH_MACHINE_KERN_RETURN_H_
 
 #if   defined (__arm__) || defined (__arm64__)
-#include "mach/arm/vm_types.h"
+#include "mach/arm/kern_return.h"
 #else
 #error architecture not supported
 #endif
 
-#endif /* _MACH_MACHINE_VM_TYPES_H_ */
+#endif /* _MACH_MACHINE_KERN_RETURN_H_ */

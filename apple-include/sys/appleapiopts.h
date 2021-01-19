@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000-2007 Apple Inc. All rights reserved.
+ * Copyright (c) 2002 Apple Computer, Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  *
@@ -26,13 +26,36 @@
  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 
-#ifndef _MACH_MACHINE_VM_TYPES_H_
-#define _MACH_MACHINE_VM_TYPES_H_
+#ifndef __SYS_APPLEAPIOPTS_H__
+#define __SYS_APPLEAPIOPTS_H__
 
-#if   defined (__arm__) || defined (__arm64__)
-#include "mach/arm/vm_types.h"
-#else
-#error architecture not supported
-#endif
 
-#endif /* _MACH_MACHINE_VM_TYPES_H_ */
+#ifndef __APPLE_API_STANDARD
+#define __APPLE_API_STANDARD
+#endif /* __APPLE_API_STANDARD */
+
+#ifndef __APPLE_API_STABLE
+#define __APPLE_API_STABLE
+#endif /* __APPLE_API_STABLE */
+
+#ifndef __APPLE_API_STRICT_CONFORMANCE
+
+#ifndef __APPLE_API_EVOLVING
+#define __APPLE_API_EVOLVING
+#endif /* __APPLE_API_EVOLVING */
+
+#ifndef __APPLE_API_UNSTABLE
+#define __APPLE_API_UNSTABLE
+#endif /* __APPLE_API_UNSTABLE */
+
+#ifndef __APPLE_API_PRIVATE
+#define __APPLE_API_PRIVATE
+#endif /* __APPLE_API_PRIVATE */
+
+#ifndef __APPLE_API_OBSOLETE
+#define __APPLE_API_OBSOLETE
+#endif /* __APPLE_API_OBSOLETE */
+
+#endif /* __APPLE_API_STRICT_CONFORMANCE */
+
+#endif /* __SYS_APPLEAPIOPTS_H__ */
