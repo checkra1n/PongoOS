@@ -402,7 +402,7 @@ int irq_exc() {
     }
     uint32_t intr = interrupt_vector();
     while (intr) {
-        task_irq_dispatch(intr);
+        task_irq_dispatch(intr & 0xfff);
         intr = interrupt_vector();
     }
     if (dis_int_count != 1) panic("IRQ handler left interrupts disabled...");
