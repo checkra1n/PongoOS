@@ -290,4 +290,14 @@ void shell_main() {
     task_register(&pongo_lock_test2, pongo_lock_test2_entry);
 #endif
 //    gBootFlag = BOOT_FLAG_HOOK;
+    
+    sleep(5);
+    queue_rx_string("ps\n");
+
+#ifdef DART_TEST
+    sleep(4);
+    struct hal_device* dev = hal_device_by_name("disp0");
+    struct hal_device* mapper = hal_get_mapper(dev, 0);
+    hal_invoke_service_op(mapper, "dart", DART_ENTER_BYPASS_MODE, NULL, 0, NULL, NULL);
+#endif
 }

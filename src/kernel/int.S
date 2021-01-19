@@ -158,6 +158,139 @@ _exception_vector:
     b . /* SError/vSError */
 
 
+.globl _exception_vector_el2
+_exception_vector_el2:
+    /* Current EL with SP0, handle within SP0 */
+    msr spsel, #1
+    sub sp, sp, #0x340
+    stp x0,x1,[sp]
+    msr spsel, #0
+    mov x1, sp
+    msr spsel, #1
+    adr x0, Jsync_exc
+    b exc_handler /* Synchronous */
+.balign 128
+    msr spsel, #1
+    sub sp, sp, #0x340
+    stp x0,x1,[sp]
+    msr spsel, #0
+    mov x1, sp
+    msr spsel, #1
+    adr x0, Jirq_exc
+    b exc_handler  /* IRQ/vIRQ */
+.balign 128
+    msr spsel, #1
+    sub sp, sp, #0x340
+    stp x0,x1,[sp]
+    msr spsel, #0
+    mov x1, sp
+    msr spsel, #1
+    adr x0, Jfiq_exc
+    b exc_handler  /* FIQ/vFIQ */
+.balign 128
+    msr spsel, #1
+    sub sp, sp, #0x340
+    stp x0,x1,[sp]
+    msr spsel, #0
+    mov x1, sp
+    msr spsel, #1
+    adr x0, Jserror_exc
+    b exc_handler /* SError/vSError */
+.balign 128
+
+    /* Current EL with SPn */
+    sub sp, sp, #0x340
+    stp x0,x1,[sp]
+    adr x0, Jsync_exc
+    add x1, sp, #0x340
+    b exc_handler /* Synchronous */
+.balign 128
+    sub sp, sp, #0x340
+    stp x0,x1,[sp]
+    adr x0, Jirq_exc_el1sp1
+    add x1, sp, #0x340
+    b exc_handler  /* IRQ/vIRQ */
+.balign 128
+    sub sp, sp, #0x340
+    stp x0,x1,[sp]
+    adr x0, Jfiq_exc_el1sp1
+    add x1, sp, #0x340
+    b exc_handler  /* FIQ/vFIQ */
+.balign 128
+    sub sp, sp, #0x340
+    stp x0,x1,[sp]
+    adr x0, Jserror_exc
+    add x1, sp, #0x340
+    b exc_handler /* SError/vSError */
+.balign 128
+
+    /* Lower EL with Aarch64 */
+    msr spsel, #1
+    str x0, [sp, #-0x10]
+    mrs x0, tpidr_el2
+    ldr x0, [x0, #0x210] // struct task -> kernel_stack
+    str x1, [x0, #8]
+    ldr x1, [sp, #-0x10]
+    str x1, [x0]
+    msr spsel, #0
+    mov x1, sp
+    mov sp, x0
+    adr x0, Jsync_exc_el0
+    b exc_handler /* Synchronous */
+.balign 128
+    msr spsel, #1
+    str x0, [sp, #-0x10]
+    mrs x0, tpidr_el2
+    ldr x0, [x0, #0x210] // struct task -> kernel_stack
+    str x1, [x0, #8]
+    ldr x1, [sp, #-0x10]
+    str x1, [x0]
+    msr spsel, #0
+    mov x1, sp
+    mov sp, x0
+    adr x0, Jirq_exc
+    b exc_handler  /* IRQ/vIRQ */
+.balign 128
+    msr spsel, #1
+    str x0, [sp, #-0x10]
+    mrs x0, tpidr_el2
+    ldr x0, [x0, #0x210] // struct task -> kernel_stack
+    str x1, [x0, #8]
+    ldr x1, [sp, #-0x10]
+    str x1, [x0]
+    msr spsel, #0
+    mov x1, sp
+    mov sp, x0
+    adr x0, Jfiq_exc
+    b exc_handler  /* FIQ/vFIQ */
+.balign 128
+    msr spsel, #1
+    str x0, [sp, #-0x10]
+    mrs x0, tpidr_el2
+    ldr x0, [x0, #0x210] // struct task -> kernel_stack
+    str x1, [x0, #8]
+    ldr x1, [sp, #-0x10]
+    str x1, [x0]
+    msr spsel, #0
+    mov x1, sp
+    msr spsel, #1
+    mov sp, x0
+    adr x0, Jserror_exc
+    b exc_handler /* SError/vSError */
+.balign 128
+
+    /* Lower EL with Aarch32 */
+
+.balign 128
+    b . /* Synchronous */
+.balign 128
+    b .  /* IRQ/vIRQ */
+.balign 128
+    b .  /* FIQ/vFIQ */
+.balign 128
+    b . /* SError/vSError */
+
+
 Jsync_exc:
     b _sync_exc
 Jserror_exc:
@@ -219,30 +352,64 @@ exc_handler:
     str d30, [sp,#0x310]
     str d31, [sp,#0x320]
 
-    mrs x29, esr_el1
-    stp x30,x29,[sp,#0xf0]
-    mrs x0, elr_el1
-    mrs x1, far_el1
-    stp x0,x1,[sp,#0x100]
-    mrs x1, spsr_el1
-    str x1, [sp, #0x110]
+    mrs x0, currentel
+    cmp x0, #0x8
+    b.eq 2f
 
-    // Need to keep x29 valid for panic()
-    add x29, sp, #0xe8
-    mov x0, sp
-    blr x16
+mrs x29, esr_el1
+stp x30,x29,[sp,#0xf0]
+mrs x0, elr_el1
+mrs x1, far_el1
+stp x0,x1,[sp,#0x100]
+mrs x1, spsr_el1
+str x1, [sp, #0x110]
 
-    cmp x0, #1
-    b.ne exc_done
-    bl _task_yield_preemption
+// Need to keep x29 valid for panic()
+add x29, sp, #0xe8
+mov x0, sp
+blr x16
 
-exc_done:
-    ldp x0,x1,[sp,#0x100]
-    msr elr_el1, x0
-    msr far_el1, x1
+cmp x0, #1
+b.ne 6f
+bl _task_yield_preemption
 
-    ldr x1, [sp, #0x110]
-    msr spsr_el1, x1
+6:
+ldp x0,x1,[sp,#0x100]
+msr elr_el1, x0
+msr far_el1, x1
+
+ldr x1, [sp, #0x110]
+msr spsr_el1, x1
+
+
+    b 1f
+2:
+
+mrs x29, esr_el2
+stp x30,x29,[sp,#0xf0]
+mrs x0, elr_el2
+mrs x1, far_el2
+stp x0,x1,[sp,#0x100]
+mrs x1, spsr_el2
+str x1, [sp, #0x110]
+
+// Need to keep x29 valid for panic()
+add x29, sp, #0xe8
+mov x0, sp
+blr x16
+
+cmp x0, #1
+b.ne 6f
+bl _task_yield_preemption
+
+6:
+ldp x0,x1,[sp,#0x100]
+msr elr_el2, x0
+msr far_el2, x1
+
+ldr x1, [sp, #0x110]
+msr spsr_el2, x1
+1:
     
     mov x0, sp
     
@@ -310,30 +477,67 @@ exc_done:
 .globl __task_switch_asserted
 .globl _task_load
 .globl _task_load_asserted
+
 _task_current:
+    mrs x0, currentel
+    cmp x0, #0x8
+    b.eq task_current_el2
     mrs x0, tpidr_el1
     ret
+
+task_current_el2:
+    mrs x0, tpidr_el2
+    ret
+
+
+
 __task_set_current:
+    mrs x16, currentel
+    cmp x16, #0x8
+    b.eq task_set_current_el2
+
     msr tpidr_el1, x0
     ret
 
+task_set_current_el2:
+    msr tpidr_el2, x0
+    ret
+
+
 __task_switch:
     mov x16, x0
-    mov x17, x1
+    mov x17, x30
     bl _disable_interrupts
-    mrs x2, tpidr_el1
+    bl _task_current
+    mov x2, x0
     mov x0, x16
-    mov x1, x17
+    mov x30, x17
 __task_switch_asserted:
     isb
     dmb sy
+
+    mrs x2, currentel
+    cmp x2, #0x8
+    b.eq 2f
     mrs x2, tpidr_el1
+    b 1f
+2:
+    mrs x2, tpidr_el2
+1:
+
     stp x2, x3, [x2,#0x10]
     stp x4, x5, [x2,#0x20]
     stp x6, x7, [x2,#0x30]
     stp x8, x9, [x2,#0x40]
     
+    mrs x1, currentel
+    cmp x1, #0x8
+    b.eq 2f
     mrs x1, ttbr1_el1
+    b 1f
+2:
+    mrs x1, ttbr1_el2
+1:
     str x1, [x2, #0x1C8]
     mrs x1, spsel
     str w1, [x2, #0x1C0]
@@ -360,17 +564,46 @@ __task_switch_asserted:
     stp d10, d11, [x2,#0x140]
     stp d12, d13, [x2,#0x160]
     stp d14, d15, [x2,#0x180]
+
+    mrs x16, currentel
+    cmp x16, #0x8
+    b.eq 2f
     msr tpidr_el1, x0
+    b 1f
+2:
+    msr tpidr_el2, x0
+1:
 
     msr spsel, #1
     ldr x8, [x0, #0x1B8]
     mov sp, x8
     msr spsel, #0
+
+
+    mrs x2, currentel
+    cmp x2, #0x8
+    b.eq 2f
     mrs x2, ttbr1_el1
+    b 1f
+2:
+    mrs x2, ttbr1_el2
+1:
+
+
     ldr x1, [x0, #0x1C8]
     cmp x2, x1
     isb
+    
+    mrs x16, currentel
+    cmp x16, #0x8
+    b.eq 2f
     msr ttbr1_el1, x1
+    b 1f
+2:
+    msr ttbr1_el2, x1
+1:
+
+
     dsb sy
     ldp x2, x3, [x0,#0x10]
     ldp x4, x5, [x0,#0x20]
@@ -379,7 +612,6 @@ __task_switch_asserted:
     ldp x10, x11, [x0,#0x50]
     ldp x12, x13, [x0,#0x60]
     ldp x14, x15, [x0,#0x70]
-    ldp x16, x17, [x0,#0x80]
     ldp x18, x19, [x0,#0x90]
     ldp x20, x21, [x0,#0xa0]
     ldp x22, x23, [x0,#0xb0]
@@ -393,7 +625,17 @@ __task_switch_asserted:
     ldp d12, d13, [x0,#0x160]
     ldp d14, d15, [x0,#0x180]
 
+    mrs x16, currentel
+    cmp x16, #0x8
+    b.eq 2f
     msr tpidr_el1, x0
+    b 1f
+2:
+    msr tpidr_el2, x0
+1:
+
+    ldp x16, x17, [x0,#0x80]
+
     mov sp, x1
     ldr x1, [x0, #0x100]
     add x1, x1, #1
@@ -408,13 +650,21 @@ _task_load:
     mov x16, x0
     mov x17, x1
     bl _disable_interrupts
-    mrs x2, tpidr_el1
+    bl _task_current
+    mov x2, x0
     mov x0, x16
     mov x1, x17
     b _task_load_asserted
 
 _task_load_asserted:
+    mrs x16, currentel
+    cmp x16, #0x8
+    b.eq 2f
     msr tpidr_el1, x0
+    b 1f
+2:
+    msr tpidr_el2, x0
+1:
 
     msr spsel, #1
     ldr x8, [x0, #0x1B8]
@@ -423,7 +673,15 @@ _task_load_asserted:
 
     ldr x1, [x0, #0x1C8]
     isb
+    mrs x16, currentel
+    cmp x16, #0x8
+    b.eq 2f
     msr ttbr1_el1, x1
+    b 1f
+2:
+    msr ttbr1_el2, x1
+1:
+
     dsb sy
 
     ldp x2, x3, [x0,#0x10]
@@ -433,7 +691,6 @@ _task_load_asserted:
     ldp x10, x11, [x0,#0x50]
     ldp x12, x13, [x0,#0x60]
     ldp x14, x15, [x0,#0x70]
-    ldp x16, x17, [x0,#0x80]
 
     ldp x18, x19, [x0,#0x90]
     ldp x20, x21, [x0,#0xa0]
@@ -448,7 +705,18 @@ _task_load_asserted:
     ldp d12, d13, [x0,#0x160]
     ldp d14, d15, [x0,#0x180]
         
+    mrs x16, currentel
+    cmp x16, #0x8
+    b.eq 2f
     msr tpidr_el1, x0
+    b 1f
+2:
+    msr tpidr_el2, x0
+1:
+
+    ldp x16, x17, [x0,#0x80]
+
+
     mov sp, x1
     ldr x1, [x0, #0x100]
     add x1, x1, #1
@@ -462,12 +730,21 @@ _task_load_asserted:
 
 .globl _task_entry_j
 _task_entry_j:
+    mrs x16, currentel
+    cmp x16, #0x8
+    b.eq 2f
     msr elr_el1, x0
     msr spsr_el1, x3
+    mrs x0, tpidr_el1
+    b 1f
+2:
+    msr elr_el2, x0
+    msr spsr_el2, x3
+    mrs x0, tpidr_el2
+1:
     mov sp, x1
     mov lr, x2
     mov x29, xzr
-    mrs x0, tpidr_el1
     add x0, x0, #0x220 // -> struct task initial_state
     
     ldp x2, x3, [x0,#0x10]
@@ -504,14 +781,6 @@ _set_timer_ctr:
     isb
     ret
 
-.globl _get_spsr_el1
-_get_spsr_el1:
-    mrs x0, spsr_el1
-    ret
-.globl _set_spsr_el1
-_set_spsr_el1:
-    msr spsr_el1, x0
-    ret
 #if 0
 .globl _set_l2c_err_sts
 .globl _get_l2c_err_sts

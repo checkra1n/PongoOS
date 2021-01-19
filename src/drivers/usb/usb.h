@@ -44,6 +44,10 @@ struct usb_regs {
     int otg_irq;
 };
 
+struct usb_dart_regs {
+    uint64_t synopsysOTGBase;
+};
+
 struct setup_packet {
 	uint8_t  bmRequestType;
 	uint8_t  bRequest;

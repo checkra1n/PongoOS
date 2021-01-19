@@ -125,7 +125,10 @@ uint32_t colors_mix_alpha(uint32_t color1, uint32_t color2) {
     
     return color_compose_v32(componentsw);
 }
-
+void fb_reset_cursor() {
+    y_cursor = bannerHeight;
+    x_cursor = LEFT_MARGIN;
+}
 void screen_putc(uint8_t c)
 {
     if (!gFramebuffer) return;

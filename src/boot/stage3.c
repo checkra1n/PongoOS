@@ -156,6 +156,7 @@ void trampoline_entry(void* boot_image, void* boot_args)
         
         extern volatile void smemset(void*, uint8_t, uint64_t);
         smemset(&__bss_start, 0, ((uint64_t)__bss_end) - ((uint64_t)__bss_start));
+
         extern void main (void);
         setup_el1(main, (uint64_t)boot_image, (uint64_t)boot_args);
     }

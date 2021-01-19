@@ -37,6 +37,7 @@
 #ifdef PONGO_PRIVATE
 #include "framebuffer/fb.h"
 #include "usb/usb.h"
+#include "dart/dart.h"
 #include "uart/uart.h"
 #include "gpio/gpio.h"
 #include "timer/timer.h"
@@ -134,6 +135,7 @@ extern void lock_release(lock* lock); // releases ownership on a lock
 
 extern int dt_check(void* mem, uint32_t size, uint32_t* offp);
 extern int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg);
+extern int dt_parse_ex(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg, uint32_t flags);
 extern dt_node_t* dt_find(dt_node_t* node, const char* name);
 extern void* dt_prop(dt_node_t* node, const char* key, uint32_t* lenp);
 extern void* dt_get_prop(const char* device, const char* prop, uint32_t* size);
@@ -225,6 +227,7 @@ extern void proc_reference(struct proc*);
 extern void proc_release(struct proc*);
 extern struct task* proc_create_task(struct proc* proc, void* entrypoint);
 #define PROC_NO_VM 1
+extern void fb_reset_cursor();
 extern uint32_t loader_xfer_recv_size;
 extern void resize_loader_xfer_data(uint32_t newsz);
 extern bool vm_fault(struct vm_space* vmspace, uint64_t vma, vm_protect_t fault_prot);
@@ -332,6 +335,7 @@ extern uint64_t xnu_rebase_va(uint64_t va);
 extern uint64_t kext_rebase_va(uint64_t va);
 extern struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, const char* kext_bundle_id);
 extern void xnu_pf_apply_each_kext(struct mach_header_64* kheader, xnu_pf_patchset_t* patchset);
+extern const char* device_clock_name_by_id(uint32_t idx);
 
 #ifdef OVERRIDE_CACHEABLE_VIEW
 #   define kCacheableView OVERRIDE_CACHEABLE_VIEW
@@ -475,6 +479,8 @@ extern void interrupt_init();
 extern void interrupt_teardown();
 extern void task_irq_teardown();
 extern uint32_t exception_vector[];
+extern uint32_t exception_vector_el2[];
+extern void set_vbar_el2(uint64_t vec);
 extern void set_vbar_el1(uint64_t vec);
 extern void rebase_pc(uint64_t vec);
 extern void rebase_sp(uint64_t vec);
@@ -484,6 +490,8 @@ extern uint64_t get_mpidr(void);
 extern void set_migsts(uint64_t val);
 extern void enable_mmu_el1(uint64_t ttbr0, uint64_t tcr, uint64_t mair, uint64_t ttbr1);
 extern void disable_mmu_el1();
+extern void enable_mmu_el2(uint64_t ttbr0, uint64_t tcr, uint64_t mair, uint64_t ttbr1);
+extern void disable_mmu_el2();
 extern void lowlevel_cleanup(void);
 extern void lowlevel_setup(uint64_t phys_off, uint64_t phys_size);
 extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
@@ -494,9 +502,15 @@ static inline _Bool is_16k(void)
 }
 static inline void flush_tlb(void)
 {
-    __asm__ volatile("isb");
-    __asm__ volatile("tlbi vmalle1\n");
-    __asm__ volatile("dsb sy");
+    if (get_el() == 2) {
+        __asm__ volatile("isb");
+        __asm__ volatile("tlbi alle2\n");
+        __asm__ volatile("dsb sy");
+    } else {
+        __asm__ volatile("isb");
+        __asm__ volatile("tlbi vmalle1\n");
+        __asm__ volatile("dsb sy");
+    }
 }
 extern void task_real_unlink(struct task* task);
 #include "hal/hal.h"

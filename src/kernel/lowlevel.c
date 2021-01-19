@@ -33,6 +33,7 @@ __asm__(
     ".globl _get_el\n"
     ".globl _rebase_pc\n"
     ".globl _set_vbar_el1\n"
+    ".globl _set_vbar_el2\n"
     ".globl __enable_interrupts\n"
     ".globl __disable_interrupts\n"
     ".globl _get_mpidr\n"
@@ -42,6 +43,8 @@ __asm__(
     ".globl _invalidate_icache\n"
     ".globl _enable_mmu_el1\n"
     ".globl _disable_mmu_el1\n"
+    ".globl _enable_mmu_el2\n"
+    ".globl _disable_mmu_el2\n"
     ".globl _get_ticks\n"
     ".globl _panic_new_fp\n"
     ".globl _copy_safe_internal\n"
@@ -63,7 +66,10 @@ __asm__(
     "    msr vbar_el1, x0\n"
     "    isb\n"
     "    ret\n"
-
+    "_set_vbar_el2:\n"
+    "    msr vbar_el2, x0\n"
+    "    isb\n"
+    "    ret\n"
     "__enable_interrupts:\n"
     "    msr daifclr,#0xf\n"
     "    isb\n"
@@ -114,6 +120,29 @@ __asm__(
     "    isb sy\n"
     "    ret\n"
 
+    ".arch v8.4a\n"
+    "_enable_mmu_el2:\n"
+    "    dsb sy\n"
+    "    msr mair_el2, x2\n"
+    "    msr tcr_el2, x1\n"
+    "    msr ttbr0_el2, x0\n"
+    "    msr ttbr1_el2, x3\n"
+    "    isb sy\n"
+    "    tlbi alle2\n"
+    "    isb sy\n"
+    "    ic iallu\n"
+    "    isb sy\n"
+    "    mrs x3, sctlr_el2\n"
+    "    orr x3, x3, #1\n"
+    "    orr x3, x3, #4\n"
+    "    orr x3, x3, #0x800000\n" // enable SPAN if possible
+    "    and x3, x3, #(~2)\n"
+    "    msr sctlr_el2, x3\n"
+    "    ic iallu\n"
+    "    dsb sy\n"
+    "    isb sy\n"
+    "    ret\n"
+
     "_disable_mmu_el1:\n"
     "    dsb sy\n"
     "    isb sy\n"
@@ -122,6 +151,19 @@ __asm__(
     "    and x3, x3, #(~4)\n"
     "    msr sctlr_el1, x3\n"
     "    tlbi vmalle1\n"
+    "    ic iallu\n"
+    "    dsb sy\n"
+    "    isb sy\n"
+    "    ret\n"
+
+    "_disable_mmu_el2:\n"
+    "    dsb sy\n"
+    "    isb sy\n"
+    "    mrs x3, sctlr_el2\n"
+    "    and x3, x3, #(~1)\n"
+    "    and x3, x3, #(~4)\n"
+    "    msr sctlr_el2, x3\n"
+    "    tlbi alle2\n"
     "    ic iallu\n"
     "    dsb sy\n"
     "    isb sy\n"
@@ -434,8 +476,6 @@ void sleep(uint32_t sec)
 {
     usleep((uint64_t)sec * 1000000ULL);
 }
-int gAICVersion = -1;
-int gAICStyle = -1;
 
 __attribute__((used)) static void interrupt_or_config(uint32_t bits) {
     *(volatile uint32_t*)(gInterruptBase + 0x10) |= bits;
@@ -512,9 +552,9 @@ typedef struct
 
 typedef struct
 {
-    uint32_t flg : 8,
+    uint32_t flg :  8,
              a   : 16,
-             id  : 8;
+             id1 :  8;
     uint32_t b;
     uint32_t c   : 16,
              idx :  8,
@@ -522,7 +562,8 @@ typedef struct
     uint32_t d;
     uint32_t e;
     uint32_t f;
-    uint32_t g;
+    uint32_t g   : 16,
+             id2 : 16;
     uint32_t h;
     char name[0x10];
 } pmgr_dev_t;
@@ -534,32 +575,94 @@ static pmgr_reg_t *gPMGRreg = NULL;
 static pmgr_map_t *gPMGRmap = NULL;
 static pmgr_dev_t *gPMGRdev = NULL;
 
-void pmgr_init()
-{
-    dt_node_t *pmgr = dt_find(gDeviceTree, "pmgr");
-    gPMGRreg = dt_prop(pmgr, "reg",     &gPMGRreglen);
-    gPMGRmap = dt_prop(pmgr, "ps-regs", &gPMGRmaplen);
-    gPMGRdev = dt_prop(pmgr, "devices", &gPMGRdevlen);
-    gPMGRreglen /= sizeof(*gPMGRreg);
-    gPMGRmaplen /= sizeof(*gPMGRmap);
-    gPMGRdevlen /= sizeof(*gPMGRdev);
-    gPMGRBase = gIOBase + gPMGRreg[0].addr;
-    gWDTBase  = gIOBase + dt_get_u64_prop("wdt", "reg");
-    command_register("reset", "resets the device", wdt_reset);
-    command_register("crash", "branches to an invalid address", (void*)0x41414141);
-}
-void interrupt_init() {
-    gInterruptBase = dt_get_u32_prop("aic", "reg");
-    gInterruptBase += gIOBase;
 
-    gAICVersion = dt_get_u32_prop("aic", "aic-version");
-
-    interrupt_or_config(0xE0000000);
-    interrupt_or_config(1); // enable interrupt
-}
 void interrupt_teardown() {
     wdt_disable();
     task_irq_teardown();
+}
+
+static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, void** context) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (node) {
+        void* val = dt_prop(node, "name", &len);
+        if (val && strcmp(val, "aic") == 0) {
+            if (gInterruptBase) panic("multiple aic probes! unsupported.");
+            
+            gInterruptBase = (uint64_t) hal_map_registers(device, 0, NULL);
+
+            interrupt_or_config(0xE0000000);
+            interrupt_or_config(1); // enable interrupt
+            return true;
+        } else
+        if (val && strcmp(val, "pmgr") == 0) {
+            if (gPMGRreg) panic("multiple pmgr probes! unsupported.");
+
+            void* pmreg = dt_prop(device->node, "reg", &gPMGRreglen);
+            gPMGRreg = malloc(gPMGRreglen);
+            memcpy(gPMGRreg, pmreg, gPMGRreglen);
+            
+            gPMGRmap = dt_prop(device->node, "ps-regs", &gPMGRmaplen);
+            gPMGRdev = dt_prop(device->node, "devices", &gPMGRdevlen);
+            gPMGRreglen /= sizeof(*gPMGRreg);
+            gPMGRmaplen /= sizeof(*gPMGRmap);
+            gPMGRdevlen /= sizeof(*gPMGRdev);
+            
+            for (int i=0; i < gPMGRreglen; i++) {
+                gPMGRreg[i].addr = (uint64_t) hal_map_physical_mmio(gPMGRreg[i].addr, gPMGRreg[i].size);
+            }
+            gPMGRBase = gPMGRreg[0].addr;
+
+            return true;
+        } else
+        if (val && strcmp(val, "wdt") == 0) {
+            if (gWDTBase) panic("multiple wdt probes! unsupported.");
+            
+            gWDTBase = (uint64_t) hal_map_registers(device, 0, NULL);
+            command_register("reset", "resets the device", wdt_reset);
+            command_register("crash", "branches to an invalid address", (void*)0x41414141);
+            return true;
+        }
+    }
+    return false;
+}
+
+static int lowlevel_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
+    return -1;
+}
+
+static struct hal_service lowlevel_svc = {
+    .name = "lowlevel",
+    .probe = lowlevel_probe,
+    .service_op = lowlevel_service_op
+};
+
+static void lowlevel_init(struct driver* driver) {
+    hal_register_hal_service(&lowlevel_svc);
+}
+
+REGISTER_DRIVER(lowlevel, lowlevel_init, NULL, 0);
+
+const char* device_clock_name_by_id(uint32_t idx)
+{
+    for(uint32_t i = 0; i < gPMGRdevlen; ++i)
+    {
+        pmgr_dev_t *d = &gPMGRdev[i];
+        uint32_t cid = 0;
+        
+        if (d->id1) {
+            cid = d->id1;
+        } else {
+            cid = d->id2;
+        }
+        if(cid != idx)
+        {
+            continue;
+        }
+
+        return d->name;
+    }
+    return NULL;
 }
 
 uint64_t device_clock_by_id(uint32_t id)
@@ -567,11 +670,25 @@ uint64_t device_clock_by_id(uint32_t id)
     for(uint32_t i = 0; i < gPMGRdevlen; ++i)
     {
         pmgr_dev_t *d = &gPMGRdev[i];
-        if(d->id != id)
+        uint32_t cid = 0;
+        
+        if (d->id1) {
+            cid = d->id1;
+        } else {
+            cid = d->id2;
+        }
+        if(cid != id)
         {
             continue;
         }
-        if((d->flg & 0x10) || d->map >= gPMGRmaplen)
+        
+        if(d->flg & 0x10) {
+            if (d->b) {
+                return device_clock_by_id(d->b);
+            }
+            break;
+        }
+        if (d->map >= gPMGRmaplen)
         {
             break;
         }
@@ -581,7 +698,7 @@ uint64_t device_clock_by_id(uint32_t id)
         {
             break;
         }
-        return gIOBase + r->addr + m->off + (d->idx << 3);
+        return r->addr + m->off + (d->idx << 3);
     }
     return 0;
 }
@@ -595,7 +712,13 @@ uint64_t device_clock_by_name(const char *name)
         {
             continue;
         }
-        if((d->flg & 0x10) || d->map >= gPMGRmaplen)
+        if(d->flg & 0x10) {
+            if (d->b) {
+                return device_clock_by_id(d->b);
+            }
+            break;
+        }
+        if(d->map >= gPMGRmaplen)
         {
             break;
         }
@@ -605,7 +728,7 @@ uint64_t device_clock_by_name(const char *name)
         {
             break;
         }
-        return gIOBase + r->addr + m->off + (d->idx << 3);
+        return r->addr + m->off + (d->idx << 3);
     }
     return 0;
 }

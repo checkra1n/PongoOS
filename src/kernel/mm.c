@@ -328,10 +328,15 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     ram_phys_off = kCacheableView + phys_off;
     ram_phys_size = phys_size;
 
-    if (!(get_el() == 1)) panic("pongoOS runs in EL1 only! did you skip pongoMon?");
-
-    set_vbar_el1((uint64_t)&exception_vector);
-    enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1);
+    if (get_el() == 2) {
+        set_vbar_el2((uint64_t)&exception_vector_el2);
+        enable_mmu_el2((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1);
+    } else if (get_el() == 1) {
+        set_vbar_el1((uint64_t)&exception_vector);
+        enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1);
+    } else {
+        panic("pongoOS runs in EL1/2 only! did you skip pongoMon?");
+    }
 
     kernel_vm_space.ttbr0 = (uint64_t)ttbr0;
     kernel_vm_space.ttbr1 = (uint64_t)ttbr1;
@@ -344,7 +349,13 @@ void lowlevel_set_identity(void)
 void lowlevel_cleanup(void)
 {
     cache_clean_and_invalidate((void*)ram_phys_off, ram_phys_size);
-    disable_mmu_el1();
+    if (get_el() == 2) {
+        disable_mmu_el2();
+    } else if (get_el() == 1) {
+        disable_mmu_el1();
+    } else {
+        panic("pongoOS runs in EL1/2 only! did you skip pongoMon?");
+    }
 }
 struct vm_space* task_vm_space(struct task* task) {
     return task->vm_space;
@@ -556,6 +567,7 @@ void asid_free(uint64_t asid) {
     fiprintf(stderr, "freeing asid: %llx\n", asid);
 #endif
     asid_table[index >> 3] &= ~(1 << (index&0x7));
+    
     asm volatile("ISB");
     asm volatile("TLBI ASIDE1IS, %0" : : "r"(asid));
     asm volatile("DSB SY");
@@ -790,11 +802,17 @@ void phys_dereference(uint64_t pa, uint64_t size) {
     }
     enable_interrupts();
 }
-
+uint64_t gMemSize = 0;
 void alloc_init() {
     if (alloc_static_base) return;
 
     uint64_t memory_size = gBootArgs->memSize;
+    if (memory_size > 0x100000000) memory_size = 0x100000000; // force pongo to use at most 4GB (FIXME: remove when we support >4G ram)
+    gMemSize = memory_size;
+    
+    uint64_t pbase = gBootArgs->physBase;
+    memory_size -= pbase - 0x800000000;
+    
     ppages = memory_size >> 14;
 
     uint64_t early_heap = early_heap_base;
@@ -827,7 +845,7 @@ void alloc_init() {
     }
 
     uint64_t alloc_heap_base = (((uint64_t)early_heap) + 0x7fff) & (~0x3fff);
-    uint64_t alloc_heap_end = (((uint64_t)(phystokv(gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
+    uint64_t alloc_heap_end = (((uint64_t)(phystokv(gBootArgs->physBase) + memory_size)) + 0x3fff) & (~0x3fff) - 1024*1024;
 
     phys_force_free(vatophys_static((void*)alloc_heap_base), alloc_heap_end - alloc_heap_base);
 }
@@ -895,8 +913,8 @@ void* phystokv(uint64_t paddr) {
 }
 uint64_t vatophys_static(void* kva) {
     uint64_t kva_check = (uint64_t) kva;
-    if (!((kva_check >= kCacheableView) && (kva_check < (kCacheableView + 0x100000000)))) {
-        panic("vatophys_static must be called on kCacheableView map addresses");
+    if (!((kva_check >= kCacheableView) && (kva_check < (kCacheableView + gMemSize)))) {
+        panic("vatophys_static must be called on kCacheableView map addresses! addr = %llx", kva_check);
     }
     return (((uint64_t)kva) - kCacheableView + 0x800000000);
 }

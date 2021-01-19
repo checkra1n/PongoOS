@@ -1,4 +1,4 @@
-/* 
+ /*
  * pongoOS - https://checkra.in
  * 
  * Copyright (C) 2019-2020 checkra1n team
@@ -38,6 +38,8 @@ start:
     cmp x4, x5
     b.eq start$l0
     add x6, x4, #0x200000
+
+
 
 copyloop:
     ldr x3, [x4], #8
@@ -81,29 +83,34 @@ start$l0:
     bl _trampoline_entry
     b .
 
+
+
 .globl _setup_el1
 _setup_el1:
     stp x29, x30, [sp, #-0x10]!
     mov x20, x1
     mov x21, x2
     mrs x16, currentel
+    cmp x16, #0x8
+    b.eq el2_entry
     cmp x16, #0x4
     b.eq el1_entry
     cmp x16, #0xc
+
     b.ne .
 
 el3_entry:
-
     adr x16, _exception_vector_el3
     msr vbar_el3, x16
     mov x16, #0x430
     msr scr_el3, x16
     mov x16, #4
     msr spsr_el3, x16
-    adr x16, el1_entry
     msr elr_el3, x0
     eret
 
+
+el2_entry:
 el1_entry:
     blr x0
     b .

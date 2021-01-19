@@ -30,10 +30,6 @@ struct hal_device _gRootDevice = {
 };
 struct hal_device* gRootDevice, * gDeviceTreeDevice;
 
-#define HAL_LOAD_XNU_DTREE 0
-#define HAL_LOAD_DTREE_CHILDREN 1
-#define HAL_CREATE_CHILD_DEVICE 2
-
 void hal_probe_hal_services(struct hal_device* device) ;
 
 static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
@@ -45,6 +41,7 @@ static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
     if (val) {
         struct hal_device* device = malloc(sizeof(struct hal_device));
         device->next = parentDevice->down;
+        device->parent = parentDevice;
         parentDevice->down = device;
         device->node = node;
         device->down = NULL;
@@ -58,16 +55,17 @@ static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
     return 0;
 }
 
-static int hal_service_op(struct hal_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
+static int hal_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     if (method == HAL_LOAD_XNU_DTREE) {
         device->node = gDeviceTree;
         return 0;
     } else if (method == HAL_LOAD_DTREE_CHILDREN && device->node) {
         // int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg)
-        return dt_parse(device->node, 0, NULL, hal_load_dtree_child_node, device, NULL, NULL);
+        return dt_parse_ex(device->node, 0, NULL, hal_load_dtree_child_node, device, NULL, NULL, 1);
     } else if (method == HAL_CREATE_CHILD_DEVICE && data_out_size && *data_out_size == 8) {
         struct hal_device* ndevice = malloc(sizeof(struct hal_device));
         ndevice->next = device->down;
+        ndevice->parent = device;
         device->down = ndevice;
         ndevice->node = NULL;
         ndevice->down = NULL;
@@ -78,9 +76,167 @@ static int hal_service_op(struct hal_service* svc, struct hal_device* device, ui
         *(void**)data_out = ndevice;
         
         return 0;
+    } else if (method == HAL_GET_MAPPER && data_in && data_in_size == 4 && data_out && *data_out_size == 8) {
+        uint32_t index = *(uint32_t*)data_in;
+        *(void**)data_out = NULL;
+        
+        uint32_t len = 0;
+        dt_node_t* node = device->node;
+        if (!node) return -1;
+        
+        uint32_t* val = dt_prop(node, "iommu-parent", &len);
+        if (!val) {
+            return -1;
+        }
+        
+        if (index >= len / 4) {
+            return -1;
+        }
+        
+        uint32_t phandle = val[index];
+        *(struct hal_device **)data_out = hal_get_phandle_device(phandle);
+        return 0;
+    } else if (method == HAL_MAP_REGISTERS && data_in && data_in_size == 4 && data_out && *data_out_size == 16) {
+        uint32_t index = *(uint32_t*)data_in;
+        ((void**)data_out)[0] = NULL;
+        ((void**)data_out)[1] = NULL;
+
+        uint32_t len = 0;
+        dt_node_t* node = device->node;
+        if (!node) return -1;
+        
+        void* val = dt_prop(node, "reg", &len);
+        if (!val) {
+            return -1;
+        }
+        
+        if (index * 0x10 >= len) {
+            return -1;
+        }
+    
+        struct device_regs {
+            uint64_t base;
+            uint64_t size;
+        }* regs = val;
+        
+        uint64_t regbase = regs[index].base;
+        uint64_t size = regs[index].size;
+
+        ((void**)data_out)[0] = (void*)hal_map_physical_mmio(regbase, size);
+        ((void**)data_out)[1] = (void*)regs[index].size;
+
+        return 0;
+    } else if (method == HAL_DEVICE_CLOCK_GATE_ON || method == HAL_DEVICE_CLOCK_GATE_OFF) {
+        int32_t count = hal_get_clock_gate_size(device);
+        if (count > 0) {
+            for (int i=0; i < count; i++) {
+                int32_t clock_gate_id = hal_get_clock_gate_id(device, i);
+                if (clock_gate_id > 0) {
+                    uint64_t clock = device_clock_by_id(clock_gate_id);
+                    if (clock) {
+                        clock_gate(clock, method == HAL_DEVICE_CLOCK_GATE_ON);
+                    }
+                }
+            }
+            return 0;
+        }
+        return -1;
     }
     
     return -1;
+}
+
+struct range_translation_entry {
+    uint64_t reg_base;
+    uint64_t phys_base;
+    uint64_t size;
+} range_translation [64];
+
+uint32_t range_translation_entries = 0;
+
+uint64_t translate_register_address(uint64_t address) {
+    for (int i=0; i < range_translation_entries; i++) {
+        if (address >= range_translation[i].reg_base && address < range_translation[i].reg_base + range_translation[i].size) {
+            return address - range_translation[i].reg_base + range_translation[i].phys_base;
+        }
+    }
+    panic("couldn't find address %llx in arm-io map", address);
+    return -1;
+}
+
+uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size) {
+    regbase = translate_register_address(regbase);
+    uint64_t offset = regbase & 0x3fff;
+    regbase &= ~0x3fff;
+
+    size += offset;
+
+    size +=  0x3FFF;
+    size &= ~0x3FFF;
+    uint64_t va = linear_kvm_alloc(size);
+    
+    map_range_map((uint64_t*)kernel_vm_space.ttbr0, va, regbase, size, 3, 0, 1, 0, PROT_READ|PROT_WRITE, !!(va & 0x7000000000000000));
+
+    for (uint32_t i=0; i < size; i+=0x1000) {
+        vm_flush_by_addr_all_asid(va + i);
+    }
+
+    return va + offset;
+}
+
+int32_t hal_get_clock_gate_id(struct hal_device* device, uint32_t index) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (!node) return -1;
+
+    int32_t* val = dt_prop(node, "clock-gates", &len);
+    if (!val || index * 4 >= len) {
+        return -1;
+    }
+    return val[index];
+}
+int32_t hal_get_clock_gate_size(struct hal_device* device) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (!node) return -1;
+    dt_prop(node, "clock-gates", &len);
+    return len / 4;
+}
+
+int32_t hal_get_irqno(struct hal_device* device, uint32_t index) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (!node) return -1;
+
+    int32_t* val = dt_prop(node, "interrupts", &len);
+    if (!val || index * 4 >= len) {
+        return -1;
+    }
+    return val[index];
+}
+
+void * hal_map_registers(struct hal_device* device, uint32_t index, size_t *size) {
+    struct {
+        void* base;
+        size_t size;
+    } rv;
+    size_t osz = 0x10;
+    if (size) *size = 0;
+    
+    if (hal_invoke_service_op(device, "hal", HAL_MAP_REGISTERS, &index, 4, &rv, &osz)) {
+        return NULL;
+    }
+    if (size) *size = rv.size;
+    return rv.base;
+}
+struct hal_device * hal_get_mapper(struct hal_device* device, uint32_t index) {
+    struct hal_device * rv = NULL;
+    size_t osz = 8;
+    
+    if (hal_invoke_service_op(device, "hal", HAL_GET_MAPPER, &index, 4, &rv, &osz)) {
+        return NULL;
+    }
+    return rv;
 }
 
 static bool hal_service_probe(struct hal_service* svc, struct hal_device* device, void** context) {
@@ -96,7 +252,9 @@ int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint3
     struct hal_device_service* svc = device->services;
     while (svc) {
         if (svc_name == svc->name || strcmp(svc_name, svc->name) == 0) {
-            return svc->service->service_op(svc->service, device, method, data_in, data_in_size, data_out, data_out_size);
+            if (svc->service->service_op) {
+                return svc->service->service_op(svc, device, method, data_in, data_in_size, data_out, data_out_size);
+            }
         }
         svc = svc->next;
     }
@@ -113,6 +271,16 @@ void hal_register_hal_service(struct hal_service* svc) {
 }
 void hal_probe_hal_services(struct hal_device* device) {
     lock_take(&hal_service_lock);
+    
+    if (device && device->node) {
+        uint32_t llen = 0;
+        uint32_t* phandle = dt_prop(device->node, "AAPL,phandle", &llen);
+        if (phandle && llen == 4) {
+            hal_register_phandle_device(*phandle, device);
+            device->phandle = *phandle;
+        }
+    }
+    
     struct hal_service* svc = hal_service_head;
     while (svc) {
         if (svc->probe) {
@@ -176,10 +344,77 @@ void lsdev_cmd(const char *cmd, char *args)
 {
     recurse_device(gRootDevice, 0, lsdev_cb);
 }
+static struct hal_device * hal_device_by_name_recursive(struct hal_device* dev, int depth, const char* name) {
+    struct hal_device* nxt = dev->down;
+    if (strcmp(dev->name, name) == 0) {
+        return dev;
+    }
+    
+    while (nxt) {
+        struct hal_device* rv = hal_device_by_name_recursive(nxt, depth+1, name);
+        if (rv) {
+            return rv;
+        }
+        nxt = nxt->next;
+    }
+    return NULL;
+}
+struct hal_device * hal_device_by_name(const char* name) {
+    return hal_device_by_name_recursive(gRootDevice, 0, name);
+}
+
+struct hal_device** phandle_table;
+uint32_t phandle_table_size;
+
+void hal_register_phandle_device(uint32_t phandle, struct hal_device* dev) {
+    if (!phandle_table_size) {
+        phandle_table_size = 0x100;
+        phandle_table = calloc(phandle_table_size, 8);
+    }
+
+    uint32_t phandle_table_size_new = phandle_table_size;
+    while (phandle > phandle_table_size_new) {
+        phandle_table_size_new *= 2;
+    }
+    
+    if (phandle_table_size != phandle_table_size_new) {
+        struct hal_device** phandle_table_new = calloc(phandle_table_size_new, 8);
+        memcpy(phandle_table_new, phandle_table, phandle_table_size_new * 8);
+        phandle_table = phandle_table_new;
+        phandle_table_size = phandle_table_size_new;
+    }
+    
+    phandle_table[phandle] = dev;
+}
+
+
+struct hal_device* hal_get_phandle_device(uint32_t phandle) {
+    while (phandle < phandle_table_size) {
+        return phandle_table[phandle];
+    }
+    return NULL;
+}
 
 void hal_init() {
     gPlatform = NULL;
     gRootDevice = &_gRootDevice;
+    
+    dt_node_t* dev = dt_find(gDeviceTree, "arm-io");
+    if (!dev) panic("invalid devicetree: no arm-io!");
+    uint32_t len = 0;
+    
+    uint64_t* val = dt_prop(dev, "ranges", &len);
+    if (!val) panic("invalid devicetree: no prop!");
+    
+    len /= 0x18;
+    
+    for (int i=0; i < len; i++) { // basically a memcpy but for clarity...
+        range_translation[i].reg_base = val[i*3];
+        range_translation[i].phys_base = val[i*3 + 1];
+        range_translation[i].size = val[i*3 + 2];
+        range_translation_entries++;
+        if (range_translation_entries > 64) panic("too many entries in arm-io");
+    }
     
     extern struct driver drivers[] __asm("section$start$__DATA$__drivers");
     extern struct driver drivers_end[]  __asm("section$end$__DATA$__drivers");
@@ -216,13 +451,16 @@ void hal_init() {
     
     if (0 != hal_invoke_service_op(gRootDevice, "hal", HAL_CREATE_CHILD_DEVICE, "dtree", 6, &gDeviceTreeDevice, &ssz))
         panic("hal_init: HAL_CREATE_CHILD_DEVICE failed!");
-
     if (0 != hal_invoke_service_op(gDeviceTreeDevice, "hal", HAL_LOAD_XNU_DTREE, NULL, 0, NULL, NULL))
         panic("hal_init: HAL_LOAD_XNU_DTREE failed!");
     if (0 != hal_invoke_service_op(gDeviceTreeDevice, "hal", HAL_LOAD_DTREE_CHILDREN, NULL, 0, NULL, NULL))
         panic("hal_init: HAL_LOAD_DTREE_CHILDREN failed!");
 
+    
+    if (gPlatform->bound_platform_driver->late_init) {
+        gPlatform->bound_platform_driver->late_init();
+    }
+    
     command_register("lsdev", "prints hal devices tree", lsdev_cmd);
-
 }
 

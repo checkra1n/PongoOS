@@ -53,11 +53,11 @@ RA1N                    := $(ROOT)/checkra1n/kpf
 
 # General options
 EMBEDDED_LD_FLAGS       ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
-EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
+EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -mcpu=cyclone -mtune=cyclone -Wall -Wunused-label -Werror -O3 -ffreestanding -U__nonnull -nostdlibinc -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
 
 # Pongo options
 PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
-PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8
+PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8 -mcpu=cortex-a76
 
 # KPF options
 CHECKRA1N_LDFLAGS       ?= -Wl,-kext
@@ -88,7 +88,10 @@ CHECKRA1N_CC            ?= $(EMBEDDED_CC)
 
 .PHONY: all always clean distclean
 
-all: $(BUILD)/Pongo.bin | $(BUILD)
+all: $(BUILD)/Pongo.bin $(BUILD)/pongoOS.AppleSi.macho | $(BUILD)
+
+$(BUILD)/pongoOS.AppleSi.macho:  $(BUILD)/Pongo.bin $(BUILD)/machopack | $(BUILD)
+	$(BUILD)/machopack $(BUILD)/Pongo.bin $@
 
 $(BUILD)/PongoConsolidated.bin: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo | $(BUILD)
 	bash -c "echo 6175746F626F6F740000200000000000 | xxd -ps -r | cat $(BUILD)/Pongo.bin <(dd if=/dev/zero bs=1 count="$$(((8 - ($$($(STAT) $(BUILD)/Pongo.bin) % 8)) % 8))") /dev/stdin $(BUILD)/checkra1n-kpf-pongo > $@"
@@ -106,6 +109,9 @@ $(BUILD)/checkra1n-kpf-pongo: $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
 
 $(BUILD)/vmacho: $(AUX)/vmacho.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
+
+$(BUILD)/machopack: $(AUX)/machopack.c | $(BUILD)
+	$(CC) -Wall -O3 -Iapple-include -o $@ $^ $(CFLAGS)
 
 $(BUILD):
 	mkdir -p $@

@@ -45,7 +45,14 @@ void shell_main();
 
 uint64_t gBootTimeTicks;
 void pongo_main_task() {
+    if (!socnum) {
+        iprintf("unknown platform: %s, will likely crash soon...\n", soc_name);
+    }
+    
     gBootTimeTicks = get_ticks();
+    
+    // Setup HAL
+    hal_init();
 
     // Setup GPIO Base
     gpio_early_init();
@@ -56,17 +63,8 @@ void pongo_main_task() {
     // Enable serial TX
     serial_early_init();
 
-    // Setup HAL
-    hal_init();
-
-    // Turn on IRQ controller
-    interrupt_init();
-
     // Enable IRQ serial RX
     serial_init();
-
-    // Initialize pmgr
-    pmgr_init();
 
     /*
         Initialize display
@@ -84,11 +82,11 @@ void pongo_main_task() {
     // Set up AES
     aes_init();
 
-
+    fb_reset_cursor();
     puts("");
     puts("#==================");
     puts("#");
-    puts("# pongoOS " PONGO_VERSION);
+    iprintf("# pongoOS " PONGO_VERSION " (EL%d)\n", get_el());
     puts("#");
     puts("# https://checkra.in");
     puts("#");

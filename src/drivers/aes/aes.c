@@ -167,13 +167,16 @@ void aes_init(void)
             aes_impl = &aes_a9;
             break;
         default:
-            panic("AES: Unsupported SoC");
+            puts("AES: Unsupported SoC");
+            return;
     }
     command_register("aes", "performs AES operations", aes_cmd);
 }
 
 int aes(uint32_t op, const void *src, void *dst, size_t len, const void *iv, const void *key)
 {
+    if (!aes_impl) panic("AES: not initialized");
+    
     if((op & ~AES_ALL_MASK) != 0)
     {
         return EINVAL;

@@ -60,10 +60,10 @@ void task_timer_fired() {
     task_timer_ctr ++;
 }
 
-struct task* irqvecs[0x200];
+struct task* irqvecs[0x800];
 void register_irq_handler(uint16_t irq_v, struct task* irq_handler)
 {
-    if (irq_v >= 0x1ff) panic("invalid irq");
+    if (irq_v >= 0x7ff) panic("invalid irq");
     if (irqvecs[irq_v]) task_release(irqvecs[irq_v]);
     if (irq_handler) task_reference(irq_handler);
     irqvecs[irq_v] = irq_handler;
@@ -93,7 +93,7 @@ void task_list(const char* cmd, char* arg) {
         }
         cur_task = cur_task->next;
     } while (cur_task != &sched_task);
-    for (int i=0; i<0x1ff; i++) {
+    for (int i=0; i<0x7ff; i++) {
         if (irqvecs[i]) {
             ++nirq;
         }
@@ -129,7 +129,7 @@ retry:;
         }
         cur_task = cur_task->next;
     } while (cur_task != &sched_task);
-    for (int i=0; i<0x1ff; i++) {
+    for (int i=0; i<0x7ff; i++) {
         if (irqvecs[i]) {
             ++ni;
         }
@@ -166,7 +166,7 @@ retry:;
         cur_task = cur_task->next;
     } while (cur_task != &sched_task);
     ni = 0;
-    for (int i=0; i<0x1ff; i++) {
+    for (int i=0; i<0x7ff; i++) {
         if (irqvecs[i]) {
             strlcpy(irq_copy[ni].name, irqvecs[i]->name, sizeof(irq_copy[ni].name));
             irq_copy[ni].runcnt = irqvecs[i]->irq_count;
@@ -214,7 +214,7 @@ retry:;
     free(irq_copy);
 }
 void task_irq_teardown() {
-    for (int i=0; i<0x1ff; i++) {
+    for (int i=0; i<0x7ff; i++) {
         if (irqvecs[i]) {
             mask_interrupt(i);
         }
@@ -246,9 +246,9 @@ __attribute__((noinline)) void task_switch_irq(struct task* new)
     served_irqs++;
 }
 __attribute__((noinline)) void task_irq_dispatch(uint32_t intr) {
-    struct task* irq_handler = irqvecs[intr & 0x1FF];
+    struct task* irq_handler = irqvecs[intr & 0x7FF];
     if (irq_handler) {
-        irq_handler->irq_type = intr & 0x1ff;
+        irq_handler->irq_type = intr & 0x7FF;
         task_switch_irq(irq_handler);
     } else {
         iprintf("couldn't find irq handler for %x\n", intr);
@@ -393,7 +393,7 @@ void task_entry() {
     }
     
     if (task->vm_space == &kernel_vm_space) {
-        task->cpsr = 0x4; // EL1 SP0
+        task->cpsr = get_el() << 2; // ELn SP0
         
         void (*entry)() = (void*)task->entry;
         task_entry_j(entry, task->entry_stack, task_exit, task->cpsr);

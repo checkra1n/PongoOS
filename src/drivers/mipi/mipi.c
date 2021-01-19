@@ -95,11 +95,10 @@ void mipi_cmd(const char* cmd, char* args) {
     }
 }
 
-void mipi_init() {
-    if(dt_find(gDeviceTree, "mipi-dsim")) {
-        uint64_t mipi_reg = dt_get_u32_prop("mipi-dsim", "reg");
-        mipi_reg += gIOBase;
-        gmipi_reg = mipi_reg;
+void mipi_init() {    
+    struct hal_device* mipi_dev = hal_device_by_name("mipi-dsim");
+    if (mipi_dev) {
+        gmipi_reg = (uint64_t) hal_map_registers(mipi_dev, 0, NULL);
         command_register("mipi", "mipi tools", mipi_cmd);
     }
 }
