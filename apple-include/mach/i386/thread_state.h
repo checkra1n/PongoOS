@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000-2007 Apple Inc. All rights reserved.
+ * Copyright (c) 2000-2006 Apple Computer, Inc. All rights reserved.
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
  *
@@ -25,16 +25,18 @@
  *
  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
+/*
+ * @OSF_COPYRIGHT@
+ */
 
-#ifndef _MACH_MACHINE_THREAD_STATUS_H_
-#define _MACH_MACHINE_THREAD_STATUS_H_
+#ifndef _MACH_I386_THREAD_STATE_H_
+#define _MACH_I386_THREAD_STATE_H_
+
+/* Size of maximum exported thread state in 32-bit words */
+#define I386_THREAD_STATE_MAX   (614)    /* Size of biggest state possible */
 
 #if defined (__i386__) || defined(__x86_64__)
-#include "mach/i386/thread_status.h"
-#elif defined (__arm__) || defined (__arm64__)
-#include "mach/arm/thread_status.h"
-#else
-#error architecture not supported
+#define THREAD_STATE_MAX        I386_THREAD_STATE_MAX
 #endif
 
-#endif /* _MACH_MACHINE_THREAD_STATUS_H_ */
+#endif  /* _MACH_I386_THREAD_STATE_H_ */
