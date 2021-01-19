@@ -500,7 +500,6 @@ void unmask_interrupt(uint32_t reg) {
     if (reg > irq_count) {
         panic("unmask_interrupt: irqno out of bounds (%d > %d)", reg, irq_count);
     }
-    set_interrupt_affinity(reg, 0);
     (*(volatile uint32_t *)(gInterruptBase + 0x4180 + ((reg >> 5) * 4))) = (1 << ((reg) & 0x1F));
 }
 void mask_interrupt(uint32_t reg) {
@@ -631,9 +630,15 @@ static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, v
             irqvecs = calloc(irq_count, sizeof(struct task*));
             irqctx = calloc(irq_count, sizeof(void*));
 
-            interrupt_or_config(0xE0000000);
-            interrupt_or_config(1); // enable interrupt
+            disable_interrupts();
             
+            interrupt_or_config(0xE0000000);
+            interrupt_or_config(1); // enable interrupts
+            for (int i=0; i < irq_count; i++) {
+                mask_interrupt(i);
+                set_interrupt_affinity(i, 0);
+            }
+            enable_interrupts();
             return true;
         } else
         if (val && strcmp(val, "pmgr") == 0) {

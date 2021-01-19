@@ -241,7 +241,7 @@ void drd_endpoint_set_configuration(struct drd* drd, uint32_t ep, uint32_t ep_ty
 }
 
 static void drd_irq_handle() {
-    puts("drd irq");
+    fiprintf(stderr, "drd irq\n");
 }
 
 static void drd_irq_task() {
