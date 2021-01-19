@@ -26,6 +26,16 @@
  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
  */
 
+#if !defined(__APPLE__)
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define __LITTLE_ENDIAN__
+#elif __BYTE_ORDER == __BIG_ENDIAN
+#define __BIG_ENDIAN__
+#else
+#error "Unknown host endian!"
+#endif
+#endif
+
 #ifndef _OS_OSBYTEORDER_H
 #define _OS_OSBYTEORDER_H
 
