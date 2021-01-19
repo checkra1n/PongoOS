@@ -152,6 +152,7 @@
 #define G_GEVNTCOUNT(n) (0x40c + 0x10 * (n))
 #define GEVNTSIZ_EVNTINTRPTMASK (1 << 31)
 #define G_GHWPARAMS(n) (0x140 + n * 4)
+#define G_GDBGFIFOSPACE 0x160
 
 #define G_DEPCMDPAR2(n) (0x800 + 0x10 * (n))
 #define G_DEPCMDPAR1(n) (0x804 + 0x10 * (n))

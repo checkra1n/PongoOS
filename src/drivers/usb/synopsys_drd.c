@@ -89,6 +89,12 @@ __unused static void drd_reg_write(struct drd* drd, uint32_t offset, uint32_t va
 #endif
     *(volatile uint32_t *)(drd->regBase + offset) = value;
 }
+__unused static void drd_reg_write64(struct drd* drd, uint32_t offset, uint32_t value) {
+#ifdef REG_LOG
+    fiprintf(stderr, "drd_reg_write64(%x) = %x\n", offset, value);
+#endif
+    *(volatile uint64_t *)(drd->regBase + offset) = value;
+}
 __unused static void atc_reg_write(struct drd* drd, uint32_t offset, uint32_t value) {
 #ifdef REG_LOG
     fiprintf(stderr, "atc_reg_write(%x) = %x\n", offset, value);
@@ -176,6 +182,7 @@ static void USB_DEBUG_PRINT_REGISTERS(struct drd* drd) {
     USB_DEBUG_REG_VALUE(G_GSTS);
     USB_DEBUG_REG_VALUE(G_GPMSTS);
     USB_DEBUG_REG_VALUE(G_GUSB2PHYCFG);
+    USB_DEBUG_REG_VALUE(G_GDBGFIFOSPACE);
     USB_DEBUG_REG_VALUE(G_GEVNTADRLO(0));
     USB_DEBUG_REG_VALUE(G_GEVNTADRHI(0));
     USB_DEBUG_REG_VALUE(G_GEVNTCOUNT(0));
@@ -354,11 +361,23 @@ static void drd_bringup(struct drd* drd) {
     if (hal_invoke_service_op(drd->mapper, "dart", DART_BYPASS_CONVERT_PTR, &drd->physBaseDMA, 8, &dartBaseDMA, &dartBaseDMASize))
         panic("failed to translate address to DART address");
     
-    drd_reg_write(drd, G_GEVNTADRLO(0), dartBaseDMA & 0xffffffff);
-    drd_reg_write(drd, G_GEVNTADRHI(0), (dartBaseDMA >> 32ULL) & 0xffffffff);
+    uint32_t eventc = (drd_reg_read(drd, G_GHWPARAMS(1)) >> 15) & 0x3f;
+
+    for (uint32_t i=0; i < eventc; i++) {
+        drd_reg_write(drd, G_GEVNTSIZ(i), 0);
+    }
+    
+    drd_reg_write64(drd, G_GEVNTADRLO(0), dartBaseDMA);
+    //drd_reg_write(drd, G_GEVNTADRHI(0), (dartBaseDMA >> 32ULL) & 0xffffffff);
     drd_reg_write(drd, G_GEVNTSIZ(0), 0x4000);
     drd_reg_write(drd, G_GEVNTCOUNT(0), 0);
 
+    dartBaseDMA += 0x4000;
+    
+    drd_device_generic_command(drd, 4, dartBaseDMA & 0xffffffff);
+    drd_device_generic_command(drd, 5, (dartBaseDMA >> 32ULL) & 0xffffffff);
+
+    
     enable_endpoint(drd, ENDPOINT_EP0_OUT);
 
     drd_reg_or(drd, G_DEVTEN, DEVTEN_USBRSTEVTEN|DEVTEN_DISSCONNEVTEN|DEVTEN_CONNECTDONEEVTEN|DEVTEN_ULSTCNGEN|DEVTEN_WKUPEVTEN|DEVTEN_ERRTICERREVTEN|DEVTEN_VENDEVTSTRCVDEN);
