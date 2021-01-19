@@ -30,14 +30,20 @@
 struct t8020_dart {
     uint64_t dart_type;
     uint64_t dart_regbase;
+    uint64_t dart_flags;
+    uint64_t dart_bypass_base;
 };
+
+#define DART_FLAGS_MODE_MASK 3
+#define DART_FLAGS_MODE_BYPASS 1
 
 struct task* dart_irq_task;
 
 void dart_irq_handler() {
     while (1) {
-        // struct t8020_dart* dart = task_current_interrupt_context();
+        __unused struct t8020_dart* dart = task_current_interrupt_context();
         panic("DART IRQ received!");
+        
         task_exit_irq();
     }
 }
@@ -97,10 +103,13 @@ static bool dart_probe(struct hal_service* svc, struct hal_device* device, void*
 
 static int dart_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     struct t8020_dart* dart = ((struct t8020_dart*)svc->context);
-    
     if (method == DART_ENTER_BYPASS_MODE) {
         if (dart->dart_type == 0x8020) {
-//            *(volatile uint32_t*)(dart->dart_regbase + 0x100) = 0x80000 | 0x100;
+            *(volatile uint32_t*)(dart->dart_regbase + 0x100) = 0x80000 | 0x100;
+
+            dart->dart_flags &= ~DART_FLAGS_MODE_MASK;
+            dart->dart_flags |= DART_FLAGS_MODE_BYPASS;
+
             return dart_service_op(svc, device, DART_FLUSH_CACHE, NULL, 0, NULL, 0);
         }
     } else if (method == DART_FLUSH_CACHE) {
@@ -108,8 +117,16 @@ static int dart_service_op(struct hal_device_service* svc, struct hal_device* de
             *(volatile uint32_t*)(dart->dart_regbase + 0x34) = 0;
             *(volatile uint32_t*)(dart->dart_regbase + 0x20) = 0;
             while(*(volatile uint32_t*)(dart->dart_regbase + 0x20) & 4) {}
-            
             return 0;
+        }
+    } else if (method == DART_BYPASS_CONVERT_PTR && data_in_size == 8 && data_out_size && *data_out_size == 8) {
+        if ((dart->dart_flags & DART_FLAGS_MODE_MASK) == DART_FLAGS_MODE_BYPASS) {
+            uint64_t inptr = *(uint64_t*)data_in;
+            
+            if (inptr >= dart->dart_bypass_base) {
+                *(uint64_t*)data_out = inptr; // - dart->dart_bypass_base;
+                return 0;
+            }
         }
     }
     return -1;

@@ -202,8 +202,9 @@
 #define USB_ENDPOINT_BULK                  0x02
 #define USB_ENDPOINT_INTERRUPT             0x03
 
-#define BUSERRADDR_LO 0x130
-#define BUSERRADDR_HI 0x134
+#define G_BUSERRADDR_LO 0x130
+#define G_BUSERRADDR_HI 0x134
+#define G_GSBUSCFG0 0x100
 
 
 #endif

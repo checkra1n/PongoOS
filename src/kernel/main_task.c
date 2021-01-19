@@ -92,7 +92,7 @@ void pongo_main_task() {
     puts("#");
     puts("#==================");
     screen_mark_banner();
-
+    
     iprintf("Booted by: %s\n", dt_get_prop("chosen", "firmware-version", NULL));
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
     strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
@@ -103,5 +103,10 @@ void pongo_main_task() {
 #endif
     iprintf("Running on: %s\n", hal_platform_name());
 
+    // start HAL device services
+    extern void hal_issue_recursive_start();
+
+    hal_issue_recursive_start();
+    
     shell_main();
 }

@@ -319,8 +319,14 @@ struct hal_service hal_service = {
 
 int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     struct hal_device_service* svc = device->services;
+    
+    bool metaservice_lookup = false;
+    if (((method & METASERVICE_TAG_MASK) == HAL_METASERVICE_TAG)) {
+        metaservice_lookup = true;
+    }
+    
     while (svc) {
-        if (svc_name == svc->name || strcmp(svc_name, svc->name) == 0) {
+        if (strcmp(svc_name, svc->name) == 0 || metaservice_lookup) {
             if (svc->service->service_op) {
                 return svc->service->service_op(svc, device, method, data_in, data_in_size, data_out, data_out_size);
             }
@@ -329,6 +335,7 @@ int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint3
     }
     return -0xfe;
 }
+            
 
 struct hal_service* hal_service_head;
 lock hal_service_lock;
@@ -338,6 +345,7 @@ void hal_register_hal_service(struct hal_service* svc) {
     hal_service_head = svc;
     lock_release(&hal_service_lock);
 }
+
 void hal_probe_hal_services(struct hal_device* device, bool isEarlyProbe) {
     lock_take(&hal_service_lock);
     
@@ -438,6 +446,12 @@ void hal_late_probe_hal_services_cb(struct hal_device* dev, int depth) {
 }
 void hal_late_probe_hal_services() {
     recurse_device(gDeviceTreeDevice, 0, hal_late_probe_hal_services_cb);
+}
+void hal_issue_recursive_start_cb(struct hal_device* dev, int depth) {
+    hal_invoke_service_op(dev, "hal", HAL_METASERVICE_START, NULL, 0, NULL, NULL);
+}
+void hal_issue_recursive_start() {
+    recurse_device(gDeviceTreeDevice, 0, hal_issue_recursive_start_cb);
 }
 
 static struct hal_device * hal_device_by_name_recursive(struct hal_device* dev, int depth, const char* name) {

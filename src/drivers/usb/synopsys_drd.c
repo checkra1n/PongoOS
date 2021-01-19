@@ -82,13 +82,6 @@ __unused static uint32_t configreg_reg_read(struct drd* drd, uint32_t offset) {
 #endif
     return rv;
 }
-__unused static uint32_t coreevt_reg_read(struct drd* drd, uint32_t offset) {
-        uint32_t rv = *(volatile uint32_t *)(drd->coreEvtRegBase + offset);
-    #ifdef REG_LOG
-        fiprintf(stderr, "coreevt_reg_read(%x) = %x\n", offset, rv);
-    #endif
-        return rv;
-}
 
 __unused static void drd_reg_write(struct drd* drd, uint32_t offset, uint32_t value) {
 #ifdef REG_LOG
@@ -188,9 +181,10 @@ static void USB_DEBUG_PRINT_REGISTERS(struct drd* drd) {
     USB_DEBUG_REG_VALUE(G_GEVNTCOUNT(0));
     USB_DEBUG_REG_VALUE(G_GEVNTSIZ(0));
     USB_DEBUG_REG_VALUE(G_GPMSTS);
-    USB_DEBUG_REG_VALUE(BUSERRADDR_LO);
-    USB_DEBUG_REG_VALUE(BUSERRADDR_HI);
-
+    USB_DEBUG_REG_VALUE(G_BUSERRADDR_LO);
+    USB_DEBUG_REG_VALUE(G_BUSERRADDR_HI);
+    USB_DEBUG_REG_VALUE(G_GSBUSCFG0);
+    
     enable_interrupts();
 }
 
@@ -242,6 +236,15 @@ void drd_endpoint_set_configuration(struct drd* drd, uint32_t ep, uint32_t ep_ty
 
 static void drd_irq_handle() {
     fiprintf(stderr, "drd irq\n");
+    struct drd* drd = task_current_interrupt_context();
+
+    while (1) {
+        uint32_t elements = drd_reg_read(drd, G_GEVNTCOUNT(0));
+        if (!elements) {
+            break;
+        }
+        drd_reg_write(drd, G_GEVNTCOUNT(0), elements);
+    }
 }
 
 static void drd_irq_task() {
@@ -340,9 +343,16 @@ static void drd_bringup(struct drd* drd) {
     drd_reg_write(drd, G_GCTL, GCTL_DSBLCLKGTNG | GCTL_PRTCAPDIR(true) | GCTL_PWRDNSCALE(2));
     drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17));
 
+    drd_reg_write(drd, G_GSBUSCFG0, (1 << 6));
+    
     drd->virtBaseDMA = alloc_contig(0x4000);
-    uint64_t dartBaseDMA = drd->physBaseDMA = vatophys_static((void*)drd->virtBaseDMA);
-    dartBaseDMA -= 0x800000000;
+    drd->physBaseDMA = vatophys_static((void*)drd->virtBaseDMA);
+    
+    uint64_t dartBaseDMA = 0;
+    size_t dartBaseDMASize = 8;
+    
+    if (hal_invoke_service_op(drd->mapper, "dart", DART_BYPASS_CONVERT_PTR, &drd->physBaseDMA, 8, &dartBaseDMA, &dartBaseDMASize))
+        panic("failed to translate address to DART address");
     
     drd_reg_write(drd, G_GEVNTADRLO(0), dartBaseDMA & 0xffffffff);
     drd_reg_write(drd, G_GEVNTADRHI(0), (dartBaseDMA >> 32ULL) & 0xffffffff);
@@ -359,12 +369,11 @@ static void drd_bringup(struct drd* drd) {
 }
 
 
-static int drd_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
-    return -1;
-}
-static bool register_drd(struct hal_device* device, void** context) {
+static bool register_drd(struct hal_device* device, void* context) {
     // DesignWare DWC3 Dual Role Device
-    struct drd* drd = calloc(sizeof(struct drd), 1);
+    
+    struct drd* drd = context;
+
     drd->mapper = hal_get_mapper(device, 0);
     drd->device = device;
 
@@ -381,7 +390,8 @@ static bool register_drd(struct hal_device* device, void** context) {
     hal_invoke_service_op(drd->atc_device, "hal", HAL_DEVICE_CLOCK_GATE_ON, NULL, 0, NULL, NULL);
     hal_invoke_service_op(drd->device, "hal", HAL_DEVICE_CLOCK_GATE_ON, NULL, 0, NULL, NULL);
 
-    hal_invoke_service_op(drd->mapper, "dart", DART_ENTER_BYPASS_MODE, NULL, 0, NULL, NULL);
+    if (hal_invoke_service_op(drd->mapper, "dart", DART_ENTER_BYPASS_MODE, NULL, 0, NULL, NULL))
+        panic("drd: could not enter bypass mode");
     
     if (strcmp(dt_prop(device->node, "compatible", &len), "usb-drd,t8103") == 0) {
         drd->regBase = (uint64_t)hal_map_registers(drd->device, 2, NULL);
@@ -398,26 +408,23 @@ static bool register_drd(struct hal_device* device, void** context) {
     drd->atcRegBase = (uint64_t)hal_map_registers(drd->atc_device, 0, NULL);
     drd->irq_task = task_create_extended(drd->device->name, drd_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
 
-    for (int i=0; i < 5; i++) {
-        task_bind_to_irq(drd->irq_task, hal_get_irqno(device, i));
-    }
+    task_bind_to_irq(drd->irq_task, hal_get_irqno(device,0));
+    interrupt_associate_context(hal_get_irqno(device,0), drd);
 
     atc_bringup(drd);
     
     drd_bringup(drd);
 
     USB_DEBUG_PRINT_REGISTERS(drd);
-    sleep(1);
-    USB_DEBUG_PRINT_REGISTERS(drd);
-    sleep(1);
-    USB_DEBUG_PRINT_REGISTERS(drd);
     
-    
-    cache_invalidate(drd->virtBaseDMA, 0x4000);
-    iprintf("evq: %x\n", *(uint32_t*)drd->virtBaseDMA);
-
-    *context = drd;
     return true;
+}
+static int drd_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
+    if (method == HAL_METASERVICE_START) {
+        register_drd(device, svc->context);
+        return 0;
+    }
+    return -1;
 }
 
 static bool drd_probe(struct hal_service* svc, struct hal_device* device, void** context) {
@@ -426,7 +433,10 @@ static bool drd_probe(struct hal_service* svc, struct hal_device* device, void**
     if (node) {
         void* val = dt_prop(node, "device_type", &len);
         if (val && strcmp(val, "usb-drd") == 0) {
-            return register_drd(device, context);
+
+            *context = calloc(sizeof(struct drd), 1);
+
+            return true;
         }
     }
     return false;

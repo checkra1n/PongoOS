@@ -121,3 +121,7 @@ extern int hal_apply_tunables(struct hal_device* device, const char* tunable_dt_
 #define HAL_DEVICE_CLOCK_GATE_ON 6
 #define HAL_DEVICE_CLOCK_GATE_OFF 7
 
+#define METASERVICE_TAG_MASK 0xf0000000
+
+#define HAL_METASERVICE_TAG  0x80000000
+#define HAL_METASERVICE_START (HAL_METASERVICE_TAG | 0x1)
