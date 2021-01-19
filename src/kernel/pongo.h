@@ -49,6 +49,7 @@
 #include "libDER/oids.h"
 #include "mipi/mipi.h"
 #include "aes/aes.h"
+#include "sep/sep.h"
 #endif
 
 #define DT_KEY_LEN 0x20

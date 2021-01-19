@@ -84,6 +84,8 @@ void pongo_main_task() {
     // Set up AES
     aes_init();
 
+    // Set up Secure Enclave
+    sep_setup();
 
     puts("");
     puts("#==================");

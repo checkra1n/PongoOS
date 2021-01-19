@@ -1849,9 +1849,6 @@ void kpf_autoboot() {
 }
 
 void module_entry() {
-    extern void sep_setup(void);
-    sep_setup();
-
     puts("");
     puts("");
     puts("#==================");
