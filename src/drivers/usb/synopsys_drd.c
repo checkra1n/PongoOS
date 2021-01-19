@@ -26,7 +26,6 @@
  */
 
 #include <pongo.h>
-#define REG_LOG
 
 struct drd {
     uint64_t regBase;
@@ -160,6 +159,7 @@ static void USB_DEBUG_PRINT_REGISTERS(struct drd* drd) {
 #define PHY_DEBUG_REG_VALUE(reg) fiprintf(stderr, ""#reg " = 0x%x\n", drd_reg_read(drd, reg));
     
     PHY_DEBUG_REG_VALUE(AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL);
+    PHY_DEBUG_REG_VALUE(AUSBC_CFG_USB2PHY_BLK_USB2PHY_MISC_TUNE);
     
     USB_DEBUG_REG_VALUE(G_DCFG);
     USB_DEBUG_REG_VALUE(G_DCTL);
@@ -187,25 +187,20 @@ __unused static int8_t drd_device_generic_command(struct drd* drd, uint32_t cmd,
     }
 }
 __unused static int8_t drd_endpoint_command(struct drd* drd, uint32_t ep, uint32_t cmd, uint32_t arg0, uint32_t arg1, uint32_t arg2) {
-    USB_DEBUG_REG_VALUE(G_GSTS);
     drd_reg_write(drd, G_DEPCMDPAR0(ep), arg0);
-    USB_DEBUG_REG_VALUE(G_GSTS);
     drd_reg_write(drd, G_DEPCMDPAR1(ep), arg1);
-    USB_DEBUG_REG_VALUE(G_GSTS);
     drd_reg_write(drd, G_DEPCMDPAR2(ep), arg2);
-    USB_DEBUG_REG_VALUE(G_GSTS);
     drd_reg_write(drd, G_DEPCMD(ep), (cmd & DGCMD_CMDMASK));
-    USB_DEBUG_REG_VALUE(G_GSTS);
     
     drd_reg_or(drd, G_DEPCMD(ep), DEPCMD_CMDACT);
     
-    uint32_t maxtries = 0x1000000;
-    while (maxtries --) {
+    while (!(cmd & DEPCMD_CMDIOC)) {
         uint32_t rd = drd_reg_read(drd, G_DEPCMD(ep));
         if (! (rd & DEPCMD_CMDACT)) {
             return (rd & DGCMD_CMDSTSMASK) >> DGCMD_CMDSTSSHIFT;
         }
     }
+    
     return 0;
 }
 
@@ -221,7 +216,7 @@ void drd_endpoint_start_configuration(struct drd* drd, uint32_t ep, uint32_t rsr
     }
 }
 void drd_endpoint_set_configuration(struct drd* drd, uint32_t ep, uint32_t ep_type, uint32_t packetsz) {
-    if (drd_endpoint_command(drd, ep, DEPCFG, DEPCFG_ACTION_INITIALIZE | DEPCFG_MAX_PACKET_SIZE(packetsz) | DEPCFG_EP_TYPE(ep_type), DEPCFG_FIFO_BASED | DEPCFG_EP_NUMBER(ep) | DEPCFG_XFER_NOT_READY_EN | DEPCFG_XFER_COMPLETE_EN | DEPCFG_INTR_NUM(0), 0)) {
+    if (drd_endpoint_command(drd, ep, DEPCFG, DEPCFG_ACTION_INITIALIZE | DEPCFG_MAX_PACKET_SIZE(packetsz) | DEPCFG_EP_TYPE(ep_type), DEPCFG_EP_NUMBER(ep) | DEPCFG_XFER_NOT_READY_EN | DEPCFG_XFER_COMPLETE_EN | DEPCFG_INTR_NUM(0), 0)) {
         panic("drd_endpoint_set_configuration: drd_endpoint_command failed!");
     }
 }
@@ -243,32 +238,30 @@ static void drd_irq_task() {
 static void atc_enable_device(struct drd* drd, bool enable) {
     uint32_t reg = 0;
     if (enable) {
-        reg = (atc_reg_read(drd, 0) & 0xFFFFFFF8) | 2;
+        reg = (atc_reg_read(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL) & ~USB_MODE_MASK) | 2;
     } else {
         spin(5 * 1000);
-        reg = (atc_reg_read(drd, 0) & 0xFFFFFFF8) | 4;
+        reg = (atc_reg_read(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL) & ~USB_MODE_MASK) | 0;
     }
-    atc_reg_write(drd, 0, reg);
+    atc_reg_write(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL, reg);
 }
 static void atc_bringup(struct drd* drd) {
     atc_reg_or(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_SIG, VBUS_DETECT_FORCE_VAL | VBUS_DETECT_FORCE_EN | VBUS_VALID_EXT_FORCE_VAL | VBUS_VALID_EXT_FORCE_EN);
     spin(10 * 1000);
-    atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, 0xfffffff7);
+    atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, ~USB2PHY_SIDDQ);
     spin(10);
     atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, ~(USB2PHY_RESET|USB2PHY_PORT_RESET));
     atc_reg_or(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, USB2PHY_APB_RESETN);
-    atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_MISC_TUNE, 0x9fffffff);
+    atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_MISC_TUNE, ~(USB2PHY_REFCLK_GATEOFF | USB2PHY_APBCLK_GATEOFF));
     spin(30);
     
-    atc_enable_device(drd, false);
+    atc_enable_device(drd, true);
 }
 
 __unused static void enable_endpoint(struct drd* drd, uint8_t index) {
     drd_endpoint_start_configuration(drd, index, 0);
     drd_endpoint_set_configuration(drd, index, USB_ENDPOINT_CONTROL, EP0_MAX_PACKET_SIZE);
-    USB_DEBUG_REG_VALUE(G_GSTS);
     drd_reg_or(drd, G_DALEPENA, 1 << index);
-    USB_DEBUG_REG_VALUE(G_GSTS);
 }
 
 static void drd_bringup(struct drd* drd) {
@@ -295,34 +288,33 @@ static void drd_bringup(struct drd* drd) {
 
     pipehandler_reg_and(drd, P_LOCK_PIPE_IF_REQ, ~1);
     
+    
     while (pipehandler_reg_read(drd, P_LOCK_PIPE_IF_ACK) & 1) {
         ;;
     }
     
-    usleep(1000);
-
-    pipehandler_reg_or(drd, P_AON_GENERAL_REGS, ATC_USB31_DRD_SW_VCC_RESET);
-    pipehandler_reg_and(drd, P_AON_GENERAL_REGS, ~ATC_USB31_DRD_FORCE_CLAMP_EN);
-
     drd_reg_and(drd, G_GUSB2PHYCFG, ~SUSPENDUSB20);
     drd_reg_and(drd, G_GUSB3PIPECTL, ~SUSPENDENABLE);
     
-    ausb_reg_and(drd, AUSBC_FORCE_CLK_ON, ~0x1f);
+//    ausb_reg_and(drd, AUSBC_FORCE_CLK_ON, ~0x1f);
 
-    pipehandler_reg_or(drd, P_NON_SELECTED_OVERRIDE, 0x8000);
+//    pipehandler_reg_or(drd, P_NON_SELECTED_OVERRIDE, 0x8000);
+
+    pipehandler_reg_and(drd, P_AON_GENERAL_REGS, ~ATC_USB31_DRD_FORCE_CLAMP_EN);
+    pipehandler_reg_or(drd, P_AON_GENERAL_REGS, ATC_USB31_DRD_SW_VCC_RESET);
 
     while (pipehandler_reg_read(drd, P_NON_SELECTED_OVERRIDE) & 0x40000000) {
         ;;
     }
     
-    drd_reg_write(drd, G_DCTL, 0x40000001);
-    while (drd_reg_read(drd, G_DCTL) & 0x40000000) {
+    drd_reg_write(drd, G_DCTL, DCTL_SOFTRESET);
+    while (drd_reg_read(drd, G_DCTL) & DCTL_SOFTRESET) {
         ;;
     }
     
-    drd_reg_write(drd, G_GCTL, GCTL_PWRDNSCALE(2));
+    drd_reg_write(drd, G_GCTL, GCTL_DSBLCLKGTNG | GCTL_PRTCAPDIR(true) | GCTL_PWRDNSCALE(2));
     
-    drd_reg_write(drd, G_DCFG, (drd_reg_read(drd, G_DCFG) & ~DCFG_DEVSPD) | DCFG_HIGH_SPEED | (1 << DCFG_INTRNUM_SHIFT));
+    drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17) | (1 << DCFG_INTRNUM_SHIFT));
 
 
     uint32_t eventc = (drd_reg_read(drd, G_GHWPARAMS(1)) >> 15) & 0x3f;
@@ -339,9 +331,8 @@ static void drd_bringup(struct drd* drd) {
         drd_reg_write(drd, G_GEVNTSIZ(i), 0x4000); // implicitly unmask interrupt
     }
     
-    USB_DEBUG_REG_VALUE(G_GSTS);
-    
     enable_endpoint(drd, ENDPOINT_EP0_OUT);
+
     drd_reg_or(drd, G_DEVTEN, DEVTEN_USBRSTEVTEN|DEVTEN_DISSCONNEVTEN|DEVTEN_CONNECTDONEEVTEN|DEVTEN_ULSTCNGEN|DEVTEN_WKUPEVTEN|DEVTEN_ERRTICERREVTEN|DEVTEN_VENDEVTSTRCVDEN);
 
     drd_reg_write(drd, G_DCTL, DCTL_RUN_STOP);
@@ -387,14 +378,20 @@ static bool register_drd(struct hal_device* device, void** context) {
     drd->atcRegBase = (uint64_t)hal_map_registers(drd->atc_device, 0, NULL);
     drd->irq_task = task_create_extended(drd->device->name, drd_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
 
-    task_bind_to_irq(drd->irq_task, hal_get_irqno(device, 0));
+    for (int i=0; i < 5; i++) {
+        task_bind_to_irq(drd->irq_task, hal_get_irqno(device, i));
+    }
 
     atc_bringup(drd);
     
     drd_bringup(drd);
 
     USB_DEBUG_PRINT_REGISTERS(drd);
-    
+    sleep(1);
+    USB_DEBUG_PRINT_REGISTERS(drd);
+    sleep(1);
+    USB_DEBUG_PRINT_REGISTERS(drd);
+
     *context = drd;
     return true;
 }

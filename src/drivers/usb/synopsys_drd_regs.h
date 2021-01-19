@@ -30,6 +30,9 @@
 #ifndef SYNOPSYS_DRD_REGS__H_
 #define SYNOPSYS_DRD_REGS__H_
 
+#define AUSBC_CFG_USB2PHY_BLK_USB_CTL 0
+#define USB_MODE_MASK 0x7
+
 #define AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL 4
 
 #define USB2PHY_RESET 1
@@ -45,6 +48,9 @@
 
 #define AUSBC_CFG_USB2PHY_BLK_USB2PHY_MISC_TUNE 0x1c
 #define USB2PHY_REFCLK_GATEOFF 0x40000000
+#define USB2PHY_APBCLK_GATEOFF 0x20000000
+
+#define AUSBC_C0_UTMI_CLK_ACTIVE_EVT_CNT 0x20
 
 // AUSBC_CTRLREG_BLK
 
@@ -82,7 +88,9 @@
 
 // Device Control Register
 #define G_DCTL 0x704
+#define DCTL_SOFTRESET (1 << 30)
 #define DCTL_RUN_STOP (1 << 31)
+#define DCTL_CORESOFTRESET (1 << 11)
 
 // Device Event Enable Register
 #define G_DEVTEN 0x708
@@ -120,6 +128,7 @@
 
 #define G_GCTL 0x110
 #define GCTL_DSBLCLKGTNG 1
+#define GCTL_PRTCAPDIR(isDevice) ((isDevice ? 0b10 : 0b00) << 12)
 #define GCTL_PWRDNSCALE(n) (((n) & 0x1fff) << 19)
 
 #define G_GPMSTS 0x114
