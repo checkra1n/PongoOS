@@ -42,6 +42,7 @@
 #include "timer/timer.h"
 #include "xnu/xnu.h"
 #include "tz/tz.h"
+#include "libDER/libDER_config.h"
 #include "libDER/DER_Encode.h"
 #include "libDER/DER_Decode.h"
 #include "libDER/asn1Types.h"

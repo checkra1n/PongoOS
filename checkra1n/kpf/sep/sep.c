@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2020 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,9 +22,10 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
+#include <img4/img4.h>
 
 #define TZ_REGS ((volatile uint32_t*)0x200000480)
 
@@ -412,7 +413,7 @@ static void aes_cbc(void *key, void *iv, void *data, size_t size)
 
 void copy_block(void* to, void* from);
 void sep_aes_kbag(uint32_t* kbag_bytes_32, uint32_t * kbag_out, char mode);
-void reload_sepi(TheImg4 *img4) {
+void reload_sepi(Img4 *img4) {
     DERItem key;
 
     uint8_t kbag[0x30];
@@ -541,7 +542,7 @@ no_kbag:
 
 void seprom_fwload_race() {
     uint32_t volatile* shmshc = (uint32_t*)0x210E00000;
-    
+
     if (shmshc[0] == 0xea000002) {
         *remote_addr = 0;
         *remote_sts = 1;
@@ -564,9 +565,14 @@ void seprom_fwload_race() {
     uint32_t imglen = (uint32_t)(ptr[1]);
     DERByte* data = (DERByte*) phystokv(*ptr);
 
-    TheImg4 img4 = {0};
+    Img4 img4 = {0};
     unsigned int type = 0;
-    int rv = Img4DecodeInit(data, imglen, &img4);
+    DERItem tmp = { .data = data, .length = imglen };
+    DERDecodedInfo decoded;
+    int rv = DERDecodeItem(&tmp, &decoded);
+    if (0 != rv) goto badimage;
+    imglen = decoded.content.length + (decoded.content.data - data);
+    rv = Img4DecodeInit(data, imglen, &img4);
     if (0 != rv) goto badimage;
     rv = Img4DecodeGetPayloadType(&img4, &type);
     if (0 != rv) goto badimage;
@@ -585,14 +591,15 @@ void seprom_fwload_race() {
 
     uint32_t bytesToInsert[0x30/4] = {0};
     memset(bytesToInsert, 0x41, 0x30);
-    makeRestoreInfo(&items[3], (void*)bytesToInsert, 0x30);
+    rv = Img4EncodeRestoreInfo(&items[3], (void*)bytesToInsert, 0x30);
+    if (rv != 0 || items[3].length == 0) panic("couldn't create IM4R");
 
     DERItem out;
     out.length = 0;
-    Img4Encode(&out, items, 4);
+    rv = Img4Encode(&out, items);
     free(items[3].data);
 
-    if (out.length == 0) panic("couldn't reassemble img4");
+    if (rv != 0 || out.length == 0) panic("couldn't reassemble img4");
 #ifdef SEP_DEBUG
     fiprintf(stderr, "image len %x -> %x\n", imglen, out.length);
 #endif

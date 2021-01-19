@@ -88,7 +88,7 @@ CHECKRA1N_CC            ?= $(EMBEDDED_CC)
 
 .PHONY: all always clean distclean
 
-all: $(BUILD)/Pongo.bin | $(BUILD)
+all: $(BUILD)/PongoConsolidated.bin | $(BUILD)
 
 $(BUILD)/PongoConsolidated.bin: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo | $(BUILD)
 	bash -c "echo 6175746F626F6F740000200000000000 | xxd -ps -r | cat $(BUILD)/Pongo.bin <(dd if=/dev/zero bs=1 count="$$(((8 - ($$($(STAT) $(BUILD)/Pongo.bin) % 8)) % 8))") /dev/stdin $(BUILD)/checkra1n-kpf-pongo > $@"
