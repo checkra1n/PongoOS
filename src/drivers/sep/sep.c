@@ -132,7 +132,7 @@ static inline uint64_t mailbox_read() {
 #endif
     return rd;
 }
-__attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __attribute((__annotate__(("nosub"))))  __attribute((__annotate__(("nocff"))))  __attribute((__annotate__(("nosplit")))) __attribute((__annotate__(("nostrcry")))) static inline void mailbox_write_fast(uint64_t value) {
+static inline void mailbox_write_fast(uint64_t value) {
     if (is_sep64) {
         mailboxregs64->snd0 = value;
         mailboxregs64->snd1 = 0;
@@ -141,7 +141,7 @@ __attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __
         mailboxregs32->snd1 = (value >> 32ULL) & 0xffffffff;
     }
 }
-__attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __attribute((__annotate__(("nosub"))))  __attribute((__annotate__(("nocff"))))  __attribute((__annotate__(("nosplit")))) __attribute((__annotate__(("nostrcry")))) static inline uint64_t mailbox_read_fast() {
+static inline uint64_t mailbox_read_fast() {
     uint64_t rd;
 
     if (is_sep64) {
@@ -154,7 +154,7 @@ __attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __
     return rd;
 }
 extern void sep_racer(void* observe_b0, void* observe_bs, void* null_b0, void* null_bs, void* replay, uint64_t size, void* shct, void* shv);
-__attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __attribute((__annotate__(("nosub"))))  __attribute((__annotate__(("nocff"))))  __attribute((__annotate__(("nosplit")))) __attribute((__annotate__(("nostrcry")))) void  do_sep_racer(void* observe_b0, void* observe_bs, void* null_b0, void* null_bs, void* replay, uint64_t size, void* shct, void* shv, uint64_t msg) {
+void  do_sep_racer(void* observe_b0, void* observe_bs, void* null_b0, void* null_bs, void* replay, uint64_t size, void* shct, void* shv, uint64_t msg) {
     disable_interrupts();
     mailbox_write_fast(msg);
     sep_racer(observe_b0, observe_bs, null_b0, null_bs, replay, size, shct, shv);
@@ -174,7 +174,7 @@ void seprom_execute_opcode(uint8_t operation, uint8_t param, uint32_t data) {
     sep_send_msg(255, 0x0, operation, param, data);
 }
 
-__attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __attribute((__annotate__(("nosub"))))  __attribute((__annotate__(("nocff"))))  __attribute((__annotate__(("nosplit")))) __attribute((__annotate__(("nostrcry")))) void sep_handle_msg_from_seprom(union sep_message_u msg) {
+void sep_handle_msg_from_seprom(union sep_message_u msg) {
     if (msg.msg.opcode == 255) {
         fiprintf(stderr, "SEPROM panic!\n");
         sep_has_panicked = true;
@@ -206,7 +206,7 @@ uint8_t SEP_PANIC[400] = {0};
 uint64_t * SEP_PANIC_PTR = (uint64_t*)&SEP_PANIC;
 uint32_t SEP_PANIC_CNT = 0;
 
-__attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __attribute((__annotate__(("nosub"))))  __attribute((__annotate__(("nocff"))))  __attribute((__annotate__(("nosplit")))) __attribute((__annotate__(("nostrcry")))) void sep_handle_msg_from_sep(union sep_message_u msg) {
+void sep_handle_msg_from_sep(union sep_message_u msg) {
     if (msg.msg.ep == 0xff) {
         // SEPROM
         sep_handle_msg_from_seprom(msg);
@@ -233,7 +233,7 @@ __attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __
 
     // [tbd]
 }
-__attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __attribute((__annotate__(("nosub"))))  __attribute((__annotate__(("nocff"))))  __attribute((__annotate__(("nosplit")))) __attribute((__annotate__(("nostrcry")))) void sep_check_mailbox() {
+void sep_check_mailbox() {
     uint32_t sts = (is_sep64) ? mailboxregs64->recv_sts : mailboxregs32->recv_sts;
     if ((sts & 0x20000) == 0) {
         union sep_message_u msg;
@@ -242,7 +242,7 @@ __attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __
         event_fire(&sep_msg_event);
     }
 }
-__attribute((__annotate__(("nofla")))) __attribute((__annotate__(("nobcf")))) __attribute((__annotate__(("nosub"))))  __attribute((__annotate__(("nocff"))))  __attribute((__annotate__(("nosplit")))) __attribute((__annotate__(("nostrcry")))) uint64_t sep_fast_check_mailbox() {
+uint64_t sep_fast_check_mailbox() {
     uint32_t sts = (is_sep64) ? mailboxregs64->recv_sts : mailboxregs32->recv_sts;
     if ((sts & 0x20000) == 0) {
         return mailbox_read_fast();
