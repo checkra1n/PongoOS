@@ -1,7 +1,7 @@
  /*
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2020 checkra1n team
+ * Copyright (C) 2019-2020 checkra1n team, Corellium LLC
  *
  * This file is part of pongoOS.
  *
@@ -61,18 +61,6 @@ _iorvbar_table:
 .align 8
 iorvbar_core_start:
     dsb sy
-
-#if SMP_DEBUG
-    mrs x1, mpidr_el1
-    lsr x0, x1, #14
-    bfxil x0, x1, #0, #2
-    and x0, x0, #7
-    mov x1, #0x870
-    lsl x1, x1, #24
-    sub x1, x1, x0, lsl #18
-    mov sp, x1
-    bl smp_main
-#endif
 
     mrs x1, mpidr_el1
     lsr x0, x1, #14
