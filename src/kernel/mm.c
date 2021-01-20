@@ -816,8 +816,10 @@ void alloc_init() {
     ppages = memory_size >> 14;
 
     uint64_t early_heap = early_heap_base;
+    early_heap = ((early_heap + 0x3fff) & (~0x3fff));
+
 #ifdef AUTOBOOT
-    uint64_t* _autoboot_block = (uint64_t*)0x419000000;
+    uint64_t* _autoboot_block = (uint64_t*)(kCacheableView + 0x19000000);
     extern uint64_t* autoboot_block;
     if (_autoboot_block[0] == 0x746F6F626F747561) {
         autoboot_block = (void*) early_heap;
@@ -837,7 +839,7 @@ void alloc_init() {
     }
 
     alloc_static_current = alloc_static_base = (kCacheableView - 0x800000000 + gBootArgs->topOfKernelData) & (~0x3fff);
-    alloc_static_end = 0x417fe0000;
+    alloc_static_end = (kCacheableView + 0x17fe0000);
     uint64_t alloc_static_hardcap = alloc_static_base + (1024 * 1024 * 64);
     if (alloc_static_end > alloc_static_hardcap) {
         phys_force_free(vatophys_static((void*)alloc_static_hardcap), alloc_static_end - alloc_static_hardcap);

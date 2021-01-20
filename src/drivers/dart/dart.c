@@ -102,7 +102,7 @@ static bool register_dart_mapper(struct hal_device* device, void** context) {
     dt_node_t* pnode = device->parent->node;
 
     if (strcmp(dt_prop(pnode, "compatible", &len), "dart,t8020") == 0) {
-        void* val = dt_prop(node, "name", &len);
+        __unused void* val = dt_prop(node, "name", &len);
 
         uint32_t* regid = dt_prop(node, "reg", &len);
         if (len != 4) regid = NULL;
@@ -115,7 +115,7 @@ static bool register_dart_mapper(struct hal_device* device, void** context) {
         void* regs = hal_map_registers(device->parent, reg_index, NULL);
         
         if (!regs) {
-            iprintf("Couldn't map MMIO for 8020 dart-mapper: %s\n", val);
+            //iprintf("Couldn't map MMIO for 8020 dart-mapper: %s\n", val);
             return false;
         }
         
@@ -134,7 +134,7 @@ static bool register_dart_mapper(struct hal_device* device, void** context) {
             }
         }
         
-        iprintf("Found 8020 dart-mapper: %s @ %llx\n", val, dart->dart_regbase);
+       // iprintf("Found 8020 dart-mapper: %s @ %llx\n", val, dart->dart_regbase);
 
         *context = dart;
         return true;
@@ -171,7 +171,7 @@ static int dart_service_op(struct hal_device_service* svc, struct hal_device* de
             dart->dart_bypass_base = 0x800000000;
             
             dart->dart_flags &= ~DART_FLAGS_MODE_MASK;
-            dart->dart_flags |= DART_FLAGS_MODE_BYPASS;            
+            dart->dart_flags |= DART_FLAGS_MODE_BYPASS;
             
             return dart_service_op(svc, device, DART_FLUSH_CACHE, NULL, 0, NULL, 0);
         }

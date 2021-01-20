@@ -82,7 +82,6 @@ void pongo_main_task() {
     // Set up AES
     aes_init();
 
-    fb_reset_cursor();
     puts("");
     puts("#==================");
     puts("#");

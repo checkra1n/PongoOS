@@ -124,6 +124,12 @@ extern volatile char gBootFlag;
 #define BOOT_FLAG_HOOK 2
 #define BOOT_FLAG_LINUX 3
 #define BOOT_FLAG_RAW 4
+#define BOOT_FLAG_JUMP 5
+extern uint64_t gBootJumpTo;
+extern uint64_t gBootJumpArgs[4];
+extern uint64_t gBootJumpToReloc;
+extern uint64_t gBootJumpToRelocSize;
+extern uint64_t gBootJumpToRelocFrom;
 
 #define LINUX_DTREE_SIZE 262144
 #define LINUX_CMDLINE_SIZE 4096
@@ -271,6 +277,7 @@ extern void interrupt_associate_context(uint32_t irqno, void* context);
 extern void* interrupt_context(uint32_t irqno);
 extern void* task_interrupt_context();
 extern void* task_current_interrupt_context();
+extern uint64_t gIORVBAR;
 
 typedef struct xnu_pf_range {
     uint64_t va;

@@ -268,10 +268,19 @@ __attribute__((noinline)) void pongo_entry_cached()
 */
 volatile void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t original_image);
 extern uint64_t gPongoSlide;
+uint64_t gIORVBAR;
+uint64_t gBootJumpTo;
+uint64_t gBootJumpArgs[4];
+
+uint64_t gBootJumpToReloc;
+uint64_t gBootJumpToRelocFrom;
+uint64_t gBootJumpToRelocSize;
 
 void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point))
 {
-
+    extern void iorvbar_table();
+    gIORVBAR = (uint64_t) iorvbar_table;
+    
     uint64_t hcr_el2 = 0, hcr_el2_orig = 0;
     if (get_el() == 2) {
         asm volatile("mrs %0, hcr_el2" : "=r"(hcr_el2));
@@ -306,6 +315,17 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
     else if(gBootFlag == BOOT_FLAG_LINUX)
     {
         linux_boot();
+    }
+    else if(gBootFlag == BOOT_FLAG_JUMP)
+    {
+        if (gBootJumpToReloc) {
+            screen_puts("relocating...");
+            extern volatile void smemcpy128(void*,void*,uint32_t);
+            smemcpy128 ((void*)gBootJumpToReloc, (void*)gBootJumpToRelocFrom, gBootJumpToRelocSize/16);
+            screen_puts("done relocating");
+        }
+        
+        ((void (*)(uint64_t,uint64_t,uint64_t,uint64_t))gBootJumpTo)(gBootJumpArgs[0], gBootJumpArgs[1], gBootJumpArgs[2], gBootJumpArgs[3]);
     }
     else
     {

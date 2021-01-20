@@ -250,6 +250,16 @@ static void drd_irq_handle() {
         if (!elements) {
             break;
         }
+
+        cache_invalidate(drd->virtBaseDMA, ((elements * 4) + 0x3f) & ~0x3f);
+        
+        volatile uint32_t* eventbuffer = drd->virtBaseDMA;
+        
+        for (uint32_t i = 0; i < elements; i++) {
+            uint32_t event = eventbuffer[0xfff - i];
+            fiprintf(stderr, "drd event: %x\n", event);
+        }
+        
         drd_reg_write(drd, G_GEVNTCOUNT(0), elements);
     }
 }
@@ -368,7 +378,7 @@ static void drd_bringup(struct drd* drd) {
     }
     
     drd_reg_write64(drd, G_GEVNTADRLO(0), dartBaseDMA);
-    //drd_reg_write(drd, G_GEVNTADRHI(0), (dartBaseDMA >> 32ULL) & 0xffffffff);
+    drd_reg_write(drd, G_GEVNTADRHI(0), (dartBaseDMA >> 32ULL) & 0xffffffff);
     drd_reg_write(drd, G_GEVNTSIZ(0), 0x4000);
     drd_reg_write(drd, G_GEVNTCOUNT(0), 0);
 

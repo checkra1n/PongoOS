@@ -34,7 +34,7 @@ void pongo_autoboot()
         memcpy(loader_xfer_recv_data, &autoboot_block[2], (uint32_t)autoboot_block[1]);
         loader_xfer_recv_count = (uint32_t)autoboot_block[1];
         autoboot_count = loader_xfer_recv_count;
-        phys_force_free(vatophys((uint64_t)autoboot_block), (autoboot_block[1] + 0x20 + 0x3fff) & ~0x3fff);
+        //phys_force_free(vatophys((uint64_t)autoboot_block), (autoboot_block[1] + 0x20 + 0x3fff) & ~0x3fff);
 
         queue_rx_string("modload\nautoboot\n");
 	}

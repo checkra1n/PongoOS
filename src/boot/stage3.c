@@ -131,11 +131,34 @@ void stage3_exit_to_el1_image(void* boot_args, void* boot_entry_point) {
     }
     jump_to_image((uint64_t)gboot_entry_point, (uint64_t)gboot_args);
 }
+extern uint64_t __bss_start[] __asm__("section$start$__DATA$__common"),
+                __bss_end[] __asm__("segment$end$__DATA");
+
+void simple_entry(void* boot_args) {
+    if (__bss_start[0] == 0x746F6F626F747561) {
+        uint32_t autoboot_sz = (uint32_t)(__bss_start[1]);
+        extern volatile void smemcpy128(void*,void*,uint32_t);
+        smemcpy128 ((void*)0x819000000, __bss_start, (autoboot_sz + 64)/16);
+        extern volatile void smemset(void*, uint8_t, uint64_t);
+        smemset(__bss_start, 0, autoboot_sz + 0x20);
+    }
+
+    gboot_args = boot_args;
+    gboot_entry_point = NULL;
+    extern volatile void setup_el1(void * entryp,uint64_t,uint64_t);
+    
+    extern volatile void smemset(void*, uint8_t, uint64_t);
+    smemset(&__bss_start, 0, ((uint64_t)__bss_end) - ((uint64_t)__bss_start));
+
+    extern void cpuinit();
+    cpuinit();
+    
+    extern void main (void);
+    setup_el1(main, 0, (uint64_t)boot_args);
+}
 
 void trampoline_entry(void* boot_image, void* boot_args)
 {
-    extern uint64_t __bss_start[] __asm__("section$start$__DATA$__common"),
-                    __bss_end[] __asm__("segment$end$__DATA");
     if (__bss_start[0] == 0x746F6F626F747561) {
         uint32_t autoboot_sz = (uint32_t)(__bss_start[1]);
         extern volatile void smemcpy128(void*,void*,uint32_t);
