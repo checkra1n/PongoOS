@@ -96,8 +96,10 @@ void loader_main(void *linux_dtb, struct iphone_boot_args *bootargs, uint64_t rv
     if(node) {
         prop = dt_find_prop(linux_dt, node, "reg");
         if(prop)
-            for(i=0; i<prop->size/48; i++)
+            for(i=0; i<prop->size/48; i++) {
+                printf("RVBAR(%d) = %llx\n", i, rvbar + 8 * i);
                 dt_put64be(prop->buf + 48 * i + 16, rvbar + 8 * i);
+            }
     }
 
     printf("Loader complete, relocating kernel...\n");

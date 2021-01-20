@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
     sc.sc.nsects = 1;
     sc.sc.fileoff = 0x4000;
     sc.sc.filesize = pongoimgsz;
-    sc.sc.vmsize = pongoimgsz + (64 * 1024 * 1024); // reserve at least 64M of kerneldata
+    sc.sc.vmsize = pongoimgsz + (128 * 1024 * 1024); // reserve at least 64M of kerneldata
     sc.sc.vmsize += 0x3fff;
     sc.sc.vmsize &= ~0x3fff;
     sc.sc.vmaddr = BASE_ADDR + 0x4000;

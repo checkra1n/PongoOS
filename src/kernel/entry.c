@@ -236,6 +236,17 @@ __attribute__((noinline)) void pongo_entry_cached()
     
     while (gBootFlag)
     {
+        if (gBootFlag == BOOT_FLAG_JUMP) {
+            if (gBootJumpToReloc) {
+                screen_puts("relocating...");
+                extern volatile void smemcpy128(void*,void*,uint32_t);
+                smemcpy128 ((void*)gBootJumpToReloc, (void*)gBootJumpToRelocFrom, gBootJumpToRelocSize/16);
+                screen_puts("done relocating");
+            }
+            
+            screen_puts("Jumping to image...");
+            return;
+        }
         if (gBootFlag == BOOT_FLAG_RAW) {
             screen_fill_basecolor();
             return;
@@ -318,13 +329,6 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
     }
     else if(gBootFlag == BOOT_FLAG_JUMP)
     {
-        if (gBootJumpToReloc) {
-            screen_puts("relocating...");
-            extern volatile void smemcpy128(void*,void*,uint32_t);
-            smemcpy128 ((void*)gBootJumpToReloc, (void*)gBootJumpToRelocFrom, gBootJumpToRelocSize/16);
-            screen_puts("done relocating");
-        }
-        
         ((void (*)(uint64_t,uint64_t,uint64_t,uint64_t))gBootJumpTo)(gBootJumpArgs[0], gBootJumpArgs[1], gBootJumpArgs[2], gBootJumpArgs[3]);
     }
     else

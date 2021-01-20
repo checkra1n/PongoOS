@@ -36,7 +36,7 @@ struct drd {
     uint64_t ausbBulkFabricRegBase;
     uint64_t atcLinkRegBase;
     uint64_t atcRegBase;
-    uint64_t ausbUSB2PhyRegBase;
+    uint64_t atcRegBasePipe;
 
     uint64_t physBaseDMA;
     void* virtBaseDMA;
@@ -58,6 +58,13 @@ __unused static uint32_t atc_reg_read(struct drd* drd, uint32_t offset) {
     uint32_t rv = *(volatile uint32_t *)(drd->atcRegBase + offset);
 #ifdef REG_LOG
     fiprintf(stderr, "atc_reg_read(%x) = %x\n", offset, rv);
+#endif
+    return rv;
+}
+__unused static uint32_t atc3_reg_read(struct drd* drd, uint32_t offset) {
+    uint32_t rv = *(volatile uint32_t *)(drd->atcRegBasePipe + offset);
+#ifdef REG_LOG
+    fiprintf(stderr, "atc3_reg_read(%x) = %x\n", offset, rv);
 #endif
     return rv;
 }
@@ -100,6 +107,12 @@ __unused static void atc_reg_write(struct drd* drd, uint32_t offset, uint32_t va
     fiprintf(stderr, "atc_reg_write(%x) = %x\n", offset, value);
 #endif
     *(volatile uint32_t *)(drd->atcRegBase + offset) = value;
+}
+__unused static void atc3_reg_write(struct drd* drd, uint32_t offset, uint32_t value) {
+#ifdef REG_LOG
+    fiprintf(stderr, "atc3_reg_write(%x) = %x\n", offset, value);
+#endif
+    *(volatile uint32_t *)(drd->atcRegBasePipe + offset) = value;
 }
 __unused static void pipehandler_reg_write(struct drd* drd, uint32_t offset, uint32_t value) {
 #ifdef REG_LOG
@@ -274,7 +287,7 @@ static void drd_irq_task() {
 
 }
 
-static void atc_enable_device(struct drd* drd, bool enable) {
+__unused static void atc_enable_device(struct drd* drd, bool enable) {
     uint32_t reg = 0;
     if (enable) {
         reg = (atc_reg_read(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL) & ~USB_MODE_MASK) | 2;
@@ -287,7 +300,37 @@ static void atc_enable_device(struct drd* drd, bool enable) {
     hal_apply_tunables(drd->atc_device, "tunable-device");
 
 }
-static void atc_bringup(struct drd* drd) {
+
+__unused static void atc_enable_host(struct drd* drd, bool enable) {
+    uint32_t reg = 0;
+    if (enable) {
+        atc_reg_or(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_SIG, VBUS_DETECT_FORCE_VAL | VBUS_DETECT_FORCE_EN | VBUS_VALID_EXT_FORCE_VAL | VBUS_VALID_EXT_FORCE_EN);
+        spin(10 * 1000);
+        atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, ~USB2PHY_SIDDQ);
+        spin(10 * 1000);
+        atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, 0xFFFFFFFC);
+        atc_reg_or(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_SIG, USB2PHY_APB_RESETN);
+        atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_MISC_TUNE, 0x9FFFFFFFLL);
+
+        reg = (atc_reg_read(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL) & ~USB_MODE_MASK) | 2;
+        atc_reg_write(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL, reg);
+
+    } else {
+        spin(5 * 1000);
+        reg = (atc_reg_read(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL) & ~USB_MODE_MASK) | 4;
+        atc_reg_write(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL, reg);
+
+        atc_reg_or(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, 0xb);
+        atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, 0xFFFFFFFB);
+        spin(10);
+        atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_MISC_TUNE, 0x60000000LL);
+
+    }
+    
+    hal_apply_tunables(drd->atc_device, "tunable-host");
+
+}
+__unused static void atc_bringup(struct drd* drd) {
     atc_reg_or(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_SIG, VBUS_DETECT_FORCE_VAL | VBUS_DETECT_FORCE_EN | VBUS_VALID_EXT_FORCE_VAL | VBUS_VALID_EXT_FORCE_EN);
     spin(10 * 1000);
     atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, ~USB2PHY_SIDDQ);
@@ -296,8 +339,6 @@ static void atc_bringup(struct drd* drd) {
     atc_reg_or(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_CTL, USB2PHY_APB_RESETN);
     atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_MISC_TUNE, ~(USB2PHY_REFCLK_GATEOFF | USB2PHY_APBCLK_GATEOFF));
     spin(30);
-    
-    atc_enable_device(drd, true);
 }
 
 __unused static void enable_endpoint(struct drd* drd, uint8_t index) {
@@ -306,7 +347,7 @@ __unused static void enable_endpoint(struct drd* drd, uint8_t index) {
     drd_reg_or(drd, G_DALEPENA, 1 << index);
 }
 
-static void drd_bringup(struct drd* drd) {
+__unused static void drd_bringup(struct drd* drd) {
     uint32_t reg;
 
     pipehandler_reg_and(drd, P_PHY_MUX_SELECT, ~PIPE_CLK_EN);
@@ -435,14 +476,18 @@ static bool register_drd(struct hal_device* device, void* context) {
     }
     
     drd->atcRegBase = (uint64_t)hal_map_registers(drd->atc_device, 0, NULL);
+    drd->atcRegBasePipe = (uint64_t)hal_map_registers(drd->atc_device, 1, NULL);
+
     drd->irq_task = task_create_extended(drd->device->name, drd_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
 
     task_bind_to_irq(drd->irq_task, hal_get_irqno(device,0));
     interrupt_associate_context(hal_get_irqno(device,0), drd);
 
     atc_bringup(drd);
-    
-    drd_bringup(drd);
+    atc_enable_host(drd, false);
+
+    //atc_enable_device(drd, true);
+    //drd_bringup(drd);
 
     USB_DEBUG_PRINT_REGISTERS(drd);
     
