@@ -137,7 +137,6 @@ void serial_disable_rx() {
 void serial_enable_rx() {
     uart_should_drop_rx = 0;
 }
-char uart_irq_driven = 0;
 void serial_init() {
     struct task* irq_task = task_create_extended("uart", uart_main, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
 
@@ -145,7 +144,6 @@ void serial_init() {
     uart_irq = dt_get_u32_prop("uart0", "interrupts");
     serial_disable_rx();
     task_bind_to_irq(irq_task, uart_irq);
-    uart_irq_driven = 0;
     rUCON0 = 0x5885;
     enable_interrupts();
 }
