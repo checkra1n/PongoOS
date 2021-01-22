@@ -1,5 +1,4 @@
 #import <pongo.h>
-#import "i2c.h"
 
 struct i2c_8940x_ctx {
     uint64_t i2c_regbase;
@@ -187,26 +186,13 @@ static int i2c_8940x_service_op(struct hal_device_service* svc, struct hal_devic
 }
 
 static bool i2c_8940x_probe(struct hal_service* svc, struct hal_device* device, void** context) {
-    uint32_t len = 0;
-    dt_node_t* node = device->node;
-    if (node) {
-        void* val = dt_prop(node, "device_type", &len);
-        if (val && strcmp(val, "i2c") == 0) {
-            char* compat = dt_prop(node, "compatible", &len);
-            char* compatend = compat + len;
-            
-            while (compat < compatend) {
-                if (strcmp(compat, "i2c,s5l8940x") == 0) {
-                    if (register_8940x_i2c(device, context)) {
-                        return true;
-                    }
-                    return false;
-                }
-                compat += strlen(compat) + 1;
-            }
+    if (hal_device_is_compatible(device, "i2c,s5l8940x")) {
+        if (register_8940x_i2c(device, context)) {
+            return true;
         }
     }
     return false;
+
 }
 
 static struct hal_service i2c_8940x_svc = {

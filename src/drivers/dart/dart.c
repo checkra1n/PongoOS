@@ -99,9 +99,8 @@ void dart_irq_handler() {
 static bool register_dart_mapper(struct hal_device* device, void** context) {
     uint32_t len = 0;
     dt_node_t* node = device->node;
-    dt_node_t* pnode = device->parent->node;
 
-    if (strcmp(dt_prop(pnode, "compatible", &len), "dart,t8020") == 0) {
+    if (hal_device_is_compatible(device->parent, "dart,t8020")) {
         __unused void* val = dt_prop(node, "name", &len);
 
         uint32_t* regid = dt_prop(node, "reg", &len);

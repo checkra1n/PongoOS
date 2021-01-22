@@ -577,3 +577,22 @@ void hal_init() {
     command_register("lsdev", "prints hal devices tree", lsdev_cmd);
 }
 
+bool hal_device_is_compatible(struct hal_device* device, const char* name) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (!node) return false;
+    
+    char* compat = dt_prop(node, "compatible", &len);
+    if (!compat) {
+        return false;
+    }
+    
+    char* compatend = compat + len;
+    while (compat < compatend) {
+        if (strcmp(compat, name) == 0) {
+            return true;
+        }
+        compat += strlen(compat) + 1;
+    }
+    return false;
+}
