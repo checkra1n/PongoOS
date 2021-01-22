@@ -1,7 +1,6 @@
 #import <pongo.h>
 #import "i2c.h"
 
-
 struct i2c_8940x_ctx {
     uint64_t i2c_regbase;
     struct hal_device* device;
@@ -38,9 +37,7 @@ __unused static void i2c_8940x_reg_or(struct i2c_8940x_ctx* i2c, uint32_t offset
     *(volatile uint32_t *)(i2c->i2c_regbase + offset) |= value;
 }
 
-static void i2c_8940x_init_regs(struct i2c_ctx* ctx) {
-    struct i2c_8940x_ctx* i2c = ctx->context;
-    
+static void i2c_8940x_init_regs(struct i2c_8940x_ctx* i2c) {
     i2c_8940x_reg_write(i2c, 0x1c, 4);
     i2c_8940x_reg_write(i2c, 0x14, 0xAA00040);
     i2c_8940x_reg_write(i2c, 0x18, 0);
@@ -78,9 +75,7 @@ static void i2c_8940x_irq_task() {
 
 }
 
-static bool i2c_8940x_read(struct i2c_ctx* ctx, uint16_t addr, void* data_in, uint16_t size) {
-    struct i2c_8940x_ctx* i2c = ctx->context;
-
+static bool i2c_8940x_read(struct i2c_8940x_ctx* i2c, uint16_t addr, void* data_in, uint16_t size) {
     uint32_t rg = i2c_8940x_reg_read(i2c, 0x2C);
     rg &= 0xFFFF00FF;
     rg |= ((size << 8) & 0xFF00);
@@ -118,8 +113,7 @@ static bool i2c_8940x_read(struct i2c_ctx* ctx, uint16_t addr, void* data_in, ui
     return true;
 }
 
-static bool i2c_8940x_write(struct i2c_ctx* ctx, uint16_t addr, void* data_out, uint16_t size) {
-    struct i2c_8940x_ctx* i2c = ctx->context;
+static bool i2c_8940x_write(struct i2c_8940x_ctx* i2c, uint16_t addr, void* data_out, uint16_t size) {
     uint8_t* data_out_c = data_out;
     
     i2c_8940x_reg_write(i2c, 0, ((addr << 1) & 0xFE) | 0x100);
@@ -130,23 +124,21 @@ static bool i2c_8940x_write(struct i2c_ctx* ctx, uint16_t addr, void* data_out, 
     return true;
 }
 
-static bool i2c_8960x_command_perform(struct i2c_ctx* ctx, struct i2c_cmd* cmd) {
-    struct i2c_8940x_ctx* i2c = ctx->context;
-    
+static bool i2c_8960x_command_perform(struct i2c_8940x_ctx* i2c, struct i2c_cmd* cmd) {
     lock_take(&i2c->i2c_lock);
     
-    i2c_8940x_init_regs(ctx);
+    i2c_8940x_init_regs(i2c);
     
     for (uint16_t i = 0; i < cmd->txno; i++) {
         if (cmd->txes[i].readwrite) {
             // write
-            if (!i2c_8940x_write(ctx, cmd->txes[i].addr, cmd->txes[i].buf, cmd->txes[i].size)) {
+            if (!i2c_8940x_write(i2c, cmd->txes[i].addr, cmd->txes[i].buf, cmd->txes[i].size)) {
                 lock_release(&i2c->i2c_lock);
                 return false;
             }
         } else {
             // read
-            if (!i2c_8940x_read(ctx, cmd->txes[i].addr, cmd->txes[i].buf, cmd->txes[i].size)) {
+            if (!i2c_8940x_read(i2c, cmd->txes[i].addr, cmd->txes[i].buf, cmd->txes[i].size)) {
                 lock_release(&i2c->i2c_lock);
                 return false;
             }
@@ -157,10 +149,6 @@ static bool i2c_8960x_command_perform(struct i2c_ctx* ctx, struct i2c_cmd* cmd) 
     return true;
 }
 
-
-struct i2c_ops i2c_8940x_ops = {
-    .i2c_command_perform = i2c_8960x_command_perform
-};
 
 static bool register_8940x_i2c(struct hal_device* device, void** context) {
     // S5L8940x I2C controller
@@ -188,27 +176,12 @@ static bool register_8940x_i2c(struct hal_device* device, void** context) {
 
 static int i2c_8940x_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     if (method == HAL_METASERVICE_START) {
-
-        /*
-         test i2c by doing a register read on the usb controller's VID
-         */
-
-        struct i2c_cmd* cmd = i2c_cmd_create(2);
-        uint8_t regid = 0x00;
-        i2c_cmd_set_write_tx(cmd, 0, 0x38, &regid, 1);
-        uint32_t readreg = 0;
-        i2c_cmd_set_read_tx(cmd, 1, 0x38, &readreg, 4);
-
-        struct i2c_ctx fake = {0};
-        fake.context = svc->context;
-
-        bool rv = i2c_8960x_command_perform(&fake, cmd);
-        
-        i2c_cmd_destroy(cmd);
-        
-        fiprintf(stderr, "I2C READ: %x (%d)\n", readreg, rv);
-
         return 0;
+    } else if (method == I2C_CMD_PERFORM && data_in && data_in_size == I2C_CMD_PERFORM_SIZE){
+        if (i2c_8960x_command_perform(svc->context, data_in)) {
+            return 0;
+        }
+        return -1;
     }
     return -1;
 }
@@ -225,7 +198,7 @@ static bool i2c_8940x_probe(struct hal_service* svc, struct hal_device* device, 
             while (compat < compatend) {
                 if (strcmp(compat, "i2c,s5l8940x") == 0) {
                     if (register_8940x_i2c(device, context)) {
-                        return i2c_provide_service(device, &i2c_8940x_ops, *context);
+                        return true;
                     }
                     return false;
                 }
@@ -237,7 +210,7 @@ static bool i2c_8940x_probe(struct hal_service* svc, struct hal_device* device, 
 }
 
 static struct hal_service i2c_8940x_svc = {
-    .name = "i2c8940x",
+    .name = "i2c",
     .probe = i2c_8940x_probe,
     .service_op = i2c_8940x_service_op
 };

@@ -82,7 +82,7 @@ void pongo_main_task() {
     // Set up AES
     aes_init();
 
-    // fb_reset_cursor();
+    fb_reset_cursor();
     puts("");
     puts("#==================");
     puts("#");
@@ -109,4 +109,22 @@ void pongo_main_task() {
     hal_issue_recursive_start();
     
     shell_main();
+
+#define TRY_I2C
+#ifdef TRY_I2C
+    /*
+     test i2c by doing a register read on the usb controller's VID
+     */
+
+    struct i2c_cmd* cmd = i2c_cmd_create(2);
+    uint8_t regid = 0x00;
+    i2c_cmd_set_write_tx(cmd, 0, 0x38, &regid, 1);
+    uint32_t readreg = 0;
+    i2c_cmd_set_read_tx(cmd, 1, 0x38, &readreg, 4);
+    
+    bool rv = i2c_cmd_perform(hal_device_by_name("i2c0"), cmd);
+    i2c_cmd_destroy(cmd);
+    
+    fiprintf(stderr, "I2C READ: %x (%d)\n", readreg, rv);
+#endif
 }

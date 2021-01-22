@@ -34,23 +34,6 @@
 #include <strings.h>
 #include <kerninfo.h>
 
-#ifdef PONGO_PRIVATE
-#include "framebuffer/fb.h"
-#include "usb/usb.h"
-#include "dart/dart.h"
-#include "uart/uart.h"
-#include "gpio/gpio.h"
-#include "timer/timer.h"
-#include "xnu/xnu.h"
-#include "tz/tz.h"
-#include "libDER/DER_Encode.h"
-#include "libDER/DER_Decode.h"
-#include "libDER/asn1Types.h"
-#include "libDER/oids.h"
-#include "mipi/mipi.h"
-#include "aes/aes.h"
-#endif
-
 #define DT_KEY_LEN 0x20
 
 extern int service_cmd(const char* name, int cmd_id, void* data_in, size_t in_size, void* data_out, size_t* out_size);
@@ -524,7 +507,23 @@ static inline void flush_tlb(void)
     }
 }
 extern void task_real_unlink(struct task* task);
+
 #include "hal/hal.h"
+#include "framebuffer/fb.h"
+#include "usb/usb.h"
+#include "dart/dart.h"
+#include "uart/uart.h"
+#include "gpio/gpio.h"
+#include "timer/timer.h"
+#include "xnu/xnu.h"
+#include "tz/tz.h"
+#include "libDER/DER_Encode.h"
+#include "libDER/DER_Decode.h"
+#include "libDER/asn1Types.h"
+#include "libDER/oids.h"
+#include "mipi/mipi.h"
+#include "aes/aes.h"
+#include "i2c/i2c.h"
 
 #endif
 
