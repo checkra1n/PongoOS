@@ -62,13 +62,12 @@ __unused static void i2c_8940x_lockunlock(struct i2c_8940x_ctx* i2c, bool lockun
 
 static void i2c_8940x_irq_task() {
     while (1) {
-        fiprintf(stderr, "i2c irq\n");
+        // fiprintf(stderr, "i2c irq\n");
         struct i2c_8940x_ctx* i2c = task_current_interrupt_context();
         i2c_8940x_reg_write(i2c, 0x18, 0);
         i2c->rdreg = i2c_8940x_reg_read(i2c, 0x14);
         i2c_8940x_reg_write(i2c, 0x14, i2c->rdreg);
         event_fire(&i2c->irq_event);
-        
         task_exit_irq();
     }
 
@@ -93,6 +92,9 @@ static bool i2c_8940x_read(struct i2c_8940x_ctx* i2c, uint16_t addr, void* data_
         event_wait_asserted(&i2c->irq_event);
         
         if (i2c->rdreg & 0xA00040) {
+            uint32_t rdreg = i2c_8940x_reg_read(i2c, 0x14);
+            i2c_8940x_reg_write(i2c, 0x14, rdreg);
+            i2c_8940x_reg_write(i2c, 0x10, 0x80000000);
             return false;
         }
 
@@ -116,10 +118,35 @@ static bool i2c_8940x_write(struct i2c_8940x_ctx* i2c, uint16_t addr, void* data
     uint8_t* data_out_c = data_out;
     
     i2c_8940x_reg_write(i2c, 0, ((addr << 1) & 0xFE) | 0x100);
-    for (int i=0; i < size; i++) {
+    
+    i2c_8940x_lockunlock(i2c, true);
+    for (uint32_t i=0; i < size; i++) {
+        if (i && !(i & 0xF)) {
+            // fifo depth is not too great
+            i2c_8940x_lockunlock(i2c, false);
+            
+            while (1) {
+                disable_interrupts();
+                i2c_8940x_reg_write(i2c, 0x18, 0x8800040);
+                i2c->rdreg = 0;
+                event_wait_asserted(&i2c->irq_event);
+                if (i2c->rdreg & 0x800040) {
+                    uint32_t rdreg = i2c_8940x_reg_read(i2c, 0x14);
+                    i2c_8940x_reg_write(i2c, 0x14, rdreg);
+                    i2c_8940x_reg_write(i2c, 0x10, 0x80000000);
+                    return false;
+                }
+                if (i2c->rdreg & 0x08000000) {
+                    // tx queue space available
+                    break;
+                }
+            }
+
+            i2c_8940x_lockunlock(i2c, true);
+        }
         i2c_8940x_reg_write(i2c, 0, data_out_c[i] | (i+1 == size ? 0x200 : 0));
     }
-    
+    i2c_8940x_lockunlock(i2c, false);
     return true;
 }
 

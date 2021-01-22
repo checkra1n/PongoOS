@@ -39,8 +39,9 @@ __unused static bool cd3217_reg_read(struct cd3217_ctx* cd, uint8_t regid, void*
     bool rv = i2c_cmd_perform(cd->bus, cd->i2ccmd);
     
     lock_release(&cd->cd3217_lock);
-
+#ifdef CD3217_REG_LOG
     iprintf("cd3217_reg_read(%s:%x, reg %x, %x bytes): %d\n", cd->bus->name, cd->i2c_addr, regid, outsz, rv);
+#endif
     return rv;
 }
 
@@ -52,8 +53,23 @@ __unused static bool cd3217_reg_write(struct cd3217_ctx* cd, uint8_t regid, void
     bool rv = i2c_cmd_perform(cd->bus, cd->i2ccmd);
     
     lock_release(&cd->cd3217_lock);
+#ifdef CD3217_REG_LOG
     iprintf("cd3217_reg_write(%s:%x, reg %x, %x bytes): %d\n", cd->bus->name, cd->i2c_addr, regid, insz, rv);
+#endif
+    return rv;
+}
 
+
+static bool cd3217_enter_system_power_state(struct cd3217_ctx* cd, uint8_t p_state) {
+    if (p_state > 5) {
+        panic("cd3217: invalid pstate requested\n");
+    }
+    
+    bool rv = cd3217_reg_write(cd, 0x20, &p_state, 1);
+    if (!rv) {
+        iprintf("cd3217: couldn't enter power state\n");
+    }
+    
     return rv;
 }
 
@@ -97,9 +113,13 @@ static int cd3217_service_op(struct hal_device_service* svc, struct hal_device* 
         if (!success) panic("cd3217: couldn't fetch VID");
         success = cd3217_reg_read(cd, 1, &deviceID, 4);
         if (!success) panic("cd3217: couldn't fetch DID");
+        uint64_t cd3217_uid[2];
+        success = cd3217_reg_read(cd, 5, cd3217_uid, 16);
+        if (!success) panic("cd3217: couldn't fetch UID");
+                                  
+        iprintf("cd3217 device found (%s:%x)! uid: %016llx%016llx, pid = %x, vid = %x\n", cd->bus->name, cd->i2c_addr, cd3217_uid[0], cd3217_uid[1], vendorID, deviceID);
         
-        iprintf("cd3217 device found (%s:%x)! pid = %x, vid = %x\n", cd->bus->name, cd->i2c_addr, vendorID, deviceID);
-        
+        cd3217_enter_system_power_state(cd, 0);
         return 0;
     }
     return -1;

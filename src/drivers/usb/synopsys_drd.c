@@ -485,7 +485,7 @@ static bool register_drd(struct hal_device* device, void* context) {
     drd->atcRegBase = (uint64_t)hal_map_registers(drd->atc_device, 0, NULL);
     drd->atcRegBasePipe = (uint64_t)hal_map_registers(drd->atc_device, 1, NULL);
 
-    drd->irq_task = task_create_extended(drd->device->name, drd_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
+    drd->irq_task = task_create_extended(&drd->device->name[4], drd_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
 
     task_bind_to_irq(drd->irq_task, hal_get_irqno(device,0));
     interrupt_associate_context(hal_get_irqno(device,0), drd);
