@@ -52,3 +52,4 @@ bool i2c_provide_service(struct hal_device* device, struct i2c_ops* ops, void* c
     hal_associate_service(device, &i2c_svc, ctx);
     return true;
 }
+

@@ -66,6 +66,8 @@ struct hal_device {
     
     uint32_t phandle;
     uint32_t flags;
+    
+    struct hal_service* ioprovider;
 };
 #define DEVICE_HAS_BEEN_PROBED_EARLY 1
 
@@ -111,6 +113,7 @@ extern int32_t hal_get_clock_gate_id(struct hal_device* device, uint32_t index);
 extern int32_t hal_get_clock_gate_size(struct hal_device* device);
 extern int hal_apply_tunables(struct hal_device* device, const char* tunable_dt_entry_name);
 extern void hal_associate_service(struct hal_device* device, struct hal_service* svc, void* ctx);
+extern void hal_device_set_io_provider(struct hal_device* device, struct hal_service* svc);
 
 #define HAL_LOAD_XNU_DTREE 0
 #define HAL_LOAD_DTREE_CHILDREN 1

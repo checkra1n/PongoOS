@@ -286,7 +286,7 @@ static void drd_irq_task() {
     }
 
 }
-bool is_in_host_mode = false; // default value
+bool is_in_host_mode = true; // default value
 
 __unused static void atc_enable_device(struct drd* drd, bool enable) {
     uint32_t reg = 0;
