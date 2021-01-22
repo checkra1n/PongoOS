@@ -345,7 +345,14 @@ void hal_register_hal_service(struct hal_service* svc) {
     hal_service_head = svc;
     lock_release(&hal_service_lock);
 }
-
+void hal_associate_service(struct hal_device* device, struct hal_service* svc, void* ctx) {
+    struct hal_device_service* hds = malloc(sizeof(struct hal_device_service));
+    hds->name = svc->name;
+    hds->service = svc;
+    hds->context = ctx;
+    hds->next = device->services;
+    device->services = hds;
+}
 void hal_probe_hal_services(struct hal_device* device, bool isEarlyProbe) {
     lock_take(&hal_service_lock);
     
@@ -374,12 +381,7 @@ void hal_probe_hal_services(struct hal_device* device, bool isEarlyProbe) {
         if (svc->probe) {
             void* ctx = NULL;
             if (svc->probe(svc, device, &ctx)) {
-                struct hal_device_service* hds = malloc(sizeof(struct hal_device_service));
-                hds->name = svc->name;
-                hds->service = svc;
-                hds->context = ctx;
-                hds->next = device->services;
-                device->services = hds;
+                hal_associate_service(device, svc, ctx);
             }
         }
         svc = svc->next;

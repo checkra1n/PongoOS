@@ -110,7 +110,7 @@ extern uint64_t hal_map_physical_mmio(uint64_t regbase, uint64_t size);
 extern int32_t hal_get_clock_gate_id(struct hal_device* device, uint32_t index);
 extern int32_t hal_get_clock_gate_size(struct hal_device* device);
 extern int hal_apply_tunables(struct hal_device* device, const char* tunable_dt_entry_name);
-
+extern void hal_associate_service(struct hal_device* device, struct hal_service* svc, void* ctx);
 
 #define HAL_LOAD_XNU_DTREE 0
 #define HAL_LOAD_DTREE_CHILDREN 1

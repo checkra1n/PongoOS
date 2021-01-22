@@ -119,6 +119,7 @@ out:
 char soc_name[9] = {};
 uint32_t socnum = 0x0;
 void (*sep_boot_hook)(void);
+extern void quiesce_core();
 
 __attribute__((noinline)) void pongo_entry_cached()
 {
@@ -226,7 +227,7 @@ __attribute__((noinline)) void pongo_entry_cached()
             // current task was not to be scheduled or we got volountarily yielded
         }
         if (should_wfe) {
-            __asm__("wfe");
+            quiesce_core();
         }
     }
     timer_disable();

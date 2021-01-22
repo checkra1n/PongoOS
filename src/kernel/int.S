@@ -781,51 +781,49 @@ _set_timer_ctr:
     isb
     ret
 
-#if 0
-.globl _set_l2c_err_sts
-.globl _get_l2c_err_sts
-.globl _set_l2c_err_adr
-.globl _get_l2c_err_adr
-.globl _set_l2c_err_inf
-.globl _get_l2c_err_inf
-.globl _set_lsu_err_sts
-.globl _get_lsu_err_sts
+.global _quiesce_core
+_quiesce_core:
+    sub sp, sp, #0x120
 
-// TODO: this is whack, and some were probably copied wrong...
-_set_l2c_err_sts:
-    .long 0xd51bf800
-    isb sy
+    stp x10, x11, [sp]
+    stp x12, x13, [sp,#0x10]
+    stp x14, x15, [sp,#0x20]
+
+    stp x18, x19, [sp,#0x30]
+    stp x20, x21, [sp,#0x40]
+    stp x22, x23, [sp,#0x50]
+    stp x24, x25, [sp,#0x60]
+    stp x26, x27, [sp,#0x70]
+    stp x28, x29, [sp,#0x80]
+    stp x30, x1, [sp, #0x90]
+
+    stp d8, d9, [sp,#0xa0]
+    stp d10, d11, [sp,#0xc0]
+    stp d12, d13, [sp,#0xe0]
+    stp d14, d15, [sp,#0x100]
+
+    wfi
+    cmp x30, xzr
+    b.ne 1f // no need to restore registers since we didn't lose state.
+
+
+    ldp x10, x11, [sp]
+    ldp x12, x13, [sp,#0x10]
+    ldp x14, x15, [sp,#0x20]
+
+    ldp x18, x19, [sp,#0x30]
+    ldp x20, x21, [sp,#0x40]
+    ldp x22, x23, [sp,#0x50]
+    ldp x24, x25, [sp,#0x60]
+    ldp x26, x27, [sp,#0x70]
+    ldp x28, x29, [sp,#0x80]
+    ldp x30, x1, [sp, #0x90]
+
+    ldp d8, d9, [sp,#0xa0]
+    ldp d10, d11, [sp,#0xc0]
+    ldp d12, d13, [sp,#0xe0]
+    ldp d14, d15, [sp,#0x100]
+
+1:
+    add sp, sp, #0x120
     ret
-_get_l2c_err_sts:
-    .long 0xd53bf800
-    isb sy
-    ret
-_set_l2c_err_adr:
-    .long 0xd51bf000
-    isb sy
-    ret
-_get_l2c_err_adr:
-    .long 0xd53bf900
-    isb sy
-    ret
-_set_l2c_err_inf:
-    .long 0xd51bf000
-    isb sy
-    ret
-_get_l2c_err_inf:
-    .long 0xd53bf900
-    isb sy
-    ret
-set_lsu_err_sts:
-    .long 0xd51bf000
-    isb sy
-    ret
-get_lsu_err_sts:
-    .long 0xd53bf000
-    isb sy
-    ret
-.align 3
-spsel_err:
-.ascii "task_switch/load called on exception stack"
-.align 3
-#endif

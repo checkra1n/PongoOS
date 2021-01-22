@@ -286,6 +286,7 @@ static void drd_irq_task() {
     }
 
 }
+bool is_in_host_mode = false; // default value
 
 __unused static void atc_enable_device(struct drd* drd, bool enable) {
     uint32_t reg = 0;
@@ -298,7 +299,7 @@ __unused static void atc_enable_device(struct drd* drd, bool enable) {
     atc_reg_write(drd, AUSBC_CFG_USB2PHY_BLK_USB_CTL, reg);
     
     hal_apply_tunables(drd->atc_device, "tunable-device");
-
+    is_in_host_mode = false;
 }
 
 __unused static void atc_enable_host(struct drd* drd, bool enable) {
@@ -326,7 +327,8 @@ __unused static void atc_enable_host(struct drd* drd, bool enable) {
         atc_reg_and(drd, AUSBC_CFG_USB2PHY_BLK_USB2PHY_MISC_TUNE, 0x60000000LL);
 
     }
-    
+    is_in_host_mode = true;
+
     hal_apply_tunables(drd->atc_device, "tunable-host");
 
 }
@@ -398,44 +400,49 @@ __unused static void drd_bringup(struct drd* drd) {
         ;;
     }
     
-    drd_reg_write(drd, G_GCTL, GCTL_DSBLCLKGTNG | GCTL_PRTCAPDIR(true) | GCTL_PWRDNSCALE(2));
-    drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17));
+    if (is_in_host_mode) {
+        hal_apply_tunables(drd->device, "tunables");
+        atc_enable_host(drd, true);
+    } else {
+        drd_reg_write(drd, G_GCTL, GCTL_DSBLCLKGTNG | GCTL_PRTCAPDIR(true) | GCTL_PWRDNSCALE(2));
+        drd_reg_write(drd, G_DCFG, DCFG_HIGH_SPEED | (8 << 17));
 
-    drd_reg_write(drd, G_GSBUSCFG0, (1 << 6));
-    
-    drd->virtBaseDMA = alloc_contig(0x4000);
-    drd->physBaseDMA = vatophys_static((void*)drd->virtBaseDMA);
-    
-    uint64_t dartBaseDMA = 0;
-    size_t dartBaseDMASize = 8;
-    
-    if (hal_invoke_service_op(drd->mapper, "dart", DART_BYPASS_CONVERT_PTR, &drd->physBaseDMA, 8, &dartBaseDMA, &dartBaseDMASize))
-        panic("failed to translate address to DART address");
-    
-    uint32_t eventc = (drd_reg_read(drd, G_GHWPARAMS(1)) >> 15) & 0x3f;
+        drd_reg_write(drd, G_GSBUSCFG0, (1 << 6));
+        
+        drd->virtBaseDMA = alloc_contig(0x4000);
+        drd->physBaseDMA = vatophys_static((void*)drd->virtBaseDMA);
+        
+        uint64_t dartBaseDMA = 0;
+        size_t dartBaseDMASize = 8;
+        
+        if (hal_invoke_service_op(drd->mapper, "dart", DART_BYPASS_CONVERT_PTR, &drd->physBaseDMA, 8, &dartBaseDMA, &dartBaseDMASize))
+            panic("failed to translate address to DART address");
+        
+        uint32_t eventc = (drd_reg_read(drd, G_GHWPARAMS(1)) >> 15) & 0x3f;
 
-    for (uint32_t i=0; i < eventc; i++) {
-        drd_reg_write(drd, G_GEVNTSIZ(i), 0);
+        for (uint32_t i=0; i < eventc; i++) {
+            drd_reg_write(drd, G_GEVNTSIZ(i), 0);
+        }
+        
+        drd_reg_write64(drd, G_GEVNTADRLO(0), dartBaseDMA);
+        drd_reg_write(drd, G_GEVNTADRHI(0), (dartBaseDMA >> 32ULL) & 0xffffffff);
+        drd_reg_write(drd, G_GEVNTSIZ(0), 0x4000);
+        drd_reg_write(drd, G_GEVNTCOUNT(0), 0);
+
+        dartBaseDMA += 0x4000;
+        
+        drd_device_generic_command(drd, 4, dartBaseDMA & 0xffffffff);
+        drd_device_generic_command(drd, 5, (dartBaseDMA >> 32ULL) & 0xffffffff);
+
+        
+        enable_endpoint(drd, ENDPOINT_EP0_OUT);
+
+        drd_reg_or(drd, G_DEVTEN, DEVTEN_USBRSTEVTEN|DEVTEN_DISSCONNEVTEN|DEVTEN_CONNECTDONEEVTEN|DEVTEN_ULSTCNGEN|DEVTEN_WKUPEVTEN|DEVTEN_ERRTICERREVTEN|DEVTEN_VENDEVTSTRCVDEN);
+
+        hal_apply_tunables(drd->device, "tunables");
+
+        drd_reg_write(drd, G_DCTL, DCTL_RUN_STOP);
     }
-    
-    drd_reg_write64(drd, G_GEVNTADRLO(0), dartBaseDMA);
-    drd_reg_write(drd, G_GEVNTADRHI(0), (dartBaseDMA >> 32ULL) & 0xffffffff);
-    drd_reg_write(drd, G_GEVNTSIZ(0), 0x4000);
-    drd_reg_write(drd, G_GEVNTCOUNT(0), 0);
-
-    dartBaseDMA += 0x4000;
-    
-    drd_device_generic_command(drd, 4, dartBaseDMA & 0xffffffff);
-    drd_device_generic_command(drd, 5, (dartBaseDMA >> 32ULL) & 0xffffffff);
-
-    
-    enable_endpoint(drd, ENDPOINT_EP0_OUT);
-
-    drd_reg_or(drd, G_DEVTEN, DEVTEN_USBRSTEVTEN|DEVTEN_DISSCONNEVTEN|DEVTEN_CONNECTDONEEVTEN|DEVTEN_ULSTCNGEN|DEVTEN_WKUPEVTEN|DEVTEN_ERRTICERREVTEN|DEVTEN_VENDEVTSTRCVDEN);
-
-    hal_apply_tunables(drd->device, "tunables");
-
-    drd_reg_write(drd, G_DCTL, DCTL_RUN_STOP);
 }
 
 
@@ -484,10 +491,13 @@ static bool register_drd(struct hal_device* device, void* context) {
     interrupt_associate_context(hal_get_irqno(device,0), drd);
 
     atc_bringup(drd);
-    atc_enable_host(drd, false);
+    if (is_in_host_mode) {
+        atc_enable_host(drd, true);
+    } else {
+        atc_enable_device(drd, true);
+    }
 
-    //atc_enable_device(drd, true);
-    //drd_bringup(drd);
+    drd_bringup(drd);
 
     USB_DEBUG_PRINT_REGISTERS(drd);
     
