@@ -17,21 +17,21 @@ struct i2c_8940x_ctx {
 __unused static uint32_t i2c_8940x_reg_read(struct i2c_8940x_ctx* i2c, uint32_t offset) {
     uint32_t rv = *(volatile uint32_t *)(i2c->i2c_regbase + offset);
 #ifdef REG_LOG
-    fiprintf(stderr, "i2c_8940x_8940x_reg_read(%x) = %x\n", offset, rv);
+    fiprintf(stderr, "i2c_8940x_8940x_reg_read(%x) == %x\n", offset, rv);
 #endif
     return rv;
 }
 
 __unused static void i2c_8940x_reg_write(struct i2c_8940x_ctx* i2c, uint32_t offset, uint32_t value) {
 #ifdef REG_LOG
-    fiprintf(stderr, "i2c_8940x_8940x_reg_write(%x) = %x\n", offset, rv);
+    fiprintf(stderr, "i2c_8940x_8940x_reg_write(%x) = %x\n", offset, value);
 #endif
     *(volatile uint32_t *)(i2c->i2c_regbase + offset) = value;
 }
 
 __unused static void i2c_8940x_reg_or(struct i2c_8940x_ctx* i2c, uint32_t offset, uint32_t value) {
 #ifdef REG_LOG
-    fiprintf(stderr, "i2c_8940x_reg_or(%x) = %x\n", offset, rv);
+    fiprintf(stderr, "i2c_8940x_reg_or(%x) |= %x\n", offset, value);
 #endif
     *(volatile uint32_t *)(i2c->i2c_regbase + offset) |= value;
 }

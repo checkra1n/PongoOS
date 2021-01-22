@@ -19,6 +19,9 @@
                  port-number                      0x00000001
                  name                             hpm0
  --------------------------------------------------------------------------------------------------------------------------------
+ 
+ https://www.ti.com/lit/ug/slvuan1a/slvuan1a.pdf
+ 
  */
 
 struct cd3217_ctx {
@@ -26,33 +29,52 @@ struct cd3217_ctx {
     struct hal_device* device;
     
     lock cd3217_lock;
-    
+    lock cd3217_reg_lock;
+
     uint16_t i2c_addr;
     struct i2c_cmd* i2ccmd;
 };
 
-__unused static bool cd3217_reg_read(struct cd3217_ctx* cd, uint8_t regid, void* readout, uint16_t outsz) {
-    lock_take(&cd->cd3217_lock);
+__unused static bool cd3217_reg_read(struct cd3217_ctx* cd, uint8_t regid, void* readout, uint8_t outsz) {
+    uint8_t buf[64] = {0};
+
+    lock_take(&cd->cd3217_reg_lock);
     
     i2c_cmd_set_write_tx(cd->i2ccmd, 0, cd->i2c_addr, &regid, 1);
-    i2c_cmd_set_read_tx(cd->i2ccmd, 1, cd->i2c_addr, readout, outsz);
+    i2c_cmd_set_read_tx(cd->i2ccmd, 1, cd->i2c_addr, buf, 64);
     bool rv = i2c_cmd_perform(cd->bus, cd->i2ccmd);
     
-    lock_release(&cd->cd3217_lock);
+    if (rv) {
+        if (buf[0] > outsz) {
+            buf[0] = outsz;
+        }
+        memcpy(readout, &buf[1], buf[0]);
+    }
+    
+    lock_release(&cd->cd3217_reg_lock);
 #ifdef CD3217_REG_LOG
-    iprintf("cd3217_reg_read(%s:%x, reg %x, %x bytes): %d\n", cd->bus->name, cd->i2c_addr, regid, outsz, rv);
+    iprintf("cd3217_reg_read(%s:%x, reg %x, %x bytes): %d (%d)\n", cd->bus->name, cd->i2c_addr, regid, outsz, rv, buf[0]);
 #endif
     return rv;
 }
 
-__unused static bool cd3217_reg_write(struct cd3217_ctx* cd, uint8_t regid, void* readout, uint16_t insz) {
-    lock_take(&cd->cd3217_lock);
+__unused static bool cd3217_reg_write(struct cd3217_ctx* cd, uint8_t regid, const void* readout, uint8_t insz) {
+    uint8_t buf[64] = {0};
+
+    lock_take(&cd->cd3217_reg_lock);
+    
+    if (insz > 63) {
+        panic("cd3217: OOB write");
+    }
+    
+    buf[0] = insz;
+    memcpy(&buf[1], readout, insz);
     
     i2c_cmd_set_write_tx(cd->i2ccmd, 0, cd->i2c_addr, &regid, 1);
-    i2c_cmd_set_write_tx(cd->i2ccmd, 1, cd->i2c_addr, readout, insz);
+    i2c_cmd_set_write_tx(cd->i2ccmd, 1, cd->i2c_addr, buf, insz + 1);
     bool rv = i2c_cmd_perform(cd->bus, cd->i2ccmd);
     
-    lock_release(&cd->cd3217_lock);
+    lock_release(&cd->cd3217_reg_lock);
 #ifdef CD3217_REG_LOG
     iprintf("cd3217_reg_write(%s:%x, reg %x, %x bytes): %d\n", cd->bus->name, cd->i2c_addr, regid, insz, rv);
 #endif
@@ -60,7 +82,7 @@ __unused static bool cd3217_reg_write(struct cd3217_ctx* cd, uint8_t regid, void
 }
 
 
-static bool cd3217_enter_system_power_state(struct cd3217_ctx* cd, uint8_t p_state) {
+__unused static bool cd3217_enter_system_power_state(struct cd3217_ctx* cd, uint8_t p_state) {
     if (p_state > 5) {
         panic("cd3217: invalid pstate requested\n");
     }
@@ -71,6 +93,51 @@ static bool cd3217_enter_system_power_state(struct cd3217_ctx* cd, uint8_t p_sta
     }
     
     return rv;
+}
+
+__unused static int8_t cd3217_get_system_power_state(struct cd3217_ctx* cd) {
+    uint8_t p_state = 0;
+    if (! cd3217_reg_read(cd, 0x20, &p_state, 1)) {
+        iprintf("cd3217: couldn't get power state\n");
+        return -1;
+    }
+    
+    return p_state;
+}
+
+__unused static bool cd3217_issue_cmd(struct cd3217_ctx* cd, const char* cmdname, void* data_in, uint8_t data_in_sz, void* data_out, uint8_t data_out_sz) {
+    bool status;
+    lock_take(&cd->cd3217_lock);
+
+    if (data_in_sz) {
+        status = cd3217_reg_write(cd, 9, data_in, data_in_sz);
+        if (!status) goto failout;
+    }
+
+    status = cd3217_reg_write(cd, 8, cmdname, 4);
+    if (!status) goto failout;
+
+    uint32_t rdcmd = -1;
+    
+    while (1) {
+        status = cd3217_reg_read(cd, 8, &rdcmd, 4);
+        if (!status || rdcmd == 0x444d4321) goto failout;
+        if (!rdcmd) {
+            break; // successfully ran
+        }
+    }
+
+    if (data_out_sz) {
+        status = cd3217_reg_read(cd, 9, data_out, data_out_sz);
+        if (!status) goto failout;
+    }
+
+    lock_release(&cd->cd3217_lock);
+    return true;
+
+failout:
+    lock_release(&cd->cd3217_lock);
+    return false;
 }
 
 static bool cd3217_register(struct hal_device* device, void** context) {
@@ -106,20 +173,52 @@ static bool cd3217_register(struct hal_device* device, void** context) {
 static int cd3217_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     if (method == HAL_METASERVICE_START) {
         struct cd3217_ctx* cd = (struct cd3217_ctx*)(svc->context);
-        
+                
         uint32_t vendorID = 0, deviceID = 0;
         bool success = false;
         success = cd3217_reg_read(cd, 0, &vendorID, 4);
         if (!success) panic("cd3217: couldn't fetch VID");
         success = cd3217_reg_read(cd, 1, &deviceID, 4);
         if (!success) panic("cd3217: couldn't fetch DID");
-        uint64_t cd3217_uid[2];
+        uint32_t cd3217_uid[4];
         success = cd3217_reg_read(cd, 5, cd3217_uid, 16);
         if (!success) panic("cd3217: couldn't fetch UID");
-                                  
-        iprintf("cd3217 device found (%s:%x)! uid: %016llx%016llx, pid = %x, vid = %x\n", cd->bus->name, cd->i2c_addr, cd3217_uid[0], cd3217_uid[1], vendorID, deviceID);
-        
+        char sts[5];
+        bzero(sts, 5);
+        success = cd3217_reg_read(cd, 3, sts, 4);
+        if (!success) panic("cd3217: couldn't fetch mode");
+
+        uint32_t bsts = cd3217_get_system_power_state(cd);
+
         cd3217_enter_system_power_state(cd, 0);
+
+        if (bsts == 7) {
+            uint16_t win = 0;
+            success = cd3217_issue_cmd(cd, "SSPS", &win, 2, NULL, 0);
+            if (!success) {
+                iprintf("SSPS fail!\n");
+            } else {
+                iprintf("SSPS success\n");
+            }
+        }
+        
+        iprintf("cd3217 device found (%s:%x)! uid: %x, pid = %x, vid = %x, mode = %s, pstate = %d\n", cd->bus->name, cd->i2c_addr, cd3217_uid[0], vendorID, deviceID, sts, bsts);
+
+        
+        success = cd3217_issue_cmd(cd, "SWDF", NULL, 0, NULL, 0);
+        if (!success) {
+            iprintf("SWDF fail!\n");
+        } else {
+            iprintf("SWDF success\n");
+        }
+        
+        success = cd3217_issue_cmd(cd, "SWsr", NULL, 0, NULL, 0);
+        if (!success) {
+            iprintf("SWsr fail!\n");
+        } else {
+            iprintf("SWsr success\n");
+        }
+
         return 0;
     }
     return -1;

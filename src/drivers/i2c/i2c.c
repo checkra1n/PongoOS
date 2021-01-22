@@ -11,8 +11,8 @@ void i2c_cmd_destroy(struct i2c_cmd* cmd) {
     free(cmd);
 }
 
-void i2c_cmd_set_write_tx(struct i2c_cmd* cmd, uint16_t index, uint16_t address, void* base, uint16_t size) {
-    cmd->txes[index].buf = base;
+void i2c_cmd_set_write_tx(struct i2c_cmd* cmd, uint16_t index, uint16_t address, const void* base, uint16_t size) {
+    cmd->txes[index].buf = (void*)base;
     cmd->txes[index].size = size;
     cmd->txes[index].addr = address;
     cmd->txes[index].readwrite = true;
