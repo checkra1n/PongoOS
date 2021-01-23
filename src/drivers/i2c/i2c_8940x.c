@@ -192,9 +192,7 @@ static bool register_8940x_i2c(struct hal_device* device, void** context) {
     hal_invoke_service_op(i2c->device, "hal", HAL_DEVICE_CLOCK_GATE_ON, NULL, 0, NULL, NULL); // turn on I2C controller
 
     i2c->irq_task = task_create_extended(name, i2c_8940x_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
-    interrupt_associate_context(hal_get_irqno(device,0), i2c);
-    task_bind_to_irq(i2c->irq_task, hal_get_irqno(device,0));
-
+    
     *context = i2c;
     
     return true;
@@ -202,6 +200,11 @@ static bool register_8940x_i2c(struct hal_device* device, void** context) {
 
 static int i2c_8940x_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     if (method == HAL_METASERVICE_START) {
+        struct i2c_8940x_ctx* i2c = svc->context;
+        
+        if (!hal_register_interrupt(device, i2c->irq_task, 0, i2c))
+            panic("i2c_8940x_start: hal_register_interrupt failed!");
+
         return 0;
     } else if (method == I2C_CMD_PERFORM && data_in && data_in_size == I2C_CMD_PERFORM_SIZE){
         if (i2c_8960x_command_perform(svc->context, data_in)) {

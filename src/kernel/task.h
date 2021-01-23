@@ -128,6 +128,9 @@ struct task { // a task is a thread-like execution environment, executing under 
     lock task_lock;
     struct proc* proc;
     struct task* proc_task_list_next; // only tasks created with proc_create_task are queued here
+    struct task* irq_continue;
+    void* irq_context;
+    struct hal_device* irq_controller;
 };
 extern void task_alloc_fast_stacks(struct task* task);
 

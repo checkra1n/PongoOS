@@ -116,6 +116,16 @@ extern void hal_associate_service(struct hal_device* device, struct hal_service*
 extern void hal_device_set_io_provider(struct hal_device* device, struct hal_service* svc);
 extern bool hal_device_is_compatible(struct hal_device* device, const char* name);
 
+extern bool hal_unmask_interrupt(struct hal_device* device, uint32_t reg);
+extern bool hal_mask_interrupt(struct hal_device* device, uint32_t reg);
+extern bool hal_ack_interrupt(struct hal_device* device, uint32_t reg);
+extern bool hal_register_interrupt(struct hal_device* device, struct task* task, uint32_t irqno, void* context);
+
+extern bool hal_controller_unmask_interrupt(struct hal_device* device, uint32_t reg);
+extern bool hal_controller_mask_interrupt(struct hal_device* device, uint32_t reg);
+extern bool hal_controller_ack_interrupt(struct hal_device* device, uint32_t reg);
+extern bool hal_controller_register_interrupt(struct hal_device* device, struct task* task, uint32_t irqno, void* context);
+
 #define HAL_LOAD_XNU_DTREE 0
 #define HAL_LOAD_DTREE_CHILDREN 1
 #define HAL_CREATE_CHILD_DEVICE 2
@@ -125,7 +135,23 @@ extern bool hal_device_is_compatible(struct hal_device* device, const char* name
 #define HAL_DEVICE_CLOCK_GATE_ON 6
 #define HAL_DEVICE_CLOCK_GATE_OFF 7
 
+
+// Abstract IRQ interface
+
+#define IRQ_REGISTER 0
+#define IRQ_MASK 1
+#define IRQ_UNMASK 2
+#define IRQ_ACK 3
+
+struct irq_register_args {
+    struct task* task;
+    uint32_t irq;
+    void* context;
+};
+
+
 #define METASERVICE_TAG_MASK 0xf0000000
 
 #define HAL_METASERVICE_TAG  0x80000000
 #define HAL_METASERVICE_START (HAL_METASERVICE_TAG | 0x1)
+

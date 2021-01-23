@@ -164,7 +164,6 @@ static bool cd3217_register(struct hal_device* device, void** context) {
     cdctx->device = device;
     cdctx->i2ccmd = i2c_cmd_create(2);
     cdctx->i2c_addr = i2c_addr;
-    
     *context = cdctx;
 
     return true;
@@ -173,7 +172,7 @@ static bool cd3217_register(struct hal_device* device, void** context) {
 static int cd3217_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     if (method == HAL_METASERVICE_START) {
         struct cd3217_ctx* cd = (struct cd3217_ctx*)(svc->context);
-                
+        
         uint32_t vendorID = 0, deviceID = 0;
         bool success = false;
         success = cd3217_reg_read(cd, 0, &vendorID, 4);
@@ -232,14 +231,49 @@ static bool cd3217_probe(struct hal_service* svc, struct hal_device* device, voi
     }
     return false;
 }
+struct hpm_ctx {
+    struct task* irq_task;
+};
+
+static void hpm_irq_main() {
+    while (1) {
+        fiprintf(stderr, "hpm irq\n");
+        task_exit_irq();
+    }
+}
+static int hpm_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
+    if (method == HAL_METASERVICE_START) {
+        struct hpm_ctx* hpm = (struct hpm_ctx*)(svc->context);
+        if (!hal_register_interrupt(device, hpm->irq_task, 0, hpm))
+            panic("hpm_start: hal_register_interrupt failed!");
+        
+        return 0;
+    }
+    return -1;
+}
+static bool hpm_probe(struct hal_service* svc, struct hal_device* device, void** context) {
+    if (hal_device_is_compatible(device, "usbc,manager")) {
+        struct hpm_ctx* ctx = calloc(sizeof(struct hpm_ctx), 1);
+        ctx->irq_task = task_create_extended("hpm", hpm_irq_main, TASK_IRQ_HANDLER | TASK_PREEMPT, 0);
+        *context = ctx;
+        return true;
+    }
+    return false;
+}
 
 static struct hal_service cd3217_svc = {
     .name = "cd3217",
     .probe = cd3217_probe,
     .service_op = cd3217_service_op
 };
+static struct hal_service hpm_svc = {
+    .name = "hpm",
+    .probe = hpm_probe,
+    .service_op = hpm_service_op
+};
 
 static void cd3217_init(struct driver* driver) {
+    hal_register_hal_service(&hpm_svc);
     hal_register_hal_service(&cd3217_svc);
 }
 

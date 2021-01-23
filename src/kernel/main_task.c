@@ -54,9 +54,6 @@ void pongo_main_task() {
     // Setup HAL
     hal_init();
 
-    // Setup GPIO Base
-    gpio_early_init();
-
     // Setup serial pinmux
     serial_pinmux_init();
 
@@ -82,7 +79,7 @@ void pongo_main_task() {
     // Set up AES
     aes_init();
 
-    fb_reset_cursor();
+    //fb_reset_cursor();
     puts("");
     puts("#==================");
     puts("#");

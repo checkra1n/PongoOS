@@ -270,17 +270,84 @@ int32_t hal_get_clock_gate_size(struct hal_device* device) {
     dt_prop(node, "clock-gates", &len);
     return len / 4;
 }
-
+extern struct hal_device* gInterruptDevice;
 int32_t hal_get_irqno(struct hal_device* device, uint32_t index) {
     uint32_t len = 0;
     dt_node_t* node = device->node;
     if (!node) return -1;
 
+#if 0
+    int32_t* pval = dt_prop(node, "interrupt-parent", &len);
+    int32_t irqparent = *pval;
+    
+    if (hal_get_phandle_device(irqparent) != gInterruptDevice) {
+        panic("hal_get_irqno: only supported for AIC interrupt children");
+    }
+#endif
+    
     int32_t* val = dt_prop(node, "interrupts", &len);
     if (!val || index * 4 >= len) {
         return -1;
     }
     return val[index];
+}
+bool hal_unmask_interrupt(struct hal_device* device, uint32_t reg) {
+    if (hal_invoke_service_op(device, "irq", IRQ_UNMASK, &reg, 4, NULL, 0)) {
+        return false;
+    }
+    return true;
+}
+bool hal_mask_interrupt(struct hal_device* device, uint32_t reg) {
+    if (hal_invoke_service_op(device, "irq", IRQ_MASK, &reg, 4, NULL, 0)) {
+        return false;
+    }
+    return true;
+}
+bool hal_ack_interrupt(struct hal_device* device, uint32_t reg) {
+    if (hal_invoke_service_op(device, "irq", IRQ_ACK, &reg, 4, NULL, 0)) {
+        return false;
+    }
+    return true;
+}
+bool hal_register_interrupt(struct hal_device* device, struct task* task, uint32_t irqno, void* context) {
+    struct irq_register_args args = {
+        .irq = irqno,
+        .task = task,
+        .context = context
+    };
+    if (hal_invoke_service_op(device, "irq", IRQ_REGISTER, &args, sizeof(args), NULL, 0)) {
+        return false;
+    }
+    return true;
+}
+bool hal_controller_unmask_interrupt(struct hal_device* device, uint32_t reg) {
+    if (hal_invoke_service_op(device, "irqctrl", IRQ_UNMASK, &reg, 4, NULL, 0)) {
+        return false;
+    }
+    return true;
+}
+bool hal_controller_mask_interrupt(struct hal_device* device, uint32_t reg) {
+    if (hal_invoke_service_op(device, "irqctrl", IRQ_MASK, &reg, 4, NULL, 0)) {
+        return false;
+    }
+    return true;
+}
+bool hal_controller_ack_interrupt(struct hal_device* device, uint32_t reg) {
+    if (hal_invoke_service_op(device, "irqctrl", IRQ_ACK, &reg, 4, NULL, 0)) {
+        return false;
+    }
+    return true;
+}
+bool hal_controller_register_interrupt(struct hal_device* device, struct task* task, uint32_t irqno, void* context) {
+    struct irq_register_args args = {
+        .irq = irqno,
+        .task = task,
+        .context = context
+    };
+    if (hal_invoke_service_op(device, "irqctrl", IRQ_REGISTER, &args, sizeof(args), NULL, 0)) {
+        return false;
+    }
+    return true;
 }
 
 void * hal_map_registers(struct hal_device* device, uint32_t index, size_t *size) {
@@ -328,7 +395,10 @@ int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint3
     while (svc) {
         if (strcmp(svc_name, svc->name) == 0 || metaservice_lookup) {
             if (svc->service->service_op) {
-                return svc->service->service_op(svc, device, method, data_in, data_in_size, data_out, data_out_size);
+                int rv = svc->service->service_op(svc, device, method, data_in, data_in_size, data_out, data_out_size);
+                if (!metaservice_lookup) {
+                    return rv;
+                }
             }
         }
         svc = svc->next;
@@ -507,6 +577,65 @@ struct hal_device* hal_get_phandle_device(uint32_t phandle) {
     return NULL;
 }
 
+static bool irq_probe(struct hal_service* svc, struct hal_device* device, void** context) {
+    uint32_t len = 0;
+    dt_node_t* node = device->node;
+    if (node) {
+        int32_t* pval = dt_prop(node, "interrupt-parent", &len);
+        if (pval) {
+            int32_t irqparent = *pval;
+            *context = (void*)(uintptr_t)irqparent;
+            return true;
+        }
+    }
+    return false;
+}
+
+static int irq_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
+    struct hal_device* irq_ctrl_parent = hal_get_phandle_device((uint32_t) svc->context);
+    if (irq_ctrl_parent) {
+        if (method == IRQ_MASK && data_in_size == 4) {
+            uint32_t irq_index = *(uint32_t*)data_in;
+            int32_t irq_number = hal_get_irqno(device, irq_index);
+            if (irq_number < 0) {
+                return -1;
+            }
+            
+            return hal_controller_mask_interrupt(irq_ctrl_parent, irq_number) == 0 ? true : false; // redirect request to interrupt controller
+        } else if (method == IRQ_UNMASK && data_in_size == 4) {
+            uint32_t irq_index = *(uint32_t*)data_in;
+            int32_t irq_number = hal_get_irqno(device, irq_index);
+            if (irq_number < 0) {
+                return -1;
+            }
+            return hal_controller_unmask_interrupt(irq_ctrl_parent, irq_number) == 0 ? true : false; // redirect request to interrupt controller
+        } else if (method == IRQ_ACK) {
+            uint32_t irq_index = *(uint32_t*)data_in;
+            int32_t irq_number = hal_get_irqno(device, irq_index);
+            if (irq_number < 0) {
+                return -1;
+            }
+            return hal_controller_ack_interrupt(irq_ctrl_parent, irq_number) == 0 ? true : false; // redirect request to interrupt controller
+        } else if (method == IRQ_REGISTER && data_in_size == sizeof(struct irq_register_args)) {
+            struct irq_register_args* args = data_in;
+            
+            int32_t irq_number = hal_get_irqno(device, args->irq);
+            if (irq_number < 0) {
+                return -1;
+            }
+            return hal_controller_register_interrupt(irq_ctrl_parent, args->task, irq_number, args->context) == 0 ? true : false; // redirect request to interrupt controller
+        }
+    }
+    return -1;
+}
+
+static struct hal_service irq_svc = {
+    .name = "irq",
+    .probe = irq_probe,
+    .service_op = irq_service_op
+};
+
+
 void hal_init() {
     gPlatform = NULL;
     gRootDevice = &_gRootDevice;
@@ -557,6 +686,7 @@ void hal_init() {
     }
     hal_init_late();
     hal_register_hal_service(&hal_service);
+    hal_register_hal_service(&irq_svc);
 
     hal_probe_hal_services(gRootDevice, true);
     size_t ssz = 8;

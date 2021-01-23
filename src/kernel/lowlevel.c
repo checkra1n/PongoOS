@@ -617,6 +617,8 @@ void* interrupt_context(uint32_t irqno) {
     return irqctx[irqno];
 }
 
+struct hal_device* gInterruptDevice;
+
 static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, void** context) {
     uint32_t len = 0;
     dt_node_t* node = device->node;
@@ -624,6 +626,8 @@ static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, v
         void* val = dt_prop(node, "name", &len);
         if (val && strcmp(val, "aic") == 0) {
             if (gInterruptBase) panic("multiple aic probes! unsupported.");
+            
+            gInterruptDevice = device;
             
             gInterruptBase = (uint64_t) hal_map_registers(device, 0, NULL);
 
@@ -636,7 +640,7 @@ static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, v
             
             return true;
         } else
-        if (val && strcmp(val, "pmgr") == 0) {
+        if (val && strcmp(val, "pmgr") == 0) { // move this to its own driver
             if (gPMGRreg) panic("multiple pmgr probes! unsupported.");
 
             void* pmreg = dt_prop(device->node, "reg", &gPMGRreglen);
@@ -654,26 +658,41 @@ static bool lowlevel_probe(struct hal_service* svc, struct hal_device* device, v
             }
             gPMGRBase = gPMGRreg[0].addr;
 
-            return true;
+            return false;
         } else
-        if (val && strcmp(val, "wdt") == 0) {
+        if (val && strcmp(val, "wdt") == 0) { // move this to its own driver
             if (gWDTBase) panic("multiple wdt probes! unsupported.");
             
             gWDTBase = (uint64_t) hal_map_registers(device, 0, NULL);
             command_register("reset", "resets the device", wdt_reset);
             command_register("crash", "branches to an invalid address", (void*)0x41414141);
-            return true;
+            return false;
         }
     }
     return false;
 }
 
 static int lowlevel_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
+    if (method == IRQ_MASK && data_in_size == 4) {
+        mask_interrupt(*(uint32_t*)data_in);
+        return 0;
+    } else if (method == IRQ_UNMASK && data_in_size == 4) {
+        unmask_interrupt(*(uint32_t*)data_in);
+        return 0;
+    } else if (method == IRQ_ACK) {
+        return 0;
+    } else if (method == IRQ_REGISTER && data_in_size == sizeof(struct irq_register_args)) {
+        struct irq_register_args* args = data_in;
+        uint32_t irq_number = args->irq;
+        interrupt_associate_context(irq_number, args->context);
+        task_bind_to_irq(args->task, irq_number);
+        return 0;
+    }
     return -1;
 }
 
 static struct hal_service lowlevel_svc = {
-    .name = "lowlevel",
+    .name = "irqctrl",
     .probe = lowlevel_probe,
     .service_op = lowlevel_service_op,
     .flags = SERVICE_FLAGS_EARLY_PROBE

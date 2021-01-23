@@ -217,6 +217,7 @@ extern void proc_release(struct proc*);
 extern struct task* proc_create_task(struct proc* proc, void* entrypoint);
 #define PROC_NO_VM 1
 extern void fb_reset_cursor();
+extern void task_exit_irq_continuation(struct task* continue_to_task, struct hal_device* spoofed_irq_controller, uint32_t spoofed_irq_type, void* spoofed_context);
 extern uint32_t loader_xfer_recv_size;
 extern void resize_loader_xfer_data(uint32_t newsz);
 extern bool vm_fault(struct vm_space* vmspace, uint64_t vma, vm_protect_t fault_prot);
@@ -385,7 +386,7 @@ extern void event_wait_asserted(struct event* ev);
 extern void event_wait(struct event* ev);
 extern void event_fire(struct event* ev);
 extern void* alloc_static(uint32_t size); // memory returned by this will be added to the xnu static region, thus will persist after xnu boot
-extern void task_bind_to_irq(struct task* task, int irq);
+extern void task_bind_to_irq(struct task* task, uint32_t irq);
 extern struct event command_handler_iter;
 
 #ifdef memset
@@ -437,7 +438,7 @@ extern void* phystokv(uint64_t paddr);
 extern void cache_invalidate(void *address, size_t size);
 extern void cache_clean_and_invalidate(void *address, size_t size);
 extern void cache_clean(void *address, size_t size);
-extern void register_irq_handler(uint16_t irq_v, struct task* irq_handler);
+extern void register_irq_handler(uint32_t irq_v, struct task* irq_handler);
 extern uint64_t device_clock_by_id(uint32_t id);
 extern uint64_t device_clock_by_name(const char *name);
 extern void clock_gate(uint64_t addr, char val);
@@ -513,7 +514,6 @@ extern void task_real_unlink(struct task* task);
 #include "usb/usb.h"
 #include "dart/dart.h"
 #include "uart/uart.h"
-#include "gpio/gpio.h"
 #include "timer/timer.h"
 #include "xnu/xnu.h"
 #include "tz/tz.h"

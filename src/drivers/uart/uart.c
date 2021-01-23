@@ -127,6 +127,9 @@ void serial_pinmux_init() {
     // Pinmux debug UART on ATV4K
     // This will also pinmux uart0 on iPad Pro 2G
     if((strcmp(soc_name, "t8011") == 0)) {
+        struct hal_device* gpio_dev = hal_device_by_name("gpio");
+        uint64_t gGpioBase = (uint64_t) hal_map_registers(gpio_dev, 0, NULL);
+
         rT8011TX = UART_TX_MUX;
         rT8011RX = UART_RX_MUX;
     }

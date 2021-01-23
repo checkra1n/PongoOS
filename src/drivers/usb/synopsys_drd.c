@@ -487,9 +487,6 @@ static bool register_drd(struct hal_device* device, void* context) {
 
     drd->irq_task = task_create_extended(&drd->device->name[4], drd_irq_task, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
 
-    task_bind_to_irq(drd->irq_task, hal_get_irqno(device,0));
-    interrupt_associate_context(hal_get_irqno(device,0), drd);
-
     atc_bringup(drd);
     if (is_in_host_mode) {
         atc_enable_host(drd, true);
@@ -505,7 +502,13 @@ static bool register_drd(struct hal_device* device, void* context) {
 }
 static int drd_service_op(struct hal_device_service* svc, struct hal_device* device, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size) {
     if (method == HAL_METASERVICE_START) {
-        register_drd(device, svc->context);
+        struct drd* drd = svc->context;
+
+        register_drd(device, drd);
+        
+        task_bind_to_irq(drd->irq_task, hal_get_irqno(drd->device,0));
+        interrupt_associate_context(hal_get_irqno(drd->device,0), drd);
+
         return 0;
     }
     return -1;

@@ -63,7 +63,7 @@ void task_timer_fired() {
 extern struct task** irqvecs;
 extern uint32_t irq_count;
 
-void register_irq_handler(uint16_t irq_v, struct task* irq_handler)
+void register_irq_handler(uint32_t irq_v, struct task* irq_handler)
 {
     if (irq_v >= irq_count) panic("invalid irq");
     
@@ -200,14 +200,14 @@ retry:;
     for(int i = 0; i < ntasks; ++i)
     {
         task_info_t *t = &tasks_copy[i];
-        iprintf(" | %7s | task %d | runcnt = %llx | flags = %s, %s\n", t->name[0] ? t->name : "unknown", t->pid, t->runcnt, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
+        iprintf(" | %13s | task %d | runcnt = %llx | flags = %s, %s\n", t->name[0] ? t->name : "unknown", t->pid, t->runcnt, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
     }
     iprintf("=+=    IRQ Handlers    ===\n");
     for(int i = 0; i < nirq; ++i)
     {
         task_info_t *t = &irq_copy[i];
         char* nm = t->name[0] ? t->name : "unknown";
-        iprintf(" | %7s (%d) | runcnt: %lld | irq: %d | irqcnt: %llu | flags: %s, %s\n", nm, t->pid, t->runcnt, i, t->irq_count, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
+        iprintf(" | %13s (%d) | runcnt: %lld | irq: %d | irqcnt: %llu | flags: %s, %s\n", nm, t->pid, t->runcnt, i, t->irq_count, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
     }
     iprintf("=+=   Loaded modules   ===\n");
     extern void pongo_module_print_list();
@@ -223,8 +223,10 @@ void task_irq_teardown() {
         }
     }
 }
+extern struct hal_device* gInterruptDevice;
 void* task_current_interrupt_context() {
-    return interrupt_context(task_current()->irq_type);
+    struct task* irqh = task_current();
+    return irqh->irq_context;
 }
 __attribute__((noinline)) void task_switch_irq(struct task* new)
 {
@@ -247,23 +249,38 @@ __attribute__((noinline)) void task_switch_irq(struct task* new)
     }
     new->irq_ret = NULL;
     if (new->flags & TASK_MASK_NEXT_IRQ) new->flags &= ~TASK_MASK_NEXT_IRQ;
-    else unmask_interrupt(new->irq_type); // re-arm IRQ
+    else {
+        if (!new->irq_controller || new->irq_controller == gInterruptDevice) { // fastpath
+            unmask_interrupt(new->irq_type);
+        } else {
+            hal_controller_unmask_interrupt(new->irq_controller, new->irq_type); // re-arm IRQ
+        }
+    }
     served_irqs++;
+    
+    struct task* continuation = new->irq_continue;
+    if (continuation) {
+        new->irq_continue = NULL;
+        new->irq_context = NULL;
+        new->irq_controller = NULL;
+        return task_switch_irq(continuation);
+    }
 }
-__attribute__((noinline)) void task_irq_dispatch(uint32_t intr) {
+__attribute__((noinline)) void task_irq_dispatch(uint32_t intr) { // AIC irq dispatch
     if (intr > irq_count) {
-        panic("unmask_interrupt: irqno out of bounds (%d > %d)", intr, irq_count);
+        panic("task_irq_dispatch: irqno out of bounds (%d > %d)", intr, irq_count);
     }
     struct task* irq_handler = irqvecs[intr];
     if (irq_handler) {
+        irq_handler->irq_controller = gInterruptDevice; // AIC
         irq_handler->irq_type = intr;
+        irq_handler->irq_context = interrupt_context(intr);
         task_switch_irq(irq_handler);
     } else {
         fiprintf(stderr, "couldn't find irq handler for %x\n", intr);
         panic("task_irq_dispatch");
     }
 }
-
 extern struct task sched_task;
 extern uint32_t preempt_ctr;
 void task_yield_preemption() {
@@ -603,7 +620,7 @@ struct task* task_create_extended(const char* name, void (*entry)(), int task_ty
 
     return task;
 }
-void task_bind_to_irq(struct task* task, int irq) {
+void task_bind_to_irq(struct task* task, uint32_t irq) {
     disable_interrupts();
     register_irq_handler(irq, task);
     unmask_interrupt(irq);
@@ -651,9 +668,15 @@ void task_exit_irq()
     if (task_current()->flags & TASK_PREEMPT) {
         disable_interrupts();
         if (!(task_current()->flags & TASK_LINKED)) panic("task_exit_irq on unlinked preempt irq handler?");
-        task_unlink(task_current());
         if (task_current()->flags & TASK_MASK_NEXT_IRQ) task_current()->flags &= ~TASK_MASK_NEXT_IRQ;
-        else unmask_interrupt(task_current()->irq_type); // re-arm IRQ
+        else {
+            if (!task_current()->irq_controller || task_current()->irq_controller == gInterruptDevice) {
+                unmask_interrupt(task_current()->irq_type);
+            } else {
+                hal_controller_unmask_interrupt(task_current()->irq_controller, task_current()->irq_type); // re-arm IRQ
+            }
+        }
+        task_unlink(task_current());
         if (dis_int_count != 1) {
             panic("irq handler yielded with interrupts held");
         }
@@ -663,6 +686,21 @@ void task_exit_irq()
     if (!task_current()->irq_ret) panic("task_exit_irq must be invoked from enabled irq context");
     _task_switch(task_current()->irq_ret);
 }
+void task_exit_irq_continuation(struct task* continue_to_task, struct hal_device* spoofed_irq_controller, uint32_t spoofed_irq_type, void* spoofed_context) {
+    if (task_current()->flags & TASK_PREEMPT) {
+        panic("task_irq_continuation must be invoked on cooperative IRQ handlers only!");
+    }
+    
+    continue_to_task->irq_controller = spoofed_irq_controller;
+    continue_to_task->irq_type = spoofed_irq_type;
+    continue_to_task->irq_context = spoofed_context;
+    task_current()->irq_continue = continue_to_task;
+    
+    if (!(task_current()->flags & TASK_IRQ_HANDLER))  return task_yield();
+    if (!task_current()->irq_ret) panic("task_exit_irq must be invoked from enabled irq context");
+    _task_switch(task_current()->irq_ret);
+}
+
 extern uint64_t dis_int_count;
 void task_switch(struct task* new)
 {
