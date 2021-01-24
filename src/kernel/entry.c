@@ -192,7 +192,6 @@ __attribute__((noinline)) void pongo_entry_cached()
     
     void pongo_main_task();
     task_register(&pongo_task, pongo_main_task);
-    task_link(&pongo_task);
     
     /*
         Set up FIQ timer
