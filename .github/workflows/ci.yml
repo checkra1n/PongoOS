@@ -18,19 +18,22 @@ jobs:
           sudo apt-key adv --fetch-keys https://assets.checkra.in/debian/archive.key
           sudo apt-get update
           sudo apt-get install -y ld64 cctools-strip
+      - name: Voodoo magic
+        id: voodoo
+        uses: actions/cache@v2
+        env:
+          cache-name: cache
+        with:
+          key: cache
+          path: .
       - name: Checkout repository
+        if: steps.voodoo.outputs.cache-hit != 'true'
         uses: actions/checkout@v2
         with:
           submodules: true
-      - name: Voodoo magic
-        uses: actions/cache@v2
-        env:
-          cache-name: cache-newlib
-        with:
-          key: newlib
-          path: |
-            newlib/aarch64-none-darwin
-            newlib/build
+      - name: Update repository
+        if: steps.voodoo.outputs.cache-hit == 'true'
+        run: git pull && git submodule update --recursive
       - name: Compile
         run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make all
       - name: Archive
