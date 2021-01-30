@@ -22,13 +22,11 @@ jobs:
         id: voodoo
         uses: actions/cache@v2
         env:
-          cache-name: test
+          cache-name: repocache
         with:
-          key: test
+          key: repocache
           path: |
             **
-      - name: debug
-        run: pwd && ls -la
       - name: Checkout repository
         if: steps.voodoo.outputs.cache-hit != 'true'
         uses: actions/checkout@v2
