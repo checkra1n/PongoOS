@@ -42,14 +42,13 @@ endif
 endif
 
 PONGO_VERSION           := 2.4.5-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
-ROOT                    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-SRC                     := $(ROOT)/src
-AUX                     := $(ROOT)/tools
-DEP                     := $(ROOT)/newlib
+SRC                     := src
+AUX                     := tools
+DEP                     := newlib
 LIB                     := $(DEP)/aarch64-none-darwin
-INC                     := $(ROOT)/include
-BUILD                   := $(ROOT)/build
-RA1N                    := $(ROOT)/checkra1n/kpf
+INC                     := include
+BUILD                   := build
+RA1N                    := checkra1n/kpf
 
 # General options
 EMBEDDED_LD_FLAGS       ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
