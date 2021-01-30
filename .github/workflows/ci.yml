@@ -26,6 +26,8 @@ jobs:
         with:
           key: cache
           path: .
+      - name: debug
+        run: pwd && ls -la
       - name: Checkout repository
         if: steps.voodoo.outputs.cache-hit != 'true'
         uses: actions/checkout@v2
