@@ -110,11 +110,14 @@ $(BUILD)/vmacho: $(AUX)/vmacho.c | $(BUILD)
 $(BUILD):
 	mkdir -p $@
 
-$(LIB)/lib/libc.a: always
+$(DEP)/Makefile:
+	git submodule update --init --recursive
+
+$(LIB)/lib/libc.a: always | $(DEP)/Makefile
 	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) all
 
 clean:
 	rm -rf $(BUILD)
 
-distclean: | clean
+distclean: | clean $(DEP)/Makefile
 	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) distclean
