@@ -25,7 +25,8 @@ jobs:
           cache-name: test
         with:
           key: test
-          path: **
+          path: |
+            **
       - name: debug
         run: pwd && ls -la
       - name: Checkout repository
