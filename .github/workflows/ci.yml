@@ -22,12 +22,12 @@ jobs:
         id: voodoo
         uses: actions/cache@v2
         env:
-          cache-name: cache
+          cache-name: test
         with:
-          key: cache
-          path: .
+          key: test
+          path: **
       - name: debug
-        run: pwd && ls -la && tar -tvf /home/runner/work/_temp/*/cache.tzst
+        run: pwd && ls -la
       - name: Checkout repository
         if: steps.voodoo.outputs.cache-hit != 'true'
         uses: actions/checkout@v2
