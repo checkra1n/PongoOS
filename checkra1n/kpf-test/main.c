@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2020 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #undef panic
 #include <dirent.h>
@@ -42,6 +42,11 @@
 #include <mach/mach.h>
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+#   include <pthread.h>
+#   include <libkern/OSCacheControl.h>
+#endif
 
 #define SWAP32(x) (((x & 0xff000000) >> 24) | ((x & 0xff0000) >> 8) | ((x & 0xff00) << 8) | ((x & 0xff) << 24))
 
@@ -123,11 +128,15 @@ void invalidate_icache(void)
     {
         if(jits[i].addr)
         {
+#if TARGET_OS_OSX
+            sys_icache_invalidate(jits[i].addr, jits[i].size);
+#else
             register uint64_t addr __asm__("x0") = (uint64_t)jits[i].addr;
             register uint64_t size __asm__("x1") = (uint64_t)jits[i].size;
             register uint32_t selector __asm__("w3") = 0;
             register uint32_t trap_no __asm__("w16") = 0x80000000;
             __asm__ volatile("svc 0x80" :: "r"(addr), "r"(size), "r"(selector), "r"(trap_no));
+#endif
         }
     }
 }
@@ -142,22 +151,33 @@ void* jit_alloc(size_t count, size_t size)
         exit(-1);
     }
 
-    // No MAP_JIT, I guess...
-    void *mem = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+    int prot  = PROT_READ | PROT_WRITE;
+    int flags = MAP_ANON | MAP_PRIVATE;
+#if TARGET_OS_OSX
+    prot  |= PROT_EXEC;
+    flags |= MAP_JIT;
+#endif
+    void *mem = mmap(NULL, len, prot, flags, -1, 0);
     if(mem == MAP_FAILED)
     {
         fprintf(stderr, "mmap(JIT): %s\n", strerror(errno));
         exit(-1);
     }
 
+#if TARGET_OS_OSX
+    pthread_jit_write_protect_np(0);
+#endif
+
     bzero(mem, len);
 
+#if !TARGET_OS_OSX
     kern_return_t ret = mach_vm_protect(mach_task_self(), (mach_vm_address_t)mem, len, 0, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
     if(ret != KERN_SUCCESS)
     {
         fprintf(stderr, "mach_vm_protect(JIT): %s\n", mach_error_string(ret));
         exit(-1);
     }
+#endif
 
     for(uint32_t i = 0; i < NUM_JIT; ++i)
     {
