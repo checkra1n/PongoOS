@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2020 checkra1n team
+ * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -372,9 +372,113 @@ static void __attribute__((noreturn)) process_kernel(int fd)
     exit(0);
 }
 
+// Consider the per-process file descriptor limit before touching this.
+// Last I checked, it was at 256. We keep 2 file pipe ends for each process,
+// 3 temp ones that we close after forking, 3 for std[in|out|err], and 1 for
+// the dir handle. Probably some more by dyld and whatnot.
+#define NUM_PROC 16
+
+typedef struct
+{
+    char *file;
+    pid_t pid;
+    int fdout;
+    int fderr;
+} child_t;
+
+static const char *color_red    = "\e[1;91m";
+static const char *color_yellow = "\e[1;93m";
+static const char *color_blue   = "\e[1;96m";
+static const char *color_reset  = "\e[0m";
+
+// 4 = full stdout, stderr and exit codes of all children
+// 3 = full stderr and exit codes of all children
+// 2 = only exit codes of children
+// 1 = only errornous exit codes of children
+// 0 = only things that should never happen
+static int verbose = 3;
+
+static int copy_output(int *fdin, int fdout, FILE *f)
+{
+    if(*fdin == -1)
+    {
+        return 0;
+    }
+    if(fflush(f) != 0)
+    {
+        fprintf(stderr, "fflush: %s\n", strerror(errno));
+        return -1;
+    }
+    char buf[0x1000];
+    while(1)
+    {
+        ssize_t s = read(*fdin, buf, sizeof(buf));
+        if(s < 0)
+        {
+            fprintf(stderr, "read: %s\n", strerror(errno));
+            return -1;
+        }
+        if(s == 0)
+        {
+            break;
+        }
+        ssize_t w = 0;
+        while(w < s)
+        {
+            ssize_t r = write(fdout, buf + w, s - w);
+            if(r <= 0)
+            {
+                fprintf(stderr, "write: %s\n", strerror(errno));
+                return -1;
+            }
+            w += r;
+        }
+    }
+    close(*fdin);
+    *fdin = -1;
+    return 0;
+}
+
+static int wait_for_child(child_t *children, size_t *num_bad, child_t **slot)
+{
+    int retval = 0;
+    pid_t pid = wait(&retval);
+    for(size_t i = 0; i < NUM_PROC; ++i)
+    {
+        child_t *child = &children[i];
+        if(child->pid == pid)
+        {
+            int r;
+            child->pid = 0;
+            r = copy_output(&child->fdout, STDOUT_FILENO, stdout);
+            if(r != 0) return r;
+            fputs(color_yellow, stderr);
+            r = copy_output(&child->fderr, STDERR_FILENO, stderr);
+            fputs(color_reset, stderr);
+            if(r != 0) return r;
+            if(verbose >= 2 || (verbose >= 1 && retval != 0))
+            {
+                printf("%s%s: %d%s\n", retval == 0 ? color_blue : color_red, child->file, retval, color_reset);
+            }
+            free(child->file);
+            child->file = NULL;
+            if(retval != 0)
+            {
+                ++*num_bad;
+            }
+            if(slot)
+            {
+                *slot = child;
+            }
+            return 0;
+        }
+    }
+    fprintf(stderr, "wait: %d, %s\n", pid, strerror(errno));
+    return -1;
+}
+
 int main(int argc, const char **argv)
 {
-    int verbose = 1;
     int aoff = 1;
     for(; aoff < argc; ++aoff)
     {
@@ -384,6 +488,12 @@ int main(int argc, const char **argv)
             char c = argv[aoff][i];
             switch(c)
             {
+                case 'n':
+                    color_red    = "";
+                    color_yellow = "";
+                    color_blue   = "";
+                    color_reset  = "";
+                    break;
                 case 'q':
                     --verbose;
                     break;
@@ -398,7 +508,7 @@ int main(int argc, const char **argv)
     }
     if(argc - aoff != 1)
     {
-        fprintf(stderr, "Usage: %s [-qv] [file | dir]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-nqv] [file | dir]\n", argv[0]);
         return -1;
     }
     int fd = open(argv[aoff], O_RDONLY);
@@ -417,6 +527,12 @@ int main(int argc, const char **argv)
     {
         case S_IFDIR:
             {
+                child_t children[NUM_PROC] = {};
+                for(size_t i = 0; i < NUM_PROC; ++i)
+                {
+                    children[i].fdout = -1;
+                    children[i].fderr = -1;
+                }
                 size_t num_bad = 0;
                 DIR *dir = fdopendir(fd);
                 struct dirent *ent;
@@ -424,65 +540,127 @@ int main(int argc, const char **argv)
                 {
                     if(ent->d_type == DT_REG || ent->d_type == DT_LNK)
                     {
+                        child_t *slot = NULL;
+                        for(size_t i = 0; i < NUM_PROC; ++i)
+                        {
+                            if(children[i].pid == 0)
+                            {
+                                slot = &children[i];
+                                break;
+                            }
+                        }
+                        if(!slot)
+                        {
+                            int r = wait_for_child(children, &num_bad, &slot);
+                            if(r != 0)
+                            {
+                                return r;
+                            }
+                        }
                         int kfd = openat(fd, ent->d_name, O_RDONLY);
                         if(kfd == -1)
                         {
                             fprintf(stderr, "open(%s): %s\n", ent->d_name, strerror(errno));
                             return -1;
                         }
+                        int fdout[2];
+                        int fderr[2];
+                        if(verbose < 4)
+                        {
+                            fdout[0] = fdout[1] = -1;
+                        }
+                        else if(pipe(fdout) != 0)
+                        {
+                            fprintf(stderr, "pipe(fdout): %s\n", strerror(errno));
+                            return -1;
+                        }
+                        if(verbose < 3)
+                        {
+                            fderr[0] = fderr[1] = -1;
+                        }
+                        else if(pipe(fderr) != 0)
+                        {
+                            fprintf(stderr, "pipe(fderr): %s\n", strerror(errno));
+                            return -1;
+                        }
                         pid_t pid = fork();
                         if(pid == 0)
                         {
-                            if(verbose < 2)
+                            for(size_t i = 0; i < NUM_PROC; ++i)
                             {
-                                int f = open("/dev/null", O_WRONLY);
-                                if(f == -1)
+                                if(children[i].fdout != -1) close(children[i].fdout);
+                                if(children[i].fderr != -1) close(children[i].fderr);
+                            }
+                            if(fdout[0] != -1) close(fdout[0]);
+                            if(fderr[0] != -1) close(fderr[0]);
+                            if(fdout[1] == -1)
+                            {
+                                fdout[1] = open("/dev/null", O_WRONLY);
+                                if(fdout[1] == -1)
                                 {
                                     fprintf(stderr, "open(/dev/null): %s\n", strerror(errno));
                                     exit(-1);
                                 }
-                                if(dup2(f, STDOUT_FILENO) == -1)
+                            }
+                            if(fderr[1] == -1)
+                            {
+                                fderr[1] = open("/dev/null", O_WRONLY);
+                                if(fderr[1] == -1)
                                 {
-                                    fprintf(stderr, "dup2(stdout): %s\n", strerror(errno));
+                                    fprintf(stderr, "open(/dev/null): %s\n", strerror(errno));
                                     exit(-1);
                                 }
-                                close(f);
-                                if(verbose < 1)
-                                {
-                                    if(dup2(STDOUT_FILENO, STDERR_FILENO) == -1)
-                                    {
-                                        fprintf(stderr, "dup2(stderr): %s\n", strerror(errno));
-                                        exit(-1);
-                                    }
-                                }
                             }
+                            if(dup2(fdout[1], STDOUT_FILENO) == -1)
+                            {
+                                fprintf(stderr, "dup2(stdout): %s\n", strerror(errno));
+                                exit(-1);
+                            }
+                            if(dup2(fderr[1], STDERR_FILENO) == -1)
+                            {
+                                fprintf(stderr, "dup2(stdout): %s\n", strerror(errno));
+                                exit(-1);
+                            }
+                            close(fdout[1]);
+                            close(fderr[1]);
                             process_kernel(kfd);
+                            __builtin_unreachable();
                         }
                         close(kfd);
-                        int retval = 0;
-                        pid_t wpid = waitpid(pid, &retval, 0);
-                        if(wpid != pid)
-                        {
-                            fprintf(stderr, "waitpid: %s\n", strerror(errno));
-                            return -1;
-                        }
-                        printf("%s: %d\n", ent->d_name, retval);
-                        if(retval != 0)
-                        {
-                            ++num_bad;
-                        }
+                        if(fdout[1] != -1) close(fdout[1]);
+                        if(fderr[1] != -1) close(fderr[1]);
+                        slot->pid = pid;
+                        slot->fdout = fdout[0];
+                        slot->fderr = fderr[0];
+                        slot->file = strdup(ent->d_name);
+                    }
+                }
+                size_t num_wait = 0;
+                for(size_t i = 0; i < NUM_PROC; ++i)
+                {
+                    if(children[i].pid != 0)
+                    {
+                        ++num_wait;
+                    }
+                }
+                for(size_t i = 0; i < num_wait; ++i)
+                {
+                    int r = wait_for_child(children, &num_bad, NULL);
+                    if(r != 0)
+                    {
+                        return r;
                     }
                 }
                 if(num_bad > 0)
                 {
-                    printf("Failed on %lu kernels.\n", num_bad);
+                    printf("%sFailed on %lu kernels.%s\n", color_red, num_bad, color_reset);
                 }
                 return num_bad == 0 ? 0 : -1;
             }
 
         case S_IFREG:
             process_kernel(fd);
-            return 0;
+            __builtin_unreachable();
 
         default:
             fprintf(stderr, "Bad file type.\n");
