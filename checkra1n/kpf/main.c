@@ -1,7 +1,7 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
- * Copyright (C) 2019-2020 checkra1n team
+ *
+ * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
 #include <mach-o/loader.h>
@@ -898,6 +898,17 @@ void kpf_mac_vm_fault_enter_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xFFFFFFE0,
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_fault_enter", matches14, masks14, sizeof(matches14)/sizeof(uint64_t), false, (void*)vm_fault_enter_callback14);
+    uint64_t matches14_alt[] = {
+        0x36180000, // TBZ #3
+        0xAA170210, // MOV Xd, Xn (both regs >= 16)
+        0x52800000, // MOV #0
+    };
+    uint64_t masks14_alt[] = {
+        0xFFF80000,
+        0xFFFFFE10,
+        0xFFFFFFE0,
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_fault_enter", matches14_alt, masks14_alt, sizeof(matches14_alt)/sizeof(uint64_t), false, (void*)vm_fault_enter_callback14);
 }
 
 static bool nvram_inline_patch = false;
@@ -1856,7 +1867,7 @@ void module_entry() {
     puts("# checkra1n kpf " CHECKRAIN_VERSION);
     puts("#");
     puts("# Proudly written in nano");
-    puts("# (c) 2019-2020 Kim Jong Cracks");
+    puts("# (c) 2019-2021 Kim Jong Cracks");
     puts("#");
     puts("# This software is not for sale");
     puts("# If you purchased this, please");
@@ -1877,7 +1888,7 @@ void module_entry() {
     command_register("autoboot", "checkra1n-kpf autoboot hook", kpf_autoboot);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
 }
-char* module_name = "checkra1n-kpf2-12.0,14.2";
+char* module_name = "checkra1n-kpf2-12.0,14.4";
 
 struct pongo_exports exported_symbols[] = {
     {.name = 0, .value = 0}
