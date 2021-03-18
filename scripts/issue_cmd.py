@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 #
 #  Copyright (c) 2019-2020 checkra1n team
 #  This file is part of pongoOS.
