@@ -26,6 +26,7 @@
  */
 #include <pongo.h>
 #include <img4/img4.h>
+#include <recfg/recfg_soc.h>
 
 #define TZ_REGS ((volatile uint32_t*)0x200000480)
 
@@ -271,6 +272,9 @@ void seprom_boot_tz0_async() {
     enable_interrupts();
 }
 void seprom_load_sepos(void* firmware, char mode) {
+    if(socnum == 0x8015) {
+        recfg_soc_lock();
+    }
     disable_interrupts();
     seprom_execute_opcode(6, mode, vatophys((uint64_t) (firmware)) >> 12);
     event_wait_asserted(&sep_msg_event);
@@ -322,11 +326,25 @@ void sep_blackbird_jump_noreturn(uint32_t addr, uint32_t r0) {
 }
 bool is_waiting_to_boot;
 
-void sep_blackbird_boot(uint32_t sepb) {
+static void sep_unpwned_boot_auto(void) {
+    if(!is_waiting_to_boot) {
+        return;
+    }
+    if(sep_is_pwned) {
+        fiprintf(stderr, "sep is pwned!\n");
+        return;
+    }
+    is_waiting_to_boot = 0;
+    tz_lockdown();
+    seprom_boot_tz0();
+    seprom_fwload();
+}
+
+static void sep_blackbird_boot(uint32_t sepb) {
     return sep_blackbird_jump_noreturn(0, sepb);
 }
 static uint32_t sepbp;
-void sep_boot_auto() {
+static void sep_pwned_boot_auto() {
     if (is_waiting_to_boot) {
         if(!sep_is_pwned) {
             fiprintf(stderr, "sep is not pwned!\n");
@@ -531,7 +549,7 @@ void reload_sepi(Img4 *img4) {
     }
     fiprintf(stderr, "SEP payload ready to boot\n");
     is_waiting_to_boot = 1;
-    sep_boot_hook = sep_boot_auto;
+    sep_boot_hook = sep_pwned_boot_auto;
     free_contig(sepfw_bytes, page_aligned_size);
 
     return;
@@ -1024,9 +1042,8 @@ void sep_auto(const char* cmd, char* args)
         case 0x8001:
             iprintf("No need to pwn SEP, just booting...\n");
         case 0x8015: // Lowkey skip the message :|
-            tz_lockdown();
-            seprom_boot_tz0();
-            seprom_fwload();
+            is_waiting_to_boot = 1;
+            sep_boot_hook = sep_unpwned_boot_auto;
             break;
         case 0x8010:
         case 0x8011:
