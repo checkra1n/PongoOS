@@ -84,7 +84,7 @@ union sep_message_u {
 static volatile struct mailbox_registers32 * mailboxregs32;
 static volatile struct mailbox_registers64 * mailboxregs64;
 static int is_sep64 = 0;
-struct event sep_msg_event, sep_rand_event, sep_boot_event, sep_load_event, sep_panic_event, sep_done_tz0_event;
+struct event sep_msg_event, sep_rand_event, sep_boot_event, sep_load_event, sep_panic_event, sep_done_tz0_event, sep_done_integrity_tree_event;
 volatile uint32_t rnd_val;
 volatile uint32_t sep_has_loaded, sep_has_booted, sep_has_panicked, sep_has_done_tz0, seprom_has_left_to_sepos;
 void (*sepfw_kpf_hook)(void* sepfw_bytes, size_t sepfw_size);
@@ -195,6 +195,8 @@ void sep_handle_msg_from_seprom(union sep_message_u msg) {
     } else if (msg.msg.opcode == 0xd2) {
         sep_has_done_tz0 = true;
         event_fire(&sep_done_tz0_event);
+    } else if (msg.msg.opcode == (17 + 100)) {
+        event_fire(&sep_done_integrity_tree_event);
     }
 }
 
@@ -267,21 +269,21 @@ void seprom_ping() {
 void seprom_boot_tz0() {
     disable_interrupts();
     if (is_sep64) {
-        seprom_execute_opcode(5, 0, (TZ0_SIZE / 0x910) & 0x3ff0);
+        // TODO: should this have its own command?
+        seprom_execute_opcode(17, 0, (TZ0_SIZE / 0x910) & 0x3ff0);
+        event_wait_asserted(&sep_done_integrity_tree_event);
     }
-    else {
-        seprom_execute_opcode(5, 0, 0);
-    }
+    seprom_execute_opcode(5, 0, 0);
     event_wait_asserted(&sep_done_tz0_event);
 }
 void seprom_boot_tz0_async() {
     disable_interrupts();
     if (is_sep64) {
-        seprom_execute_opcode(5, 0, (TZ0_SIZE / 0x910) & 0x3ff0);
+        // TODO: should this have its own command?
+        seprom_execute_opcode(17, 0, (TZ0_SIZE / 0x910) & 0x3ff0);
+        spin(2400);
     }
-    else {
-        seprom_execute_opcode(5, 0, 0);
-    }
+    seprom_execute_opcode(5, 0, 0);
     enable_interrupts();
 }
 void seprom_load_sepos(void* firmware, char mode) {
