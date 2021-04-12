@@ -306,11 +306,10 @@ void recfg_soc_lock(void)
     // Last chance to flush anything
     recfg_soc_sync();
 
-    iprintf("DEBUG: 0x%08x\n", *(volatile uint32_t*)0x2352c0204);
-
     // Actually lock
     const soccfg_t *cfg = get_soccfg();
-    *cfg->aop_sram_lock_range = 0;
+    uint32_t table = *cfg->aop_cfg_table >> 6;
+    *cfg->aop_sram_lock_range = (table << 16) | table;
     *cfg->aop_sram_lock_set = 1;
     if(cfg->aop_cfg_lock)
     {
