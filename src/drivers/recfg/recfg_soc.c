@@ -308,10 +308,7 @@ void recfg_soc_lock(void)
 
     // Actually lock
     const soccfg_t *cfg = get_soccfg();
-
-    // DEBUG
-    iprintf("AOP_SRAM_LOCK_RANGE: 0x%08x\n", *cfg->aop_sram_lock_range);
-
+    *cfg->aop_sram_lock_range = 0;
     *cfg->aop_sram_lock_set = 1;
     if(cfg->aop_cfg_lock)
     {
