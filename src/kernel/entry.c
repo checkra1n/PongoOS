@@ -235,36 +235,47 @@ __attribute__((noinline)) void pongo_entry_cached()
     disable_interrupts();
     preemption_over = 1;
 
-    while (gBootFlag)
+    const char *boot_msg = NULL;
+
+    switch(gBootFlag)
     {
-        if (gBootFlag == BOOT_FLAG_RAW) {
-            // Needs its own recfg call...
-            recfg_soc_sync();
-            screen_fill_basecolor();
-            return;
-        }
-        if (gBootFlag == BOOT_FLAG_LINUX) {
-            screen_puts("Booting Linux...");
-            return linux_prep_boot();
-        }
-        if (gBootFlag == BOOT_FLAG_HOOK) {
-            // hook for kernel patching here
+        default: // >4
+        case BOOT_FLAG_RAW: // 4
+            break;
+
+        case BOOT_FLAG_LINUX: // 3
+            linux_prep_boot();
+            boot_msg = "Booting Linux...";
+            break;
+
+        case BOOT_FLAG_HOOK: // 2
+            // Hook for kernel patching here
             screen_puts("Invoking preboot hook");
             xnu_hook();
-        }
-        gBootFlag--;
+            // Fall through
+        case BOOT_FLAG_HARD: // 1
+        case BOOT_FLAG_DEFAULT: // 0
+            // Boot XNU
+            xnu_loadrd();
+            if (sep_boot_hook)
+                sep_boot_hook();
+            boot_msg = "Booting";
+            break;
     }
 
-    xnu_loadrd();
-    if (sep_boot_hook)
-        sep_boot_hook();
+    // We want this in all configs, and it must happen after the SEP hook
+    interrupt_teardown();
 
     // Flush changes to IORVBAR and the AES engine to recfg as late as possible.
     // If SEP needs this earlier, then the code in sep.c will make the necessary calls.
+    // This should also be fine in all configs, since this doesn't lock anything.
     recfg_soc_sync();
 
     __asm__ volatile("dsb sy");
-    screen_puts("Booting");
+    if(boot_msg)
+        screen_puts(boot_msg);
+    else
+        screen_fill_basecolor();
 }
 
 /*
