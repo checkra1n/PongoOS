@@ -30,6 +30,9 @@
 
 #define TZ_REGS ((volatile uint32_t*)0x200000480)
 
+#define TZ0_BASE (((uint64_t)TZ_REGS[0]) << 12)
+#define TZ0_SIZE ((((uint64_t)TZ_REGS[1]) << 12) - TZ0_BASE + (1 << 12))
+
 #define IRQ_T8015_SEP_INBOX_NOT_EMPTY 0x79
 // #define SEP_DEBUG
 
@@ -263,12 +266,22 @@ void seprom_ping() {
 }
 void seprom_boot_tz0() {
     disable_interrupts();
-    seprom_execute_opcode(5, 0, 0);
+    if (is_sep64) {
+        seprom_execute_opcode(5, 0, (TZ0_SIZE / 0x910) & 0x3ff0);
+    }
+    else {
+        seprom_execute_opcode(5, 0, 0);
+    }
     event_wait_asserted(&sep_done_tz0_event);
 }
 void seprom_boot_tz0_async() {
     disable_interrupts();
-    seprom_execute_opcode(5, 0, 0);
+    if (is_sep64) {
+        seprom_execute_opcode(5, 0, (TZ0_SIZE / 0x910) & 0x3ff0);
+    }
+    else {
+        seprom_execute_opcode(5, 0, 0);
+    }
     enable_interrupts();
 }
 void seprom_load_sepos(void* firmware, char mode) {
@@ -728,11 +741,7 @@ void seprom_fwload_race() {
     shmshc[ct++] = 0;
     *remote_addr = remote_shared_value_ptr;
 
-
-    volatile uint32_t *tz_regbase = TZ_REGS;
-    uint32_t tz0_size = (((uint64_t)tz_regbase[1]) << 12)-(((uint64_t)tz_regbase[0]) << 12) + (1 << 12);
-    uint64_t tz0_base = (((uint64_t)tz_regbase[0]) << 12);
-    map_range(0xc00000000, 0x800000000 + tz0_base, tz0_size, 3, 2, true);
+    map_range(0xc00000000, 0x800000000 + TZ0_BASE, TZ0_SIZE, 3, 2, true);
 
     if (!tz_blackbird()) goto out;
 
