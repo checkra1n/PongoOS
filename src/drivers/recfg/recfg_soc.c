@@ -125,6 +125,25 @@ static const soccfg_t* get_soccfg(void)
     return cfg;
 }
 
+static void get_sram_bounds(const soccfg_t *cfg, uint64_t *sram_base, uint64_t *sram_end)
+{
+    if(cfg->recfg_base)
+    {
+        *sram_base = cfg->recfg_base;
+        *sram_end = cfg->recfg_end;
+    }
+    else if(cfg->aop_sram_base)
+    {
+        *sram_base = 0x0200000000ULL + (uint64_t)*(cfg->aop_sram_base);
+        // Knowing the actual size requires parsing to begin with, so... just set theoretical max (36bit PA).
+        *sram_end  = 0x1000000000ULL;
+    }
+    else
+    {
+        panic("Need either Recfg base or SRAM base");
+    }
+}
+
 typedef struct
 {
     const soccfg_t *cfg;
@@ -200,8 +219,8 @@ static bool recfg_locked = false;
 
 void recfg_soc_sync(void)
 {
-    // Kinda dirty, but works to skip A7/A8/A8X.
-    if(!is_16k())
+    // Skip A7/A8/A8X.
+    if(socnum == 0x8960 || socnum == 0x7000 || socnum == 0x7001)
     {
         return;
     }
@@ -217,19 +236,8 @@ void recfg_soc_sync(void)
     {
         panic("Recfg is already locked");
     }
-    uint64_t sram_base;
-    if(cfg->recfg_base)
-    {
-        sram_base = cfg->recfg_base;
-    }
-    else if(cfg->aop_sram_base)
-    {
-        sram_base = 0x200000000ULL + (uint64_t)*(cfg->aop_sram_base);
-    }
-    else
-    {
-        panic("Need either Recfg base or SRAM base");
-    }
+    uint64_t sram_base, sram_end;
+    get_sram_bounds(cfg, &sram_base, &sram_end);
     uint64_t cfg_base = sram_base + (uint64_t)*(cfg->aop_cfg_table);
 #if DEV_BUILD
     iprintf("AOP SRAM: 0x%llx, CFG: 0x%llx\n", sram_base, cfg_base);
@@ -249,8 +257,7 @@ void recfg_soc_sync(void)
 #if DEV_BUILD
         iprintf("Recfg seq %lu: 0x%llx\n", i, seq_base);
 #endif
-        // Knowing the actual size requires parsing to begin with, so... just set theoretical max.
-        size_t seq_size = 0x0001000000000000 - seq_base;
+        size_t seq_size = sram_end - seq_base;
 
         // If this isn't mapped... well, map it.
         if(vatophys(seq_base) == -1)
@@ -294,7 +301,7 @@ void recfg_soc_sync(void)
 void recfg_soc_lock(void)
 {
     // Skip A7/A8/A8X.
-    if(!is_16k())
+    if(socnum == 0x8960 || socnum == 0x7000 || socnum == 0x7001)
     {
         return;
     }
@@ -308,8 +315,40 @@ void recfg_soc_lock(void)
 
     // Actually lock
     const soccfg_t *cfg = get_soccfg();
-    uint32_t table = *cfg->aop_cfg_table >> 6;
-    *cfg->aop_sram_lock_range = (table << 16) | table;
+    uint64_t sram_base, sram_end;
+    get_sram_bounds(cfg, &sram_base, &sram_end);
+    uint64_t lockdown_max = sram_base + 0x200000;
+    if(sram_end < lockdown_max)
+    {
+        lockdown_max = sram_end;
+    }
+    uint64_t min = sram_base + *cfg->aop_cfg_table;
+    uint64_t max = min + 0x20;
+    volatile uint32_t *table = (volatile uint32_t*)min;
+    uint64_t seq_max = max;
+    for(size_t i = 0; i < 8; ++i)
+    {
+        uint64_t seq_base = (uint64_t)table[i] << 4;
+        if(seq_base >= sram_base && seq_base <= lockdown_max)
+        {
+            if(seq_base < min)     min     = seq_base;
+            if(seq_base > seq_max) seq_max = seq_base;
+        }
+    }
+    if(seq_max > max)
+    {
+        size_t seq_size = lockdown_max - seq_max;
+        // recfg_soc_sync should've mapped already
+        size_t off = 0;
+        if(recfg_check((void*)seq_max, seq_size, &off) != kRecfgSuccess)
+        {
+            // If the sequence is invalid, we still wanna lock down everything before it
+            off = 0;
+        }
+        max = seq_max + off + 4;
+    }
+    if(max % 0x40 == 0) max -= 0x40;
+    *cfg->aop_sram_lock_range = ((((max - sram_base) >> 6) & 0x7fff) << 16) | (((min - sram_base) >> 6) & 0x7fff);
     *cfg->aop_sram_lock_set = 1;
     if(cfg->aop_cfg_lock)
     {
