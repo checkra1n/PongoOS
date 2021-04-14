@@ -101,6 +101,7 @@ void sepfw_kpf(void* sepfw_bytes, size_t sepfw_size) {
     }
 }
 volatile uint32_t* sep_reg;
+static bool is_waiting_to_boot;
 
 static inline void mailbox_write(uint64_t value) {
 #ifdef SEP_DEBUG
@@ -295,6 +296,9 @@ void seprom_load_sepos(void* firmware, char mode) {
     event_wait_asserted(&sep_msg_event);
 }
 void seprom_fwload() {
+    // We clear this here to account for "sep auto" followed by manual invocation
+    is_waiting_to_boot = 0;
+
     uint32_t size;
     uint64_t *ptr = dt_get_prop("memory-map", "SEPFW", &size);
     seprom_load_sepos((void*)ptr[0],0);
@@ -339,7 +343,6 @@ void sep_blackbird_jump_noreturn(uint32_t addr, uint32_t r0) {
     __asm__ volatile("dsb sy");
     __asm__ volatile("isb");
 }
-bool is_waiting_to_boot;
 
 static void sep_unpwned_boot_auto(void) {
     if(!is_waiting_to_boot) {
@@ -349,9 +352,6 @@ static void sep_unpwned_boot_auto(void) {
         fiprintf(stderr, "sep is pwned!\n");
         return;
     }
-    is_waiting_to_boot = 0;
-    tz_lockdown();
-    seprom_boot_tz0();
     seprom_fwload();
 }
 
@@ -1053,6 +1053,8 @@ void sep_auto(const char* cmd, char* args)
         case 0x8001:
             iprintf("No need to pwn SEP, just booting...\n");
         case 0x8015: // Lowkey skip the message :|
+            tz_lockdown();
+            seprom_boot_tz0();
             is_waiting_to_boot = 1;
             sep_boot_hook = sep_unpwned_boot_auto;
             break;
