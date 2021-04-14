@@ -26,6 +26,7 @@
  */
 #include <pongo.h>
 #include <aes/aes_private.h>
+#include <recfg/recfg_soc_private.h>
 
 boot_args * gBootArgs;
 void* gEntryPoint;
@@ -80,6 +81,9 @@ void pongo_main_task() {
 
     // Relieve WDT of its duty
     wdt_disable();
+
+    // Recfg stuff
+    recfg_soc_setup();
 
     // Set up AES
     aes_init();

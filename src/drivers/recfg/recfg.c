@@ -11,7 +11,7 @@ do \
 { \
     if(!(expr)) \
     { \
-        ERR("!(" #expr ")"); \
+        if(warn) ERR("!(" #expr ")"); \
         goto out; \
     } \
 } while(0)
@@ -30,7 +30,7 @@ do \
 #   define VOLATILE
 #endif
 
-int recfg_check(void *mem, size_t size, size_t *offp)
+int recfg_check(void *mem, size_t size, size_t *offp, const bool warn)
 {
     int retval = kRecfgFailure;
     char *start = mem,
@@ -141,6 +141,7 @@ out:;
 
 int recfg_walk(void *mem, size_t size, const recfg_cb_t *cb, void *a)
 {
+    const bool warn = true; // for macros
     int retval = kRecfgFailure,
         ret    = kRecfgSuccess;
     char *start = mem,

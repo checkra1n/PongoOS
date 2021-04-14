@@ -107,34 +107,18 @@ static const soccfg_t soccfg[] =
     },
 };
 
-static const soccfg_t* get_soccfg(void)
-{
-    const soccfg_t *cfg = NULL;
-    for(size_t i = 0; i < sizeof(soccfg)/sizeof(soccfg[0]); ++i)
-    {
-        if(soccfg[i].soc == socnum)
-        {
-            cfg = &soccfg[i];
-            break;
-        }
-    }
-    if(!cfg)
-    {
-        panic("Failed to find SoC Recfg info");
-    }
-    return cfg;
-}
+static const soccfg_t *gCFG;
 
-static void get_sram_bounds(const soccfg_t *cfg, uint64_t *sram_base, uint64_t *sram_end)
+static void get_sram_bounds(uint64_t *sram_base, uint64_t *sram_end)
 {
-    if(cfg->recfg_base)
+    if(gCFG->recfg_base)
     {
-        *sram_base = cfg->recfg_base;
-        *sram_end = cfg->recfg_end;
+        *sram_base = gCFG->recfg_base;
+        *sram_end = gCFG->recfg_end;
     }
-    else if(cfg->aop_sram_base)
+    else if(gCFG->aop_sram_base)
     {
-        *sram_base = 0x0200000000ULL + (uint64_t)*(cfg->aop_sram_base);
+        *sram_base = 0x0200000000ULL + (uint64_t)*(gCFG->aop_sram_base);
         // Knowing the actual size requires parsing to begin with, so... just set theoretical max (36bit PA).
         *sram_end  = 0x1000000000ULL;
     }
@@ -144,9 +128,17 @@ static void get_sram_bounds(const soccfg_t *cfg, uint64_t *sram_base, uint64_t *
     }
 }
 
+static bool recfg_supported(void)
+{
+    if(socnum == 0x8960 || socnum == 0x7000 || socnum == 0x7001)
+    {
+        return false;
+    }
+    return true;
+}
+
 typedef struct
 {
-    const soccfg_t *cfg;
     bool patchedIORVBAR;
     bool patchedAES;
 } cb_arg_t;
@@ -156,10 +148,10 @@ static int recfg_soc_r32(void *a, uint64_t *addr, uint32_t *mask, uint32_t *data
     cb_arg_t *arg = a;
     uint64_t ad = *addr;
     uint32_t msk = *mask;
-    if(arg->patchedAES && ad == arg->cfg->aes && (msk & 0x7) != 0)
+    if(arg->patchedAES && ad == gCFG->aes && (msk & 0x7) != 0)
     {
         iprintf("Patching Recfg AES read\n");
-        *data = (*data & ~0x7) | (*(volatile uint32_t*)arg->cfg->aes & 0x7 & msk);
+        *data = (*data & ~0x7) | (*(volatile uint32_t*)gCFG->aes & 0x7 & msk);
         return kRecfgUpdate;
     }
     return kRecfgSuccess;
@@ -169,10 +161,10 @@ static int recfg_soc_w32(void *a, uint64_t *addr, uint32_t *data)
 {
     cb_arg_t *arg = a;
     uint64_t ad = *addr;
-    if(ad == arg->cfg->aes)
+    if(ad == gCFG->aes)
     {
         iprintf("Patching Recfg AES write\n");
-        *data = *(volatile uint32_t*)arg->cfg->aes & 0x7;
+        *data = *(volatile uint32_t*)gCFG->aes & 0x7;
         arg->patchedAES = true;
         return kRecfgUpdate;
     }
@@ -184,7 +176,7 @@ static int recfg_soc_r64(void *a, uint64_t *addr, uint64_t *mask, uint64_t *data
     cb_arg_t *arg = a;
     uint64_t ad = *addr;
     uint64_t msk = *mask;
-    for(const uint64_t *ptr = arg->cfg->iorvbar; *ptr != 0; ++ptr)
+    for(const uint64_t *ptr = gCFG->iorvbar; *ptr != 0; ++ptr)
     {
         uint64_t iorvbar = *ptr;
         if(arg->patchedIORVBAR && ad == iorvbar && (msk & 0x0000ffffffffffff) != 0)
@@ -201,7 +193,7 @@ static int recfg_soc_w64(void *a, uint64_t *addr, uint64_t *data)
 {
     cb_arg_t *arg = a;
     uint64_t ad = *addr;
-    for(const uint64_t *ptr = arg->cfg->iorvbar; *ptr != 0; ++ptr)
+    for(const uint64_t *ptr = gCFG->iorvbar; *ptr != 0; ++ptr)
     {
         uint64_t iorvbar = *ptr;
         if(ad == iorvbar)
@@ -217,10 +209,27 @@ static int recfg_soc_w64(void *a, uint64_t *addr, uint64_t *data)
 
 static bool recfg_locked = false;
 
+static uint64_t recfg_map(uint64_t seq_base, uint64_t seq_size)
+{
+    // If this isn't mapped... well, map it.
+    if(vatophys(seq_base) == -1)
+    {
+        // Map uncached. And just hope that 0x10000 is enough?
+        map_range(seq_base & ~0x3fffULL, seq_base & ~0x3fffULL, 0x10000, 2, 0, true);
+        // Also adjust max size if we actually can.
+        uint64_t size = (seq_base & ~0x3fffULL) + 0x10000 - seq_base;
+        if(size < seq_size)
+        {
+            seq_size = size;
+        }
+    }
+    return seq_size;
+}
+
 void recfg_soc_sync(void)
 {
     // Skip A7/A8/A8X.
-    if(socnum == 0x8960 || socnum == 0x7000 || socnum == 0x7001)
+    if(!recfg_supported())
     {
         return;
     }
@@ -230,20 +239,16 @@ void recfg_soc_sync(void)
         return;
     }
     iprintf("Patching Recfg sequence\n");
-    const soccfg_t *cfg = get_soccfg();
     // Recfg lock: unexpected
-    if(*cfg->aop_sram_lock_set || (cfg->aop_cfg_lock && *cfg->aop_cfg_lock))
+    if(*gCFG->aop_sram_lock_set || (gCFG->aop_cfg_lock && *gCFG->aop_cfg_lock))
     {
         panic("Recfg is already locked");
     }
     uint64_t sram_base, sram_end;
-    get_sram_bounds(cfg, &sram_base, &sram_end);
-    uint64_t cfg_base = sram_base + (uint64_t)*(cfg->aop_cfg_table);
-#if DEV_BUILD
-    iprintf("AOP SRAM: 0x%llx, CFG: 0x%llx\n", sram_base, cfg_base);
-#endif
+    get_sram_bounds(&sram_base, &sram_end);
+    uint64_t cfg_base = sram_base + (uint64_t)*(gCFG->aop_cfg_table);
     volatile uint32_t *table = (volatile uint32_t*)cfg_base;
-    cb_arg_t arg = { .cfg = cfg };
+    cb_arg_t arg = {};
     recfg_cb_t cb =
     {
         .r32 = &recfg_soc_r32,
@@ -254,32 +259,13 @@ void recfg_soc_sync(void)
     for(size_t i = 0; i < 8; ++i)
     {
         uint64_t seq_base = (uint64_t)table[i] << 4;
-#if DEV_BUILD
-        iprintf("Recfg seq %lu: 0x%llx\n", i, seq_base);
-#endif
         size_t seq_size = sram_end - seq_base;
-
-        // If this isn't mapped... well, map it.
-        if(vatophys(seq_base) == -1)
-        {
-            // Map uncached. And just hope that 0x10000 is enough?
-            map_range(seq_base & ~0x3fffULL, seq_base & ~0x3fffULL, 0x10000, 2, 0, true);
-            // Also adjust max size if we actually can.
-            seq_size = (seq_base & ~0x3fffULL) + 0x10000 - seq_base;
-        }
-
-#if DEV_BUILD
-        volatile uint32_t *p = (volatile uint32_t*)seq_base;
-        for(size_t s = 0; s < 0x40; s += 4)
-        {
-            iprintf("%08x %08x %08x %08x\n", p[s], p[s+1], p[s+2], p[s+3]);
-        }
-#endif
+        seq_size = recfg_map(seq_base, seq_size);
 
         // Ideally we'd want to copy MMIO/SRAM to cached DRAM for easier handling, but
         // as mentioned above, getting the size requires parsing already, so that's pointless.
         // The recfg driver was simply modified to only do aligned accesses.
-        if(recfg_check((void*)seq_base, seq_size, NULL) == kRecfgSuccess)
+        if(recfg_check((void*)seq_base, seq_size, NULL, false) == kRecfgSuccess)
         {
             // Normally we'd want to panic if recfg_check() fails, but it turns out
             // certain sequences are unused and can be completely uninitialised
@@ -301,7 +287,7 @@ void recfg_soc_sync(void)
 void recfg_soc_lock(void)
 {
     // Skip A7/A8/A8X.
-    if(socnum == 0x8960 || socnum == 0x7000 || socnum == 0x7001)
+    if(!recfg_supported())
     {
         return;
     }
@@ -311,18 +297,18 @@ void recfg_soc_lock(void)
         return;
     }
     // Last chance to flush anything
+    // This will also take care of panicing if we're unexpectedly locked already
     recfg_soc_sync();
 
     // Actually lock
-    const soccfg_t *cfg = get_soccfg();
     uint64_t sram_base, sram_end;
-    get_sram_bounds(cfg, &sram_base, &sram_end);
+    get_sram_bounds(&sram_base, &sram_end);
     uint64_t lockdown_max = sram_base + 0x200000;
     if(sram_end < lockdown_max)
     {
         lockdown_max = sram_end;
     }
-    uint64_t min = sram_base + *cfg->aop_cfg_table;
+    uint64_t min = sram_base + *gCFG->aop_cfg_table;
     uint64_t max = min + 0x20;
     volatile uint32_t *table = (volatile uint32_t*)min;
     uint64_t seq_max = max;
@@ -340,7 +326,7 @@ void recfg_soc_lock(void)
         size_t seq_size = lockdown_max - seq_max;
         // recfg_soc_sync should've mapped already
         size_t off = 0;
-        if(recfg_check((void*)seq_max, seq_size, &off) != kRecfgSuccess)
+        if(recfg_check((void*)seq_max, seq_size, &off, false) != kRecfgSuccess)
         {
             // If the sequence is invalid, we still wanna lock down everything before it
             off = 0;
@@ -348,13 +334,197 @@ void recfg_soc_lock(void)
         max = seq_max + off + 4;
     }
     if(max % 0x40 == 0) max -= 0x40;
-    *cfg->aop_sram_lock_range = ((((max - sram_base) >> 6) & 0x7fff) << 16) | (((min - sram_base) >> 6) & 0x7fff);
-    *cfg->aop_sram_lock_set = 1;
-    if(cfg->aop_cfg_lock)
+    *gCFG->aop_sram_lock_range = ((((max - sram_base) >> 6) & 0x7fff) << 16) | (((min - sram_base) >> 6) & 0x7fff);
+    *gCFG->aop_sram_lock_set = 1;
+    if(gCFG->aop_cfg_lock)
     {
-        *cfg->aop_cfg_lock = 1;
+        *gCFG->aop_cfg_lock = 1;
     }
     __asm__ volatile("dsb sy");
     iprintf("Recfg locked\n");
     recfg_locked = true;
+}
+
+struct recfg_command
+{
+    const char* name;
+    const char* desc;
+    void (*cb)(const char *cmd, char *args);
+};
+
+static void recfg_cmd_help(const char *cmd, char *args);
+static void recfg_cmd_dump(const char *cmd, char *args);
+static void recfg_cmd_sync(const char *cmd, char *args);
+static void recfg_cmd_lock(const char *cmd, char *args);
+
+static const struct recfg_command command_table[] =
+{
+    {"help", "show usage", recfg_cmd_help},
+    {"dump", "print recfg sequences", recfg_cmd_dump},
+    {"sync", "flush MMIO changes to recfg sequences", recfg_cmd_sync},
+    {"lock", "sync and lock recfg sequences", recfg_cmd_lock},
+};
+
+static void recfg_cmd_help(const char *cmd, char *args)
+{
+    iprintf("recfg usage: recfg [subcommand]\nsubcommands:\n");
+    for(size_t i = 0; i < sizeof(command_table) / sizeof(command_table[0]); ++i)
+    {
+        iprintf("%8s | %s\n", command_table[i].name, command_table[i].desc);
+    }
+}
+
+static int recfg_end_cb(void *a)
+{
+    iprintf("    end\n");
+    return kRecfgSuccess;
+}
+
+static int recfg_delay_cb(void *a, uint32_t *delay)
+{
+    iprintf("    delay %d\n", *delay);
+    return kRecfgSuccess;
+}
+
+static int recfg_read32_cb(void *a, uint64_t *addr, uint32_t *mask, uint32_t *data, bool *retry, uint8_t *recnt)
+{
+    if(*retry)  iprintf("    rd32 0x%09llx & 0x%08x == 0x%08x, retry = %d\n", *addr, *mask, *data, *recnt);
+    else        iprintf("    rd32 0x%09llx & 0x%08x == 0x%08x\n", *addr, *mask, *data);
+    return kRecfgSuccess;
+}
+
+static int recfg_read64_cb(void *a, uint64_t *addr, uint64_t *mask, uint64_t *data, bool *retry, uint8_t *recnt)
+{
+    if(*retry)  iprintf("    rd64 0x%09llx & 0x%016llx == 0x%016llx, retry = %d\n", *addr, *mask, *data, *recnt);
+    else        iprintf("    rd64 0x%09llx & 0x%016llx == 0x%016llx\n", *addr, *mask, *data);
+    return kRecfgSuccess;
+}
+
+static int recfg_write32_cb(void *a, uint64_t *addr, uint32_t *data)
+{
+    iprintf("    wr32 0x%09llx = 0x%08x\n", *addr, *data);
+    return kRecfgSuccess;
+}
+
+static int recfg_write64_cb(void *a, uint64_t *addr, uint64_t *data)
+{
+    iprintf("    wr64 0x%llx = 0x%016llx\n", *addr, *data);
+    return kRecfgSuccess;
+}
+
+static void recfg_cmd_dump(const char *cmd, char *args)
+{
+    uint64_t sram_base, sram_end;
+    get_sram_bounds(&sram_base, &sram_end);
+    uint64_t cfg_base = sram_base + (uint64_t)*(gCFG->aop_cfg_table);
+    volatile uint32_t *table = (volatile uint32_t*)cfg_base;
+    bool sram_locked = *gCFG->aop_sram_lock_set != 0;
+    bool cfg_locked = gCFG->aop_cfg_lock ? *gCFG->aop_cfg_lock != 0 : sram_locked;
+    uint32_t lock_val = *gCFG->aop_sram_lock_range;
+    uint64_t lock_from = sram_base + ((lock_val & 0xffff) << 6);
+    uint64_t lock_to   = sram_base + (((lock_val >> 16) & 0xffff) << 6) + 0x40;
+    iprintf("CFG table: 0x%llx (%s)\n", cfg_base,  cfg_locked  ? "locked" : "unlocked");
+    iprintf("SRAM base: 0x%llx (%s)\n", sram_base, sram_locked ? "locked" : "unlocked");
+    if(lock_to <= lock_from)
+    {
+        iprintf("SRAM lock range: none (%s)\n", sram_locked ? "locked" : "unlocked");
+    }
+    else
+    {
+        iprintf("SRAM lock range: 0x%llx-0x%llx (%s)\n", lock_from, lock_to, sram_locked ? "locked" : "unlocked");
+    }
+    recfg_cb_t cb =
+    {
+        .generic = NULL,
+        .end     = recfg_end_cb,
+        .delay   = recfg_delay_cb,
+        .r32     = recfg_read32_cb,
+        .r64     = recfg_read64_cb,
+        .w32     = recfg_write32_cb,
+        .w64     = recfg_write64_cb,
+    };
+    for(size_t i = 0; i < 8; ++i)
+    {
+        uint64_t seq_base = (uint64_t)table[i] << 4;
+        size_t seq_size = sram_end - seq_base;
+        seq_size = recfg_map(seq_base, seq_size);
+        iprintf("Recfg seq %lu: 0x%llx\n", i, seq_base);
+
+        if(recfg_check((void*)seq_base, seq_size, NULL, true) == kRecfgSuccess)
+        {
+            int r = recfg_walk((void*)seq_base, seq_size, &cb, NULL);
+            if(r != kRecfgSuccess)
+            {
+                // We DO however want to panic if any of the callbacks attempted something that we couldn't support.
+                panic("recfg_walk(%lu) returned: %d", i, r);
+            }
+        }
+    }
+}
+
+static void recfg_cmd_sync(const char *cmd, char *args)
+{
+    if(recfg_locked)
+    {
+        iprintf("Sorry, recfg sequences are already locked.\n");
+        return;
+    }
+    recfg_soc_sync();
+}
+
+static void recfg_cmd_lock(const char *cmd, char *args)
+{
+    if(recfg_locked)
+    {
+        iprintf("Recfg sequences are already locked.\n");
+        return;
+    }
+    recfg_soc_lock();
+}
+
+static void recfg_cmd(const char* cmd, char *args)
+{
+    char *arguments = command_tokenize(args, 0x1ff - (args - cmd));
+    if(arguments)
+    {
+        for(size_t i = 0; i < sizeof(command_table) / sizeof(command_table[0]); ++i)
+        {
+            if(strcmp(args, command_table[i].name) == 0)
+            {
+                command_table[i].cb(args, arguments);
+                return;
+            }
+        }
+        if(args[0] != '\0')
+        {
+            iprintf("recfg: invalid command %s\n", args);
+        }
+        recfg_cmd_help(cmd, arguments);
+    }
+}
+
+void recfg_soc_setup(void)
+{
+    // This saves us from having to check in each cmd callback
+    if(!recfg_supported())
+    {
+        return;
+    }
+
+    const soccfg_t *cfg = NULL;
+    for(size_t i = 0; i < sizeof(soccfg)/sizeof(soccfg[0]); ++i)
+    {
+        if(soccfg[i].soc == socnum)
+        {
+            cfg = &soccfg[i];
+            break;
+        }
+    }
+    if(!cfg)
+    {
+        panic("Failed to find SoC Recfg info");
+    }
+    gCFG = cfg;
+
+    command_register("recfg", "recfg sequences", recfg_cmd);
 }

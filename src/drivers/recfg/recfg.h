@@ -170,6 +170,7 @@ typedef struct
  * When using this as a library, define the following macros:
  * - RECFG_IO           to enable error logging to stderr
  * - ERR(str, args...)  to enable error logging to a custom facility
+ *                      you have access to a `const bool warn` variable
  * - RECFG_VOLATILE     to enable address alignment checks meant for real, live reconfig sequences
  *
  * `mem` and `size` should be pointer to and length of the reconfig sequence.
@@ -182,6 +183,7 @@ typedef struct
  * If `offp` is non-NULL, it will be set to:
  * - on success, a pointer to the uint32 after the end of the sequence.
  * - on failure, to the start of the command that failed the sanity check.
+ * The `warn` argument will be made available to the ERR macro.
  *
  *
  * recfg_walk()
@@ -207,7 +209,7 @@ typedef struct
  * and in that case you are responsible for writing `mem` back to where it came from, if applicable.
 **/
 
-int recfg_check(void *mem, size_t size, size_t *offp);
+int recfg_check(void *mem, size_t size, size_t *offp, const bool warn);
 int recfg_walk(void *mem, size_t size, const recfg_cb_t *cb, void *a);
 
 #endif
