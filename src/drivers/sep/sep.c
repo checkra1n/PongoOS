@@ -268,12 +268,13 @@ void seprom_ping() {
     event_wait_asserted(&sep_msg_event);
 }
 void seprom_boot_tz0() {
-    disable_interrupts();
     if (is_sep64) {
         // TODO: should this have its own command?
+        disable_interrupts();
         seprom_execute_opcode(17, 0, (TZ0_SIZE / 0x910) & 0x3ff0);
         event_wait_asserted(&sep_done_integrity_tree_event);
     }
+    disable_interrupts();
     seprom_execute_opcode(5, 0, 0);
     event_wait_asserted(&sep_done_tz0_event);
 }
