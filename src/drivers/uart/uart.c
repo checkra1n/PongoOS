@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2020 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #define UART_INTERNAL 1
 #include <pongo.h>
@@ -89,12 +89,17 @@ static inline void put_serial_modifier(const char* str) {
     while (*str) serial_putc(*str++);
 }
 
+uint32_t orig_rUCON0, orig_rULCON0, orig_rUFCON0, orig_rUMCON0;
 uint64_t gUartBase;
 extern uint32_t gLogoBitmap[32];
 void serial_early_init() {
     disable_interrupts();
     gUartBase = dt_get_u32_prop("uart0", "reg");
     gUartBase += gIOBase;
+    orig_rUCON0  = rUCON0;
+    orig_rULCON0 = rULCON0;
+    orig_rUFCON0 = rUFCON0;
+    orig_rUMCON0 = rUMCON0;
     rULCON0 = 3;
     rUCON0 = 0x405;
     rUFCON0 = 0;
@@ -146,6 +151,13 @@ void serial_init() {
     task_bind_to_irq(irq_task, uart_irq);
     rUCON0 = 0x5885;
     enable_interrupts();
+}
+void serial_teardown(void) {
+    // Restore state set by iBoot
+    rUCON0  = orig_rUCON0;
+    rULCON0 = orig_rULCON0;
+    rUFCON0 = orig_rUFCON0;
+    rUMCON0 = orig_rUMCON0;
 }
 void serial_putc(char c) {
     if (c == '\n') serial_putc('\r');

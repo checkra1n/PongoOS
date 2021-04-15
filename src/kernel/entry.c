@@ -263,13 +263,17 @@ __attribute__((noinline)) void pongo_entry_cached()
             break;
     }
 
-    // We want this in all configs, and it must happen after the SEP hook
-    interrupt_teardown();
-
     // Flush changes to IORVBAR and the AES engine to recfg as late as possible.
     // If SEP needs this earlier, then the code in sep.c will make the necessary calls.
     // This should also be fine in all configs, since this doesn't lock anything.
     recfg_soc_sync();
+
+    // Should happen after recfg stuff
+    serial_teardown();
+    // No [i]printf from here on out, only screen_puts
+
+    // We want this in all configs, and it must only happen once we no longer need serial
+    interrupt_teardown();
 
     __asm__ volatile("dsb sy");
     if(boot_msg)
