@@ -157,7 +157,7 @@ bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     opcode_stream[1] = 0;             // BL dyld_hook;
     opcode_stream[2] = 0xAA0003E0|rn; // MOV x20, x0
     opcode_stream[3] = 0x14000008;    // B
-    puts("Patched dyld check");
+    puts("KPF: Patched dyld check");
     return true;
 }
 
