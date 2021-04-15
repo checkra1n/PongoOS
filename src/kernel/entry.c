@@ -263,6 +263,8 @@ __attribute__((noinline)) void pongo_entry_cached()
             break;
     }
 
+    sep_teardown();
+
     // Flush changes to IORVBAR and the AES engine to recfg as late as possible.
     // If SEP needs this earlier, then the code in sep.c will make the necessary calls.
     // This should also be fine in all configs, since this doesn't lock anything.

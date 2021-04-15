@@ -1166,3 +1166,13 @@ void sep_setup() {
     //(void)mailboxregs->outbox_val_sep;
 
 }
+
+void sep_teardown(void) {
+    // Mask everything we possibly can
+    if (is_sep64) {
+        mailboxregs64->dis_int = 0x1000;
+    } else {
+        mailboxregs32->dis_int = 0x1000;
+    }
+    __asm__ volatile("dsb sy");
+}
