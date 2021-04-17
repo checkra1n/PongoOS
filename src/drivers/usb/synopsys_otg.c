@@ -1,10 +1,10 @@
 //
 // Project: KTRW Synopsys OTG USB controller driver
 // Authors:  Brandon Azad <bazad@google.com>
-// and qwertyuiop, Siguza, et al from the checkra1n team 
+// and qwertyuiop, Siguza, et al from the checkra1n team
 //
 // Copyright 2019 Google LLC
-// Copyright 2019-2020 checkra1n team
+// Copyright 2019-2021 checkra1n team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1793,18 +1793,18 @@ void usb_init() {
     // Can't trust "usb-device" dtre entry, because that can be USB3 and we want USB2
     gSynopsysBase = (gSynopsysOTGBase & ~0xfffULL) + 0x00100000;
     uint32_t otg_irq;
-    
+
     struct usb_regs regs;
     size_t plsz = sizeof(struct usb_regs);
     if (!hal_get_platform_value("usb_regs", &regs, &plsz)) {
         panic("synopsys_otg: need usb_regs platform value!");
     }
-    
+
     reg1 = gIOBase + regs.reg1;
     reg2 = gIOBase + regs.reg2;
     reg3 = gIOBase + regs.reg3;
     otg_irq = regs.otg_irq;
-    
+
     uint64_t dma_page_v = (uint64_t) alloc_contig(4 * DMA_BUFFER_SIZE);
     uint64_t dma_page_p = vatophys_static((void*)dma_page_v);
     bzero((void*)dma_page_v,4 * DMA_BUFFER_SIZE);
