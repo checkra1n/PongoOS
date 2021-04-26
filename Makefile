@@ -104,7 +104,7 @@ $(BUILD)/checkra1n-kpf-pongo: Makefile $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUIL
 	$(STRIP) -u $@ -s $(CHECKRA1N_NOSTRIP)
 
 $(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
-	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
+	$(CC) -Wall -O3 -o $@ $(AUX)/vmacho.c $(CFLAGS)
 
 $(BUILD):
 	mkdir -p $@
