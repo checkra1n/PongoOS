@@ -95,15 +95,15 @@ $(BUILD)/PongoConsolidated.bin: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo 
 $(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
 	$(BUILD)/vmacho -f $(BUILD)/Pongo $@
 
-$(BUILD)/Pongo: $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(LIB)/lib/libc.a | $(BUILD)
+$(BUILD)/Pongo: Makefile $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS) $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C)
 
-$(BUILD)/checkra1n-kpf-pongo: $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
+$(BUILD)/checkra1n-kpf-pongo: Makefile $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(CHECKRA1N_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(CHECKRA1N_CC_FLAGS) $(CHECKRA1N_C)
 	$(STRIP) -x $@ -s $(CHECKRA1N_NOSTRIP)
 	$(STRIP) -u $@ -s $(CHECKRA1N_NOSTRIP)
 
-$(BUILD)/vmacho: $(AUX)/vmacho.c | $(BUILD)
+$(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
 
 $(BUILD):
