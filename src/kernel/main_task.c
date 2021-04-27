@@ -101,7 +101,7 @@ void pongo_main_task() {
     puts("#==================");
     screen_mark_banner();
 
-    iprintf("Booted by: %s\n", dt_get_prop("chosen", "firmware-version", NULL));
+    iprintf("Booted by: %s\n", (const char*)dt_get_prop("chosen", "firmware-version", NULL));
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
     strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
 #ifdef __clang__
