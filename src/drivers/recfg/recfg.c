@@ -100,11 +100,12 @@ int recfg_check(void *mem, size_t size, size_t *offp, const bool warn)
                     recfg_read64_t *r64 = (recfg_read64_t*)read;
                     VOLATILE uint32_t *tmp = (VOLATILE uint32_t*)(r64 + 1);
                     if(
-                        *tmp == 0xdeadbeef
 #ifdef RECFG_VOLATILE
                         // In real memory, 64-bit stuff has to be 64-bit aligned.
+                        ((uintptr_t)tmp & 0x4) != 0
+#else
                         // When extracted from iBoot though, it only has to be 32-bit aligned.
-                        && ((uintptr_t)tmp & 0x4) != 0
+                        *tmp == 0xdeadbeef
 #endif
                     )
                     {
@@ -138,11 +139,12 @@ int recfg_check(void *mem, size_t size, size_t *offp, const bool warn)
                     REQ(end - (char*)cmd >= sizeof(recfg_write64_t) + alcnt * sizeof(uint8_t) + cnt * sizeof(uint64_t));
                     VOLATILE uint32_t *tmp = (VOLATILE uint32_t*)((VOLATILE uint8_t*)(w64 + 1) + alcnt);
                     if(
-                        *tmp == 0xdeadbeef
 #ifdef RECFG_VOLATILE
                         // In real memory, 64-bit stuff has to be 64-bit aligned.
+                        ((uintptr_t)tmp & 0x4) != 0
+#else
                         // When extracted from iBoot though, it only has to be 32-bit aligned.
-                        && ((uintptr_t)tmp & 0x4) != 0
+                        *tmp == 0xdeadbeef
 #endif
                     )
                     {
@@ -266,11 +268,12 @@ int recfg_walk(void *mem, size_t size, const recfg_cb_t *cb, void *a)
                         recfg_read64_t *r64 = (recfg_read64_t*)read;
                         VOLATILE uint32_t *tmp = (VOLATILE uint32_t*)(r64 + 1);
                         if(
-                            *tmp == 0xdeadbeef
 #ifdef RECFG_VOLATILE
-                            // In real memory, 64-bit stuff has to be 64-bit aligned.
-                            // When extracted from iBoot though, it only has to be 32-bit aligned.
-                            && ((uintptr_t)tmp & 0x4) != 0
+                        // In real memory, 64-bit stuff has to be 64-bit aligned.
+                        ((uintptr_t)tmp & 0x4) != 0
+#else
+                        // When extracted from iBoot though, it only has to be 32-bit aligned.
+                        *tmp == 0xdeadbeef
 #endif
                         )
                         {
@@ -353,11 +356,12 @@ int recfg_walk(void *mem, size_t size, const recfg_cb_t *cb, void *a)
                     alcnt = (cnt + 3) & ~3;
                     VOLATILE uint32_t *tmp = (VOLATILE uint32_t*)((VOLATILE uint8_t*)(w64 + 1) + alcnt);
                     if(
-                        *tmp == 0xdeadbeef
 #ifdef RECFG_VOLATILE
                         // In real memory, 64-bit stuff has to be 64-bit aligned.
+                        ((uintptr_t)tmp & 0x4) != 0
+#else
                         // When extracted from iBoot though, it only has to be 32-bit aligned.
-                        && ((uintptr_t)tmp & 0x4) != 0
+                        *tmp == 0xdeadbeef
 #endif
                     )
                     {
