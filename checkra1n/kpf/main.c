@@ -1901,7 +1901,7 @@ void module_entry() {
     command_register("autoboot", "checkra1n-kpf autoboot hook", kpf_autoboot);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
 }
-char* module_name = "checkra1n-kpf2-12.0,14.4";
+char* module_name = "checkra1n-kpf2-12.0,14.5";
 
 struct pongo_exports exported_symbols[] = {
     {.name = 0, .value = 0}
