@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include "libc_workarounds.h"
 #include <pongo.h>
@@ -127,7 +127,7 @@ void trampoline_entry(void* boot_image, void* boot_args)
     if (__bss_start[0] == 0x746F6F626F747561) {
         uint32_t autoboot_sz = (uint32_t)(__bss_start[1]);
         extern volatile void smemcpy128(void*,void*,uint32_t);
-        smemcpy128 ((void*)0x819000000, __bss_start, (autoboot_sz + 64)/16);
+        smemcpy128 ((void*)0x818e00000, __bss_start, (autoboot_sz + 64)/16);
         __bss_start[0] = 0;
     }
 
@@ -136,12 +136,12 @@ void trampoline_entry(void* boot_image, void* boot_args)
         strcpy(boot_image + 0x200, "Stage2 KJC Loader");
         patch_bootloader(boot_image);
     } else {
-        
+
         gboot_args = boot_args;
         gboot_entry_point = boot_image;
         extern volatile void setup_el1(void * entryp,uint64_t,uint64_t);
-        
-        
+
+
         extern volatile void smemset(void*, uint8_t, uint64_t);
         smemset(&__bss_start, 0, ((uint64_t)__bss_end) - ((uint64_t)__bss_start));
         extern void main (void);
