@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
@@ -81,8 +81,6 @@ struct pongo_exports public_api[] = {
     EXPORT_SYMBOL(event_fire),
     EXPORT_SYMBOL(event_wait),
     EXPORT_SYMBOL(event_wait_asserted),
-    EXPORT_SYMBOL(fiprintf),
-    EXPORT_SYMBOL(vfiprintf),
     EXPORT_SYMBOL(dt_alloc_memmap),
     EXPORT_SYMBOL(bzero),
     EXPORT_SYMBOL(memset),
@@ -218,6 +216,16 @@ struct pongo_exports public_api[] = {
     {.name = "___stack_chk_fail", .value = &f_stack_chk_fail},
     {.name = "_iprintf", .value = iprintf},
     {.name = "_printf", .value = iprintf},
+    {.name = "_fiprintf", .value = fiprintf},
+    {.name = "_fprintf", .value = fiprintf},
+    {.name = "_viprintf", .value = viprintf},
+    {.name = "_vprintf", .value = viprintf},
+    {.name = "_vfiprintf", .value = vfiprintf},
+    {.name = "_vfprintf", .value = vfiprintf},
+    {.name = "_sniprintf", .value = sniprintf},
+    {.name = "_snprintf", .value = sniprintf},
+    {.name = "_vsniprintf", .value = vsniprintf},
+    {.name = "_vsnprintf", .value = vsniprintf},
     {.name = NULL}
 };
 void link_exports(struct pongo_exports* export) {
