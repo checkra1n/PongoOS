@@ -41,7 +41,7 @@ ifeq ($(HOST_OS),Linux)
 endif
 endif
 
-PONGO_VERSION           := 2.5.0-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
+PONGO_VERSION           := 2.5.1-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
 SRC                     := src
 AUX                     := tools
 DEP                     := newlib
@@ -60,7 +60,7 @@ PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPON
 
 # KPF options
 CHECKRA1N_LDFLAGS       ?= -Wl,-kext
-CHECKRA1N_CC_FLAGS      ?= -DCHECKRAIN_VERSION='"0.12.3"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) -DDER_TAG_SIZE=8 -I$(SRC)/lib -DPONGO_PRIVATE=1
+CHECKRA1N_CC_FLAGS      ?= -DCHECKRAIN_VERSION='"0.12.4"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) -DDER_TAG_SIZE=8 -I$(SRC)/lib -DPONGO_PRIVATE=1
 
 STAGE3_ENTRY_C          := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.S patches.S demote_patch.S jump_to_image.S main.c)
 PONGO_C                 := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/kernel/support/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.S) $(wildcard $(SRC)/shell/*.c)
