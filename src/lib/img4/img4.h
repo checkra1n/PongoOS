@@ -49,6 +49,12 @@
 
 typedef struct
 {
+    DERItem content;
+    DERTag  tag;
+} Img4Property;
+
+typedef struct
+{
     DERItem magic;
     DERItem type;
     DERItem version;
@@ -92,11 +98,14 @@ typedef struct
 
 // ==================== ==================== ==================== Functions ==================== ==================== ====================
 
+DERReturn DERImg4DecodeFindInSequence(DERByte *nextItem, DERByte *end, DERTag tag, DERItem *out);
+DERReturn DERImg4DecodeContentFindItemWithTag(const DERItem *der, DERTag tag, DERItem *out);
 DERReturn DERImg4DecodeTagCompare(const DERItem *der, uint32_t name);
 DERReturn DERImg4Decode(const DERItem *der, DERItem *items);
 DERReturn DERImg4DecodePayload(const DERItem *der, Img4Payload *payload);
 DERReturn DERImg4DecodeManifest(const DERItem *der, Img4Manifest *manifest);
 DERReturn DERImg4DecodeRestoreInfo(const DERItem *der, Img4RestoreInfo *restoreInfo);
+DERReturn DERImg4DecodeFindProperty(const DERItem *der, DERTag ktag, DERTag vtag, Img4Property *prop);
 DERReturn Img4DecodeGetPayload(const Img4 *img4, DERItem *item);
 DERReturn Img4DecodeGetPayloadType(const Img4 *img4, uint32_t *type);
 DERReturn Img4DecodeGetPayloadKeybag(const Img4 *img4, DERItem *kbag);

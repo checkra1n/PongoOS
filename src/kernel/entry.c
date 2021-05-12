@@ -1,7 +1,7 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
- * Copyright (C) 2019-2020 checkra1n team
+ *
+ * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,9 +22,10 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
+#include <recfg/recfg_soc.h>
 
 boot_args * gBootArgs;
 void* gEntryPoint;
@@ -102,7 +103,7 @@ char pongo_sched_tick() {
                 preempt_ctr = 0;
             }
         }
-        
+
     }
 out:
     enable_interrupts();
@@ -160,16 +161,16 @@ __attribute__((noinline)) void pongo_entry_cached()
     */
 
     pongo_reinstall_vbar();
-    
-    
+
+
     extern void _task_set_current(struct task* t);
-    
+
     task_alloc_fast_stacks(&sched_task);
-    
+
     task_link(&sched_task);
     _task_set_current(&sched_task);
     // Setup VM
-    
+
     vm_init();
 
     /*
@@ -177,11 +178,11 @@ __attribute__((noinline)) void pongo_entry_cached()
     */
 
     screen_init();
-    
+
     /*
         Set up main task for scheduling
     */
-    
+
     extern struct vm_space kernel_vm_space;
     task_current()->vm_space = &kernel_vm_space;
     task_current()->cpsr = 0x205;
@@ -189,10 +190,10 @@ __attribute__((noinline)) void pongo_entry_cached()
     task_current()->ttbr1 = kernel_vm_space.ttbr1 | kernel_vm_space.asid;
     task_current()->proc = proc_create(NULL, "kernel", PROC_NO_VM);
     task_current()->proc->vm_space = &kernel_vm_space;
-    
+
     void pongo_main_task();
     task_register(&pongo_task, pongo_main_task);
-    
+
     /*
         Set up FIQ timer
     */
@@ -227,35 +228,59 @@ __attribute__((noinline)) void pongo_entry_cached()
             __asm__("wfe");
         }
     }
+
     timer_disable();
     usb_teardown();
     disable_interrupts();
     preemption_over = 1;
-    
-    while (gBootFlag)
+
+    const char *boot_msg = NULL;
+
+    switch(gBootFlag)
     {
-        if (gBootFlag == BOOT_FLAG_RAW) {
-            screen_fill_basecolor();
-            return;
-        }
-        if (gBootFlag == BOOT_FLAG_LINUX) {
-            screen_puts("Booting Linux...");
-            return linux_prep_boot();
-        }
-        if (gBootFlag == BOOT_FLAG_HOOK) {
-            // hook for kernel patching here
+        default: // >4
+        case BOOT_FLAG_RAW: // 4
+            break;
+
+        case BOOT_FLAG_LINUX: // 3
+            linux_prep_boot();
+            boot_msg = "Booting Linux...";
+            break;
+
+        case BOOT_FLAG_HOOK: // 2
+            // Hook for kernel patching here
             screen_puts("Invoking preboot hook");
             xnu_hook();
-        }
-        gBootFlag--;
+            // Fall through
+        case BOOT_FLAG_HARD: // 1
+        case BOOT_FLAG_DEFAULT: // 0
+            // Boot XNU
+            xnu_loadrd();
+            if (sep_boot_hook)
+                sep_boot_hook();
+            boot_msg = "Booting";
+            break;
     }
-    
-    xnu_loadrd();
-    if (sep_boot_hook)
-        sep_boot_hook();
-    
+
+    sep_teardown();
+
+    // Flush changes to IORVBAR and the AES engine to recfg as late as possible.
+    // If SEP needs this earlier, then the code in sep.c will make the necessary calls.
+    // This should also be fine in all configs, since this doesn't lock anything.
+    recfg_soc_sync();
+
+    // Should happen after recfg stuff
+    serial_teardown();
+    // No [i]printf from here on out, only screen_puts
+
+    // We want this in all configs, and it must only happen once we no longer need serial
+    interrupt_teardown();
+
     __asm__ volatile("dsb sy");
-    screen_puts("Booting");
+    if(boot_msg)
+        screen_puts(boot_msg);
+    else
+        screen_fill_basecolor();
 }
 
 /*

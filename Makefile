@@ -1,5 +1,5 @@
 #
-#  Copyright (c) 2019-2020 checkra1n team
+#  Copyright (C) 2019-2021 checkra1n team
 #  This file is part of pongoOS.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -41,15 +41,14 @@ ifeq ($(HOST_OS),Linux)
 endif
 endif
 
-PONGO_VERSION           := 2.4.5-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
-ROOT                    := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-SRC                     := $(ROOT)/src
-AUX                     := $(ROOT)/tools
-DEP                     := $(ROOT)/newlib
+PONGO_VERSION           := 2.5.1-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
+SRC                     := src
+AUX                     := tools
+DEP                     := newlib
 LIB                     := $(DEP)/aarch64-none-darwin
-INC                     := $(ROOT)/include
-BUILD                   := $(ROOT)/build
-RA1N                    := $(ROOT)/checkra1n/kpf
+INC                     := include
+BUILD                   := build
+RA1N                    := checkra1n/kpf
 
 # General options
 EMBEDDED_LD_FLAGS       ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
@@ -61,7 +60,7 @@ PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPON
 
 # KPF options
 CHECKRA1N_LDFLAGS       ?= -Wl,-kext
-CHECKRA1N_CC_FLAGS      ?= -DCHECKRAIN_VERSION='"0.12.1"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) -DDER_TAG_SIZE=8 -I$(SRC)/lib -DPONGO_PRIVATE=1
+CHECKRA1N_CC_FLAGS      ?= -DCHECKRAIN_VERSION='"0.12.4"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) -DDER_TAG_SIZE=8 -I$(SRC)/lib -DPONGO_PRIVATE=1
 
 STAGE3_ENTRY_C          := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.S patches.S demote_patch.S jump_to_image.S main.c)
 PONGO_C                 := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/kernel/support/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.S) $(wildcard $(SRC)/shell/*.c)
@@ -96,25 +95,28 @@ $(BUILD)/PongoConsolidated.bin: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo 
 $(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
 	$(BUILD)/vmacho -f $(BUILD)/Pongo $@
 
-$(BUILD)/Pongo: $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(LIB)/lib/libc.a | $(BUILD)
+$(BUILD)/Pongo: Makefile $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS) $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C)
 
-$(BUILD)/checkra1n-kpf-pongo: $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
+$(BUILD)/checkra1n-kpf-pongo: Makefile $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(CHECKRA1N_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(CHECKRA1N_CC_FLAGS) $(CHECKRA1N_C)
 	$(STRIP) -x $@ -s $(CHECKRA1N_NOSTRIP)
 	$(STRIP) -u $@ -s $(CHECKRA1N_NOSTRIP)
 
-$(BUILD)/vmacho: $(AUX)/vmacho.c | $(BUILD)
-	$(CC) -Wall -O3 -o $@ $^ $(CFLAGS)
+$(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
+	$(CC) -Wall -O3 -o $@ $(AUX)/vmacho.c $(CFLAGS)
 
 $(BUILD):
 	mkdir -p $@
 
-$(LIB)/lib/libc.a: always
+$(DEP)/Makefile:
+	git submodule update --init --recursive
+
+$(LIB)/lib/libc.a: always | $(DEP)/Makefile
 	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) all
 
 clean:
 	rm -rf $(BUILD)
 
-distclean: | clean
+distclean: | clean $(DEP)/Makefile
 	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) distclean

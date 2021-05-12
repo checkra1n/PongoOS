@@ -1,7 +1,7 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
- * Copyright (C) 2019-2020 checkra1n team
+ *
+ * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
 
@@ -87,27 +87,71 @@ int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, d
     return 0;
 }
 
-static int dt_find_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len)
+typedef struct
 {
-    dt_find_cb_t* arg = a;
-    if (strcmp(key, "name") == 0 && strcmp(arg->name, val) == 0 && strlen(arg->name) + 1 == len) {
+    const char *name;
+    dt_node_t *node;
+    int matchdepth;
+} dt_find_cb_t;
+
+static int dt_find_cb(void *a, dt_node_t *node, int depth, const char *key, void *val, uint32_t len)
+{
+    dt_find_cb_t *arg = a;
+    if(strcmp(key, "name") != 0)
+    {
+        return 0;
+    }
+    const char *name = arg->name;
+    if(name[0] == '/') // Absolute path
+    {
+        // If we ever get here, we traversed back out of an entry that
+        // we matched against, without finding a matching child node.
+        if(depth < arg->matchdepth)
+        {
+            return -1;
+        }
+        ++name;
+        const char *end = strchr(name, '/');
+        if(end) // Handle non-leaf segment
+        {
+            size_t size = end - name;
+            if(strncmp(name, val, size) == 0 && size + 1 == len && ((const char*)val)[size] == '\0')
+            {
+                arg->name = end;
+                ++arg->matchdepth;
+            }
+            return 0;
+        }
+        // Leaf segment can fall through
+    }
+    // Simple name
+    if(strncmp(name, val, len) == 0 && strlen(name) + 1 == len)
+    {
         arg->node = node;
         return 1;
     }
     return 0;
 }
 
-dt_node_t* dt_find(dt_node_t* node, const char* name)
+dt_node_t* dt_find(dt_node_t *node, const char *name)
 {
-    dt_find_cb_t arg = { name, NULL };
+    dt_find_cb_t arg = { name, NULL, 0 };
     dt_parse(node, 0, NULL, NULL, NULL, &dt_find_cb, &arg);
     return arg.node;
 }
 
-static int dt_prop_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len)
+typedef struct
 {
-    dt_prop_cb_t* arg = a;
-    if (strcmp(arg->key, key) == 0) {
+    const char *key;
+    void *val;
+    size_t len;
+} dt_prop_cb_t;
+
+static int dt_prop_cb(void *a, dt_node_t *node, int depth, const char *key, void *val, uint32_t len)
+{
+    dt_prop_cb_t *arg = a;
+    if(strcmp(arg->key, key) == 0)
+    {
         arg->val = val;
         arg->len = len;
         return 1;
@@ -115,12 +159,11 @@ static int dt_prop_cb(void* a, dt_node_t* node, int depth, const char* key, void
     return 0;
 }
 
-void* dt_prop(dt_node_t* node, const char* key, uint32_t* lenp)
+void* dt_prop(dt_node_t *node, const char *key, uint32_t *lenp)
 {
     dt_prop_cb_t arg = { key, NULL, 0 };
     dt_parse(node, -1, NULL, NULL, NULL, &dt_prop_cb, &arg);
-    if (arg.val && lenp)
-        *lenp = arg.len;
+    if(arg.val && lenp) *lenp = arg.len;
     return arg.val;
 }
 

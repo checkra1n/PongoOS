@@ -1,7 +1,7 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
- * Copyright (C) 2019-2020 checkra1n team
+ *
+ * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
 #include <mach-o/loader.h>
@@ -157,7 +157,7 @@ bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     opcode_stream[1] = 0;             // BL dyld_hook;
     opcode_stream[2] = 0xAA0003E0|rn; // MOV x20, x0
     opcode_stream[3] = 0x14000008;    // B
-    puts("Patched dyld check");
+    puts("KPF: Patched dyld check");
     return true;
 }
 
@@ -267,6 +267,9 @@ bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
 }
 
 bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+#if DEV_BUILD
+    uint32_t * const orig = opcode_stream;
+#endif
     uint32_t lr1 = opcode_stream[0],
              lr2 = opcode_stream[2];
     // step 2
@@ -275,9 +278,10 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
     if((lr1 & 0x1f) != (opcode_stream[1] & 0x1f) || (lr2 & 0x1f) != (opcode_stream[3] & 0x1f) || (lr1 & 0x3ffc00) != (lr2 & 0x3ffc00))
     {
 #if DEV_BUILD
-        puts("kpf_conversion_callback: opcode check failed");
+        panic("kpf_conversion_callback: opcode check failed (0x%llx)", orig);
+#else
+        panic("kpf_conversion_callback: opcode check failed");
 #endif
-        return false;
     }
     puts("KPF: Found task_conversion_eval");
 
@@ -287,14 +291,22 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
     // for that we first get both of the regs that are used in both of the ldrs (should point to caller and victim)
     // then we look for a cmp where both of them are used
     // this also does some basic flow analysis where it will detect moves that move caller and victim around
+    // and we have to check that it is followed by either a ccmp or a b.eq/b.ne, to make sure we got the right one in case there are multiple
     uint32_t regs = (1 << ((lr1 >> 5) & 0x1f)) | (1 << ((lr2 >> 5) & 0x1f));
     for(size_t i = 0; i < 128; ++i) // arbitrary limit
     {
         uint32_t op = *--opcode_stream;
         if((op & 0xffe0fc1f) == 0xeb00001f && (regs & (1 << ((op >> 5) & 0x1f))) != 0 && (regs & (1 << ((op >> 16) & 0x1f))) != 0) // cmp xN, xM
         {
-            *opcode_stream = 0xeb1f03ff; // cmp xzr, xzr
-            return true;
+            uint32_t next = opcode_stream[1];
+            if(
+                (next & 0xffe0fc10) == 0xfa401000 || // ccmp x*, x*, ?, ne
+                (next & 0xff00001e) == 0x54000000    // b.eq or b.ne
+            )
+            {
+                *opcode_stream = 0xeb1f03ff; // cmp xzr, xzr
+                return true;
+            }
         }
         else if((op & 0xffe0ffe0) == 0xaa0003e0) // mov xN, xM
         {
@@ -304,9 +316,10 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
         }
     }
 #if DEV_BUILD
-    puts("kpf_conversion_callback: failed to find cmp");
+    panic("kpf_conversion_callback: failed to find cmp (0x%llx)", xnu_ptr_to_va(orig));
+#else
+    panic("kpf_conversion_callback: failed to find cmp");
 #endif
-    return false;
 }
 void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // this patch is here to allow the usage of the extracted tfp0 port from userland (see https://bazad.github.io/2018/10/bypassing-platform-binary-task-threads/#the-platform-binary-mitigation)
@@ -344,7 +357,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // 0xfffffff00713dd00      41070054       b.ne 0xfffffff00713dde8
 
     // to find this with r2 run the following cmd:
-    // /x 000040b900005036000040b900005036:0000c0ff0000f8ff0000c0ff0000f8ff
+    // /x 000040b900005036000040b900005036:0000c0ff0000f8ff0000c0ff0000f8fe
     uint64_t matches[] = {
         0xb9400000, // ldr x*, [x*]
         0x36500000, // tbz w*, 0xa, *
@@ -355,7 +368,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xffc00000,
         0xfff80000,
         0xffc00000,
-        0xfef80000,
+        0xfef80000, // match both tbz or tbnz
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_conversion_callback);
 }
@@ -898,6 +911,17 @@ void kpf_mac_vm_fault_enter_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xFFFFFFE0,
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_fault_enter", matches14, masks14, sizeof(matches14)/sizeof(uint64_t), false, (void*)vm_fault_enter_callback14);
+    uint64_t matches14_alt[] = {
+        0x36180000, // TBZ #3
+        0xAA170210, // MOV Xd, Xn (both regs >= 16)
+        0x52800000, // MOV #0
+    };
+    uint64_t masks14_alt[] = {
+        0xFFF80000,
+        0xFFFFFE10,
+        0xFFFFFFE0,
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_fault_enter", matches14_alt, masks14_alt, sizeof(matches14_alt)/sizeof(uint64_t), false, (void*)vm_fault_enter_callback14);
 }
 
 static bool nvram_inline_patch = false;
@@ -1856,7 +1880,7 @@ void module_entry() {
     puts("# checkra1n kpf " CHECKRAIN_VERSION);
     puts("#");
     puts("# Proudly written in nano");
-    puts("# (c) 2019-2020 Kim Jong Cracks");
+    puts("# (c) 2019-2021 Kim Jong Cracks");
     puts("#");
     puts("# This software is not for sale");
     puts("# If you purchased this, please");
@@ -1877,7 +1901,7 @@ void module_entry() {
     command_register("autoboot", "checkra1n-kpf autoboot hook", kpf_autoboot);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
 }
-char* module_name = "checkra1n-kpf2-12.0,14.2";
+char* module_name = "checkra1n-kpf2-12.0,14.5";
 
 struct pongo_exports exported_symbols[] = {
     {.name = 0, .value = 0}

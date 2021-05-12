@@ -71,6 +71,33 @@ const DERItemSpec DERImg4CompressionItemSpecs[] =
 
 // ==================== ==================== ==================== Code ==================== ==================== ====================
 
+DERReturn DERImg4DecodeFindInSequence(DERByte *nextItem, DERByte *end, DERTag tag, DERItem *out)
+{
+    DERDecodedInfo decoded;
+    DERSequence seq = { nextItem, end };
+    do
+    {
+        DERReturn ret = DERDecodeSeqNext(&seq, &decoded);
+        if(ret != DR_Success)
+        {
+            return ret;
+        }
+    } while(decoded.tag != tag);
+    *out = decoded.content;
+    return DR_Success;
+}
+
+DERReturn DERImg4DecodeContentFindItemWithTag(const DERItem *der, DERTag tag, DERItem *out)
+{
+    DERSequence seq;
+    DERReturn ret = DERDecodeSeqContentInit(der, &seq);
+    if(ret != DR_Success)
+    {
+        return ret;
+    }
+    return DERImg4DecodeFindInSequence(seq.nextItem, seq.end, tag, out);
+}
+
 DERReturn DERImg4DecodeTagCompare(const DERItem *der, uint32_t name)
 {
     if(der->length < 4)
@@ -224,6 +251,39 @@ DERReturn DERImg4DecodeRestoreInfo(const DERItem *der, Img4RestoreInfo *restoreI
     {
         return DR_UnexpectedTag;
     }
+    return DR_Success;
+}
+
+DERReturn DERImg4DecodeFindProperty(const DERItem *der, DERTag ktag, DERTag vtag, Img4Property *prop)
+{
+    DERItem key;
+    DERReturn ret = DERImg4DecodeContentFindItemWithTag(der, ktag, &key);
+    if(ret != DR_Success)
+    {
+        return ret;
+    }
+    DERItemSpec spec[] =
+    {
+        { 0 * sizeof(Img4Property), ASN1_IA5_STRING, 0 },
+        { 1 * sizeof(Img4Property), vtag,            0 },
+    };
+    ret = DERParseSequence(&key, sizeof(spec) / sizeof(DERItemSpec), spec, prop, 0);
+    if(ret != DR_Success)
+    {
+        return ret;
+    }
+    uint32_t tag;
+    ret = DERParseInteger(&prop[0].content, &tag);
+    if(ret != DR_Success)
+    {
+        return ret;
+    }
+    if((ASN1_CONSTR_PRIVATE | tag) != ktag)
+    {
+        return DR_UnexpectedTag;
+    }
+    prop[0].tag = ASN1_CONSTR_PRIVATE | ktag;
+    prop[1].tag = vtag;
     return DR_Success;
 }
 

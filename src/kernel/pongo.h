@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2020 checkra1n team
+ * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -102,18 +102,6 @@ typedef struct
     char val[];
 } dt_prop_t;
 
-typedef struct
-{
-    const char* name;
-    dt_node_t* node;
-} dt_find_cb_t;
-
-typedef struct
-{
-    const char* key;
-    void* val;
-    uint32_t len;
-} dt_prop_cb_t;
 struct memmap {
     uint64_t addr;
     uint64_t size;

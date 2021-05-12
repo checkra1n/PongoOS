@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2020 checkra1n team
+ * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -25,11 +25,16 @@
  *
  */
 #include <errno.h>
+#include <fcntl.h>              // open
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>             // exit
-#include <string.h>             // strlen, strerror
+#include <string.h>             // strlen, strerror, memcpy, memmove
+#include <unistd.h>             // close
+#include <wordexp.h>
+#include <sys/mman.h>           // mmap, munmap
+#include <sys/stat.h>           // fstst
 #include <mach/mach.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Foundation/Foundation.h>
@@ -39,6 +44,9 @@
 
 #define LOG(fmt, ...) do { fprintf(stderr, "\x1b[1;96m" fmt "\x1b[0m\n", ##__VA_ARGS__); } while(0)
 #define ERR(fmt, ...) do { fprintf(stderr, "\x1b[1;91m" fmt "\x1b[0m\n", ##__VA_ARGS__); } while(0)
+
+// Keep in sync with Pongo
+#define UPLOADSZ_MAX (1024 * 1024 * 128)
 
 typedef struct
 {
@@ -66,6 +74,26 @@ static IOReturn USBControlTransfer(IOUSBInterfaceInterface245 **intf, uint8_t bm
     return ret;
 }
 
+static IOReturn USBBulkUpload(IOUSBInterfaceInterface245 **intf, void *data, uint32_t len)
+{
+    return (*intf)->WritePipe(intf, 2, data, len);
+}
+
+static void write_stdout(char *buf, uint32_t len)
+{
+    while(len > 0)
+    {
+        ssize_t s = write(1, buf, len);
+        if(s < 0)
+        {
+            ERR("write: %s", strerror(errno));
+            exit(-1);
+        }
+        buf += s;
+        len -= s;
+    }
+}
+
 static void* io_main(void *arg)
 {
     stuff_t *stuff = arg;
@@ -77,28 +105,28 @@ static void* io_main(void *arg)
     }
     LOG("[Connected]");
     IOReturn ret = KERN_SUCCESS;
+    char prompt[64] = "> ";
+    uint32_t plen = 2;
     while(1)
     {
-        char buf[0x1000] = {};
+        char buf[0x2000] = {};
+        uint32_t outpos = 0;
+        uint32_t outlen = 0;
         uint8_t in_progress = 1;
         while(in_progress)
         {
             ret = USBControlTransfer(stuff->intf, 0xa1, 2, 0, 0, (uint32_t)sizeof(in_progress), &in_progress, NULL);
             if(ret == KERN_SUCCESS)
             {
-                uint32_t outlen = 0;
-                ret = USBControlTransfer(stuff->intf, 0xa1, 1, 0, 0, (uint32_t)sizeof(buf), buf, &outlen);
+                ret = USBControlTransfer(stuff->intf, 0xa1, 1, 0, 0, 0x1000, buf + outpos, &outlen);
                 if(ret == KERN_SUCCESS)
                 {
-                    while(outlen > 0)
+                    write_stdout(buf + outpos, outlen);
+                    outpos += outlen;
+                    if(outpos > 0x1000)
                     {
-                        ssize_t s = write(1, buf, outlen);
-                        if(s < 0)
-                        {
-                            ERR("write: %s", strerror(errno));
-                            exit(-1);
-                        }
-                        outlen -= s;
+                        memmove(buf, buf + outpos - 0x1000, 0x1000);
+                        outpos = 0x1000;
                     }
                 }
             }
@@ -106,6 +134,25 @@ static void* io_main(void *arg)
             {
                 goto bad;
             }
+        }
+        if(outpos > 0)
+        {
+            // Record prompt
+            uint32_t start = outpos;
+            for(uint32_t end = outpos > 64 ? outpos - 64 : 0; start > end; --start)
+            {
+                if(buf[start-1] == '\n')
+                {
+                    break;
+                }
+            }
+            plen = outpos - start;
+            memcpy(prompt, buf + start, plen);
+        }
+        else
+        {
+            // Re-emit prompt
+            write_stdout(prompt, plen);
         }
         ret = USBControlTransfer(stuff->intf, 0x21, 4, 0xffff, 0, 0, NULL, NULL);
         if(ret != KERN_SUCCESS)
@@ -136,7 +183,7 @@ static void* io_main(void *arg)
                 ERR("read: %s", strerror(errno));
                 exit(-1);
             }
-            if(len < 512)
+            if(len < sizeof(buf))
             {
                 buf[len] = ch;
             }
@@ -156,18 +203,101 @@ static void* io_main(void *arg)
         {
             exit(0);
         }
-        if(len > 512)
+        if(len > sizeof(buf))
         {
-            ERR("Discarding command of >512 chars");
+            ERR("Discarding command of >%zu chars", sizeof(buf));
             continue;
         }
-        if(gBlockIO)
+        if(buf[0] == '/')
         {
-            ret = USBControlTransfer(stuff->intf, 0x21, 4, 1, 0, 0, NULL, NULL);
+            buf[len-1] = '\0';
+            wordexp_t we;
+            r = wordexp(buf + 1, &we, WRDE_SHOWERR | WRDE_UNDEF);
+            if(r != 0)
+            {
+                ERR("wordexp: %d", r);
+                continue;
+            }
+            bool show_help = false;
+            if(we.we_wordc == 0)
+            {
+                show_help = true;
+            }
+            else if(strcmp(we.we_wordv[0], "send") == 0)
+            {
+                if(we.we_wordc == 1)
+                {
+                    LOG("Usage: /send [file]");
+                    LOG("Upload a file to PongoOS. This should be followed by a command such as \"modload\".");
+                }
+                else
+                {
+                    int fd = open(we.we_wordv[1], O_RDONLY);
+                    if(fd < 0)
+                    {
+                        ERR("Failed to open file: %s", strerror(errno));
+                    }
+                    else
+                    {
+                        struct stat s;
+                        r = fstat(fd, &s);
+                        if(r != 0)
+                        {
+                            ERR("Failed to stat file: %s", strerror(errno));
+                        }
+                        else
+                        {
+                            void *addr = mmap(NULL, s.st_size, PROT_READ, MAP_FILE | MAP_PRIVATE, fd, 0);
+                            if(addr == MAP_FAILED)
+                            {
+                                ERR("Failed to map file: %s", strerror(errno));
+                            }
+                            else
+                            {
+                                uint32_t newsz = s.st_size;
+                                ret = USBControlTransfer(stuff->intf, 0x21, 1, 0, 0, 4, &newsz, NULL);
+                                if(ret == KERN_SUCCESS)
+                                {
+                                    ret = USBBulkUpload(stuff->intf, addr, s.st_size);
+                                    if(ret == KERN_SUCCESS)
+                                    {
+                                        LOG("Uploaded %llu bytes", s.st_size);
+                                    }
+                                }
+                                munmap(addr, s.st_size);
+                            }
+                        }
+                        close(fd);
+                    }
+                }
+            }
+            else
+            {
+                ERR("Unrecognised command: /%s", we.we_wordv[0]);
+                show_help = true;
+            }
+            if(show_help)
+            {
+                LOG("Available commands:");
+                LOG("/send [file] - Upload a file to PongoOS");
+            }
+            wordfree(&we);
         }
-        if(ret == KERN_SUCCESS)
+        else
         {
-            ret = USBControlTransfer(stuff->intf, 0x21, 3, 0, 0, (uint32_t)len, buf, NULL);
+            if(len > sizeof(buf))
+            {
+                ERR("PongoOS currently only supports commands with 512 characters or less");
+                continue;
+            }
+            if(gBlockIO)
+            {
+                ret = USBControlTransfer(stuff->intf, 0x21, 4, 1, 0, 0, NULL, NULL);
+            }
+            if(ret == KERN_SUCCESS)
+            {
+                ret = USBControlTransfer(stuff->intf, 0x21, 3, 0, 0, (uint32_t)len, buf, NULL);
+            }
         }
         if(ret != KERN_SUCCESS)
         {

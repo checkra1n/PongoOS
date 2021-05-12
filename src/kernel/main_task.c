@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2020 checkra1n team
+ * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -26,6 +26,7 @@
  */
 #include <pongo.h>
 #include <aes/aes_private.h>
+#include <recfg/recfg_soc_private.h>
 
 boot_args * gBootArgs;
 void* gEntryPoint;
@@ -81,6 +82,9 @@ void pongo_main_task() {
     // Relieve WDT of its duty
     wdt_disable();
 
+    // Recfg stuff
+    recfg_soc_setup();
+
     // Set up AES
     aes_init();
 
@@ -97,7 +101,7 @@ void pongo_main_task() {
     puts("#==================");
     screen_mark_banner();
 
-    iprintf("Booted by: %s\n", dt_get_prop("chosen", "firmware-version", NULL));
+    iprintf("Booted by: %s\n", (const char*)dt_get_prop("chosen", "firmware-version", NULL));
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
     strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
 #ifdef __clang__
