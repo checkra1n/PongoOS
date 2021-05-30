@@ -28,13 +28,6 @@
 #include <aes/aes_private.h>
 #include <recfg/recfg_soc_private.h>
 
-boot_args * gBootArgs;
-void* gEntryPoint;
-
-extern volatile char gBootFlag;
-dt_node_t *gDeviceTree;
-uint64_t gIOBase;
-
 void shell_main();
 
 /*

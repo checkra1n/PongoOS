@@ -27,13 +27,12 @@
 #include <pongo.h>
 #include <recfg/recfg_soc.h>
 
-boot_args * gBootArgs;
-void* gEntryPoint;
-
-
+boot_args *gBootArgs;
+void *gEntryPoint;
 volatile char gBootFlag = 0;
 dt_node_t *gDeviceTree;
 uint64_t gIOBase;
+
 char* gDevType;
 uint64_t gESTS;
 
