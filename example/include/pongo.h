@@ -20,6 +20,8 @@
 //  Copyright (C) 2019-2021 checkra1n team
 //  This file is part of pongoOS.
 //
+#ifndef PONGOH
+#define PONGOH
 
 #include <mach-o/loader.h>
 #include <stddef.h>
@@ -185,3 +187,4 @@ extern uint32_t ramdisk_size;
 extern uint32_t autoboot_count;
 extern uint8_t * loader_xfer_recv_data;
 extern uint32_t loader_xfer_recv_count;
+#endif
