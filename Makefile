@@ -115,6 +115,11 @@ $(DEP)/Makefile:
 $(LIB)/lib/libc.a: always | $(DEP)/Makefile
 	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) all
 
+
+restart:
+	python3 scripts/upload_data.py build/Pongo.bin
+	python3 scripts/issue_cmd.py bootr >/dev/null 2>/dev/null
+
 clean:
 	rm -rf $(BUILD)
 

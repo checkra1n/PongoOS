@@ -26,7 +26,10 @@
 all: pongoterm
 
 pongoterm: pongoterm.m
-	$(CC) -o $@ $^ -Wall -O3 -framework Foundation -framework CoreFoundation -framework IOKit
-
+	ifeq ($(uname),Darwin)
+		$(CC) -o $@ $^ -Wall -O3 -framework Foundation -framework CoreFoundation -framework IOKit
+	else
+		echo "Only MacOS is supported as of now."
+	endif
 clean:
 	rm -f pongoterm

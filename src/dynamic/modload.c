@@ -30,6 +30,7 @@
 #include <lzma/lzmadec.h>
 #include <pongo.h>
 #include <aes/aes.h>
+#include <stdlib.h>
 
 void f_stack_chk_fail() { panic("stack overflow!"); }
 uint64_t f_stack_chk_guard = 0x4141414141414141;
@@ -47,6 +48,8 @@ void *__memcpy_chk (void *dest, const void * src, size_t n, size_t dest_len) {
 }
 
 struct pongo_exports public_api[] = {
+    EXPORT_SYMBOL(rand),
+    EXPORT_SYMBOL(srand),
     EXPORT_SYMBOL(xnu_pf_apply_each_kext),
     EXPORT_SYMBOL(xnu_pf_get_first_kext),
     EXPORT_SYMBOL(xnu_pf_get_kext_header),

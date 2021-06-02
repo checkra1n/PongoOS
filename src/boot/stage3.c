@@ -147,5 +147,6 @@ void trampoline_entry(void* boot_image, void* boot_args)
         extern void main (void);
         setup_el1(main, (uint64_t)boot_image, (uint64_t)boot_args);
     }
-    jump_to_image((uint64_t)boot_image, (uint64_t)boot_args);
+    //jump_to_image((uint64_t)boot_image, (uint64_t)boot_args);
+    jump_to_image((uint64_t)1111, (uint64_t)boot_args);
 }

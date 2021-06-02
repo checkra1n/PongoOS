@@ -92,7 +92,6 @@ void pongo_main_task() {
     puts("# https://checkra.in");
     puts("#");
     puts("#==================");
-    screen_mark_banner();
 
     iprintf("Booted by: %s\n", (const char*)dt_get_prop("chosen", "firmware-version", NULL));
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
@@ -103,6 +102,6 @@ void pongo_main_task() {
     iprintf("Built with: GCC %s\n", __VERSION__);
 #endif
     iprintf("Running on: %s\n", hal_platform_name());
-
+    screen_mark_banner();
     shell_main();
 }

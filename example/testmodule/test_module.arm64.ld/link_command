@@ -1,0 +1,8 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld
+-Z
+-demangle
+-lto_library /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libLTO.dylib
+-dynamic
+-arch arm64
+-platform_version ios 14.4.0 14.4
+-kext

@@ -1,0 +1,2 @@
+cd /Users/vento/pongoos/example/testmodule
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -demangle -lto_library /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libLTO.dylib -dynamic -arch arm64 -platform_version ios 14.4.0 14.4 -syslibroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS14.4.sdk -o test_module /var/folders/15/4hf0y_n57w3fx4xk1pggh7vh0000gn/T/main-3e0770.o -kext -fatal_warnings

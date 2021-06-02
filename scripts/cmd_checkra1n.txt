@@ -1,0 +1,7 @@
+sep auto
+/send ../build/checkra1n-kpf-pongo
+modload
+/send rdsk.dmg
+ramdisk
+xargs rootdev=md0
+bootx
