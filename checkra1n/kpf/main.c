@@ -1274,19 +1274,21 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset) {
     // 0xfffffff0068f3d5c      e01f00f9       str x0, [sp, 0x38]
     // 0xfffffff0068f3d60      08c44039       ldrb w8, [x0, 0x31] ; [0x31:4]=
     // 0xfffffff0068f3d64      68043037       tbnz w8, 6, 0xfffffff0068f3df0 <- patch this out
+    // Since iOS 15, the "str" can also be "stur", so we mask out one of the upper bits to catch both,
+    // and we apply a mask of 0x1d to the base register, to catch exactly x29 and sp.
     // r2 cmd:
-    // /x 000000f9000000f90000403900003037:000000ff000000ff0000ffff0000ffff
+    // /x a00300f8a00300f80000403900003037:a003c0fea003c0fe0000feff0000f8ff
     uint64_t i_matches[] = {
-        0xF9000000, // str x*, [x*]
-        0xF9000000, // str x*, [x*]
+        0xf80003a0, // st(u)r x*, [x29/sp, *]
+        0xf80003a0, // st(u)r x*, [x29/sp, *]
         0x39400000, // ldrb w*, [x*]
-        0x37300000  // tbnz w*, 6, *
+        0x37300000, // tbnz w*, 6, *
     };
     uint64_t i_masks[] = {
-        0xff000000,
-        0xff000000,
-        0xffff0000,
-        0xffff0000,
+        0xfec003a0,
+        0xfec003a0,
+        0xfffe0000,
+        0xfff80000,
     };
     xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
 }
