@@ -93,7 +93,7 @@ void patch_bootloader(void* boot_image)
 
     iorvbar_yeet(boot_image, boot_image);
     aes_keygen(boot_image, boot_image);
-    // Ultra yolo hack: 16K support = Reconfig Engine
+    // Ultra dirty hack: 16K support = Reconfig Engine
     if(is_16k())
     {
         recfg_yoink(boot_image, boot_image);

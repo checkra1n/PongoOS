@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2021 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 
 // ********************************************************
@@ -84,9 +84,19 @@ The patch works by finding this sequence of instructions:
 | orr xM, xN, 1                  |
 +--------------------------------+
 
-In radare2, this can be found with the following masked hexsearch:
+Starting with iOS 15, it seems the function has changed to instead
+take an argument that is directly OR'ed into the value:
+
++--------------------------------+
+| and xN, x0, 0xfffffffffffff800 |
+| mov wK, w1                     |
+| orr xM, xN, xK                 |
++--------------------------------+
+
+In radare2, this can be found with the following masked hexsearch respectively:
 
 /x 00d07592000040b2:e0ffffff00fcffff
+/x 00d07592e003012a000000aa:e0ffffffe0ffffff00fce0ff
 
 We just yeet out the orr, so that iBoot sets the RVBAR address but doesn't lock it.
 This means we change the instruction from orr-immediate to orr-register, with xzr as 3rd operand.
@@ -102,16 +112,34 @@ iorvbar_yeet:
     movk w5, 0xd000
     movz w6, 0xb240, lsl 16 // orr xM, xN, 1
     movz w7, 0xaa1f, lsl 16 // orr xM, xN, xzr
+    movz w8, 0x2a01, lsl 16 // mov wK, w1
+    movk w8, 0x03e0
 1:
+    // Match 0xfffffffffffff800
     ldr w3, [x2], 0x4
     and w4, w3, 0xffffffe0
     cmp w4, w5
     b.ne 1b
+    // Match orr with immediate
     bfi w6, w3, 5, 5
     ldr w4, [x2]
     and w3, w4, 0xffffffe0
     cmp w3, w6
+    b.eq 2f
+    // Match arg1
+    cmp w3, w8
     b.ne 1b
+    // Match orr with reg
+    and w9, w6, 0x3e0
+    movk w9, 0xaa00, lsl 16 // orr xM, xN, xK
+    bfi w9, w4, 16, 5
+    ldr w4, [x2, 0x4]
+    and w3, w4, 0xffffffe0
+    cmp w3, w9
+    b.ne 1b
+    add x2, x2, 0x4
+2:
+    // Patch
     bfi w7, w4, 0, 10
     sub x2, x2, x0
     add x2, x2, x1
