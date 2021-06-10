@@ -1566,6 +1566,52 @@ void kpf_md0_patches(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "md0_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_md0_callback);
 }
 
+bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    // Replace the call with MOV X0, #0
+    puts("KPF: Found vnop_rootvp_auth");
+    opcode_stream[4] = 0xD2800000;
+    return true;
+}
+
+void kpf_vnop_rootvp_auth_patch(xnu_pf_patchset_t* patchset) {
+    uint64_t matches[] = {
+        0x528D0661, // MOV             W1, #0x80046833  // command
+        0x72B00081, // 
+        0xD2800002, // MOV             X2, #0           // data
+        0x52800003, // MOV             W3, #0           // fflag
+        0x94000000, // BL              _VNOP_IOCTL
+    };
+    uint64_t masks[] = {
+        0xFFFFFFFF,
+        0xFFFFFFFF,
+        0xFFFFFFFF,
+        0xFFFFFFFF,
+        0xFC000000,
+    };
+
+    xnu_pf_maskmatch(patchset, "vnop_rootvp_auth", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)vnop_rootvp_auth_callback);
+}
+
+bool root_livefs_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    puts("KPF: Found root_livefs");
+    opcode_stream[2] = NOP;
+    return true;
+}
+
+void kpf_root_livefs_patch(xnu_pf_patchset_t* patchset) {
+    uint64_t matches[] = {
+        0xF9406108, // LDR             X8, [X8,#0xC0]
+        0x3940E108, // LDRB            W8, [X8,#0x38]
+        0x37280008, // TBNZ            W8, #5, loc_FFFFFFF008E60F1C
+    };
+    uint64_t masks[] = {
+        0xFFFFFFFF,
+        0xFFFFFFFF,
+        0xFFF8001F,
+    };
+    xnu_pf_maskmatch(patchset, "root_livefs", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)root_livefs_callback);
+}
+
 struct kerninfo *legacy_info;
 char is_oldstyle_rd;
 int gkpf_flags;
