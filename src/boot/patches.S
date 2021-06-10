@@ -33,8 +33,9 @@
 // **                                                    **
 // ********************************************************
 
+.align 2
 
-// void iorvbar_yeet(const volatile void *ro, volatile void *rw)
+// void iorvbar_yeet(volatile void *boot_image)
 
 /*
 RVBAR_ELx is controlled by the IORVBAR MMIO register.
@@ -102,11 +103,12 @@ We just yeet out the orr, so that iBoot sets the RVBAR address but doesn't lock 
 This means we change the instruction from orr-immediate to orr-register, with xzr as 3rd operand.
 */
 
-.align 2
+#ifndef NO_GLOBAL
 .globl iorvbar_yeet
 iorvbar_yeet:
-    // x0 = ro
-    // x1 = rw
+#else
+L_iorvbar_yeet:
+#endif
     mov x2, x0 // instr
     movz w5, 0x9275, lsl 16 // and xN, x0, 0xfffffffffffff800
     movk w5, 0xd000
@@ -141,15 +143,13 @@ iorvbar_yeet:
 2:
     // Patch
     bfi w7, w4, 0, 10
-    sub x2, x2, x0
-    add x2, x2, x1
     str w7, [x2]
     dmb sy
     isb sy
     ret
 
 
-// void aes_keygen(const volatile void *ro, volatile void *rw)
+// void aes_keygen(volatile void *boot_image)
 
 /*
 iDevices seem to have three builtin AES keys: UID, GID0 and GID1.
@@ -232,11 +232,12 @@ We find this sequence, seek to the next bl, then dereference it and write a "ret
 We do this rather than nop'ing the branch because there is more than one call site.
 */
 
-.align 2
+#ifndef NO_GLOBAL
 .globl aes_keygen
 aes_keygen:
-    // x0 = ro
-    // x1 = rw
+#else
+L_aes_keygen:
+#endif
     mov x2, x0 // instr
     movz w7, 0x320e, lsl 16 // orr w0, wzr, 0x40000
     movk w7, 0x03e0
@@ -280,8 +281,6 @@ aes_keygen:
     cmp w4, 0x25 // check for bl
     b.ne 2b
     sbfx w3, w3, 0, 26
-    sub x2, x2, x0
-    add x2, x2, x1
     ldr w7, Lol
     str w7, [x2, w3, sxtw 2]
     dmb sy
@@ -290,7 +289,7 @@ Lol:
     ret
 
 
-// void recfg_yoink(const volatile void *ro, volatile void *rw)
+// void recfg_yoink(volatile void *boot_image)
 
 /*
 The reconfig engine works by having eight separate config sequences that are run on different events.
@@ -390,11 +389,12 @@ a ret to nop the lock. Absolutely everything else is deferred to PongoOS.
 
 #ifndef NO_RECFG
 
-.align 2
+#ifndef NO_GLOBAL
 .globl recfg_yoink
 recfg_yoink:
-    // x0 = ro
-    // x1 = rw
+#else
+L_recfg_yoink:
+#endif
     mov x2, x0 // instr
     movz w8, 0x3200, lsl 16 // orr w0, wzr, 3
     movk w8, 0x07e0
@@ -426,8 +426,6 @@ recfg_yoink:
     // Deref and patch
     add x2, x2, 0x10
     sbfx w7, w7, 0, 26
-    sub x2, x2, x0
-    add x2, x2, x1
     ldr w3, Lul
     str w3, [x2, w7, sxtw 2]
     dmb sy

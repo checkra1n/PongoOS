@@ -32,9 +32,9 @@ extern uint32_t tramp_hook[5];
 volatile void jump_to_image(uint64_t image, uint64_t args);
 volatile void d$demote_patch(void * image);
 
-void iorvbar_yeet(const volatile void *ro, volatile void *rw) __asm__("iorvbar_yeet");
-void aes_keygen(const volatile void *ro, volatile void *rw) __asm__("aes_keygen");
-void recfg_yoink(const volatile void *ro, volatile void *rw) __asm__("recfg_yoink");
+void iorvbar_yeet(volatile void *boot_image) __asm__("iorvbar_yeet");
+void aes_keygen(volatile void *boot_image) __asm__("aes_keygen");
+void recfg_yoink(volatile void *boot_image) __asm__("recfg_yoink");
 
 uint32_t* find_next_insn(uint32_t* from, uint32_t size, uint32_t insn, uint32_t mask)
 {
@@ -91,12 +91,12 @@ void patch_bootloader(void* boot_image)
     }
 //    d$demote_patch(boot_image);
 
-    iorvbar_yeet(boot_image, boot_image);
-    aes_keygen(boot_image, boot_image);
+    iorvbar_yeet(boot_image);
+    aes_keygen(boot_image);
     // Ultra dirty hack: 16K support = Reconfig Engine
     if(is_16k())
     {
-        recfg_yoink(boot_image, boot_image);
+        recfg_yoink(boot_image);
     }
 
     invalidate_icache();
