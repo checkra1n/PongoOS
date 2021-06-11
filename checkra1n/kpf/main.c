@@ -1320,73 +1320,83 @@ bool kpf_amfi_sha1(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     return true;
 }
 
-bool kpf_find_offset_p_flags(uint32_t *proc_issetugid) {
+void kpf_find_offset_p_flags(uint32_t *proc_issetugid) {
     DEVLOG("Found kpf_find_offset_p_flags 0x%llx", xnu_ptr_to_va(proc_issetugid));
     if (!proc_issetugid) {
-        DEVLOG("kpf_find_offset_p_flags called with no argument");
-        return false;
+        panic("kpf_find_offset_p_flags called with no argument");
     }
     // FIND LDR AND READ OFFSET
-    uint32_t* ldr = find_next_insn(proc_issetugid, 0x10, 0xB9400000, 0xFFC003C0);
-    if (!ldr) {
-        DEVLOG("kpf_find_offset_p_flags failed to find LDR");
-        return false;
+    if((*proc_issetugid & 0xffc003c0) != 0xb9400000)
+    {
+        panic("kpf_find_offset_p_flags failed to find LDR");
     }
-    offsetof_p_flags = ((*ldr>>10)&0xFFF)<<2;
+    offsetof_p_flags = ((*proc_issetugid>>10)&0xFFF)<<2;
     DEVLOG("Found offsetof_p_flags %x", offsetof_p_flags);
-    return true;
 }
 
-bool kpf_amfi_mac_syscall(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    uint32_t* rep = opcode_stream;
-    char foundit = 0;
-    for (int i=0; i<200; i++) { // 02 01 80 52
-        if ((rep[0] == 0x321d03e2 /*orr w2, wzr, 8*/|| rep[0] == 0x52800102 /* movz w2, 8 */) && ((rep[1] & 0xFF000000) == 0x14000000 || (rep[3] & 0xFF000000) == 0x14000000 /* b */)) {
-            foundit = 1;
+bool found_amfi_mac_syscall = false;
+bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    if(found_amfi_mac_syscall)
+    {
+        panic("amfi_mac_syscall found twice!");
+    }
+    // Our initial masking match is extremely broad and we have two of them so
+    // we have to mark both as non-required, which means returning false does
+    // nothing. But we panic on failure, so if we survive, we patched successfully.
+    found_amfi_mac_syscall = true;
+
+    bool foundit = false;
+    uint32_t *rep = opcode_stream;
+    for(size_t i = 0; i < 25; ++i)
+    {
+        if((rep[0] == 0x321c03e2 /* orr w2, wzr, 0x10 */ || rep[0] == 0x52800202 /* movz w2, 0x10 */))
+        {
+            foundit = true;
             puts("KPF: Found AMFI mac_syscall");
             break;
         }
         rep++;
     }
-    if (!foundit) {
-        puts("KPF: Failed to patch mac_syscall");
-        return false;
-    } else {
-        while (1) {
-            if ((rep[0] & 0xFC000000) == 0x94000000) { // bl *
-                // Follow call to check_dyld_policy_internal
-                uint32_t* check_dyld_policy_internal = follow_call(rep);
-                if (!check_dyld_policy_internal) {
-                    DEVLOG("Failed to follow call at 0x%llx to check_dyld_policy_internal", xnu_ptr_to_va(rep));
-                    puts("KPF: Failed to patch mac_syscall");
-                }
-                uint32_t* ref = check_dyld_policy_internal;
-                // Find call to proc_issetuid
-                ref = find_next_insn(ref, 0x18, 0x94000000, 0xFC000000);
-                if ((ref[1]&0xFF00001F) != 0x34000000) {
-                    DEVLOG("CBZ missing after call to proc_issetuid in 0x%llx", xnu_ptr_to_va(check_dyld_policy_internal));
-                    puts("KPF: Failed to patch mac_syscall");
-                    return false;
-                }
-                // Save offset of p_flags
-                kpf_find_offset_p_flags(follow_call(ref));
-                // Follow CBZ
-                ref++;
-                ref += (*ref>>5)&0x7FFFF;
-                uint32_t *cmp = find_next_insn(ref, 0x10, 0x7100001F, 0xFFFFFFFF); // CMP W0, #0
-                if (!cmp) {
-                    DEVLOG("CMP W0 missing after following CBZ to 0x%llx", xnu_ptr_to_va(ref));
-                    puts("KPF: Failed to patch mac_syscall");
-                    return false;
-                }
-                ref = cmp-1;
-                *ref = 0x52800020; // MOV W0, #1
-                break;
-            }
-            rep--;
-        }
+    if(!foundit)
+    {
+        panic("Failed to find w2 in mac_syscall at 0x%llx", xnu_ptr_to_va(rep));
     }
-    xnu_pf_disable_patch(patch);
+    uint32_t *copyin = find_next_insn(rep + 1, 2, 0x94000000, 0xfc000000); // bl
+    if(!copyin)
+    {
+        panic("Failed to find copyin in mac_syscall at 0x%llx", xnu_ptr_to_va(rep));
+    }
+    uint32_t *bl = find_next_insn(copyin + 1, 10, 0x94000000, 0xfc000000);
+    if(!bl)
+    {
+        panic("Failed to find check_dyld_policy_internal in mac_syscall at 0x%llx", xnu_ptr_to_va(rep));
+    }
+    uint32_t *check_dyld_policy_internal = follow_call(bl);
+    if(!check_dyld_policy_internal)
+    {
+        panic("Failed to follow call at 0x%llx to check_dyld_policy_internal", xnu_ptr_to_va(bl));
+    }
+    // Find call to proc_issetuid
+    uint32_t *ref = find_next_insn(check_dyld_policy_internal, 10, 0x94000000, 0xfc000000);
+    if((ref[1] & 0xff00001f) != 0x34000000)
+    {
+        panic("CBZ missing after call to proc_issetuid in 0x%llx", xnu_ptr_to_va(check_dyld_policy_internal));
+    }
+    // Save offset of p_flags
+    kpf_find_offset_p_flags(follow_call(ref));
+    // Follow CBZ
+    ref++;
+    ref += sxt32(*ref >> 5, 19); // uint32 takes care of << 2
+    uint32_t *proc_has_get_task_allow = find_next_insn(ref, 5, 0x94000000, 0xfc000000);
+    if(!proc_has_get_task_allow)
+    {
+        panic("Failed to find proc_has_get_task_allow in check_dyld_policy_internal at 0x%llx", xnu_ptr_to_va(ref));
+    }
+    if((proc_has_get_task_allow[1] != 0x7100001f /* cmp w0, 0 */) && ((proc_has_get_task_allow[1] & 0xfff8001f) != 0x36000000 /* tbz w0, 0, ... */))
+    {
+        panic("CMP/TBZ missing after call to proc_has_get_task_allow in 0x%llx", xnu_ptr_to_va(check_dyld_policy_internal));
+    }
+    proc_has_get_task_allow[0] = 0x52800020; // MOV W0, #1
     return true;
 }
 void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
@@ -1473,7 +1483,58 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
         0,
         0xffffffff,
     };
-    xnu_pf_maskmatch(patchset, "amfi_mac_syscall", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), true, (void*)kpf_amfi_mac_syscall);
+    xnu_pf_maskmatch(patchset, "amfi_mac_syscall", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_mac_syscall);
+
+    // iOS 15 changed to a switch/case:
+    //
+    // 0xfffffff00830e9cc      ff4303d1       sub sp, sp, 0xd0
+    // 0xfffffff00830e9d0      f6570aa9       stp x22, x21, [sp, 0xa0]
+    // 0xfffffff00830e9d4      f44f0ba9       stp x20, x19, [sp, 0xb0]
+    // 0xfffffff00830e9d8      fd7b0ca9       stp x29, x30, [sp, 0xc0]
+    // 0xfffffff00830e9dc      fd030391       add x29, sp, 0xc0
+    // 0xfffffff00830e9e0      08a600b0       adrp x8, 0xfffffff0097cf000
+    // 0xfffffff00830e9e4      1f2003d5       nop
+    // 0xfffffff00830e9e8      083940f9       ldr x8, [x8, 0x70]
+    // 0xfffffff00830e9ec      a8831df8       stur x8, [x29, -0x28]
+    // 0xfffffff00830e9f0      d3098052       mov w19, 0x4e
+    // 0xfffffff00830e9f4      28680151       sub w8, w1, 0x5a
+    // 0xfffffff00830e9f8      1f290071       cmp w8, 0xa
+    // 0xfffffff00830e9fc      88150054       b.hi 0xfffffff00830ecac
+    // 0xfffffff00830ea00      f40302aa       mov x20, x2
+    // 0xfffffff00830ea04      f50300aa       mov x21, x0
+    // 0xfffffff00830ea08      296afff0       adrp x9, 0xfffffff007055000
+    // 0xfffffff00830ea0c      29c13d91       add x9, x9, 0xf70
+    // 0xfffffff00830ea10      8a000010       adr x10, 0xfffffff00830ea20
+    // 0xfffffff00830ea14      2b696838       ldrb w11, [x9, x8]
+    // 0xfffffff00830ea18      4a090b8b       add x10, x10, x11, lsl 2
+    // 0xfffffff00830ea1c      40011fd6       br x10
+    // 0xfffffff00830ea20      40e5054f       movi v0.16b, 0xaa
+    // 0xfffffff00830ea24      e00f803d       str q0, [sp, 0x30]
+    // 0xfffffff00830ea28      ff0f00f9       str xzr, [sp, 0x18]
+    // 0xfffffff00830ea2c      f41300b4       cbz x20, 0xfffffff00830eca8
+    // 0xfffffff00830ea30      e1c30091       add x1, sp, 0x30
+    // 0xfffffff00830ea34      e00314aa       mov x0, x20
+    // 0xfffffff00830ea38      02028052       mov w2, 0x10
+    // 0xfffffff00830ea3c      8e3ee797       bl 0xfffffff007cde474
+    // 0xfffffff00830ea40      f30300aa       mov x19, x0
+    // 0xfffffff00830ea44      40130035       cbnz w0, 0xfffffff00830ecac
+    // 0xfffffff00830ea48      e1630091       add x1, sp, 0x18
+    // 0xfffffff00830ea4c      e00315aa       mov x0, x21
+    // 0xfffffff00830ea50      7c020094       bl 0xfffffff00830f440
+    // 0xfffffff00830ea54      e11f40f9       ldr x1, [sp, 0x38]
+    // 0xfffffff00830ea58      e0630091       add x0, sp, 0x18
+    // 0xfffffff00830ea5c      02018052       mov w2, 8
+    // 0xfffffff00830ea60      50000014       b 0xfffffff00830eba0
+    //
+    // We find the "sub wN, w1, 0x5a", then the "mov w2, 0x10; bl ..." after that, then the "bl" after that.
+    // /x 20680151:e0ffffff
+    uint64_t iii_matches[] = {
+        0x51016820, // sub wN, w1, 0x5a
+    };
+    uint64_t iii_masks[] = {
+        0xffffffe0,
+    };
+    xnu_pf_maskmatch(patchset, "amfi_mac_syscall_alt", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_mac_syscall);
 }
 
 void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
@@ -1654,6 +1715,7 @@ void command_kpf() {
     xnu_pf_apply(text_exec_range, xnu_text_exec_patchset);
     xnu_pf_patchset_destroy(xnu_text_exec_patchset);
 
+    if (!found_amfi_mac_syscall) panic("no amfi_mac_syscall");
     if (!dounmount_found) panic("no dounmount");
     if (!repatch_ldr_x19_vnode_pathoff) panic("no repatch_ldr_x19_vnode_pathoff");
     if (!shellcode_area) panic("no shellcode area?");
