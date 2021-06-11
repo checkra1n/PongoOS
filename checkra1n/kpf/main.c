@@ -450,7 +450,7 @@ void kpf_convert_port_to_map_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xfffffe1f, // cmp w[16-31], #1
         0xff00001f, // b.eq *
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_convert_port_to_map_callback);
 }
 
 void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
@@ -1699,17 +1699,23 @@ void command_kpf() {
         xnu_pf_patchset_destroy(xnu_plk_data_const_patchset);
     }
 
+    const char kmap_port_string[] = "userspace has control access to a kernel map";
+    const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, strlen(kmap_port_string));
+
     kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_amfi_patch(xnu_text_exec_patchset);
     kpf_mac_mount_patch(xnu_text_exec_patchset);
     kpf_conversion_patch(xnu_text_exec_patchset);
-    kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
     kpf_mac_dounmount_patch_0(xnu_text_exec_patchset);
     kpf_mac_vm_map_protect_patch(xnu_text_exec_patchset);
     kpf_mac_vm_fault_enter_patch(xnu_text_exec_patchset);
     kpf_nvram_unlock(xnu_text_exec_patchset);
     kpf_find_shellcode_area(xnu_text_exec_patchset);
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
+    if(kmap_port_string_match) // Older versions don't have this
+    {
+        kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
+    }
 
     xnu_pf_emit(xnu_text_exec_patchset);
     xnu_pf_apply(text_exec_range, xnu_text_exec_patchset);
@@ -1839,10 +1845,13 @@ void command_kpf() {
         }
         nvram_patchpoint[0] = 0x14000000 | (((uint64_t)nvram_off >> 2) & 0x3ffffff);
     }
+#if !DEV_BUILD
+    // Treat this patch as optional in release
     else if(!nvram_inline_patch)
     {
         panic("Missing patch: nvram_unlock");
     }
+#endif
 
     if (!kpf_has_done_mac_mount) {
         panic("Missing patch: mac_mount");
