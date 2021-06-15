@@ -179,7 +179,7 @@ void panic_cmd(const char* cmd, char* args) {
     if (! *args) {
         panic("panic called from shell");
     } else {
-        panic(args);
+        panic("%s", args);
     }
 }
 

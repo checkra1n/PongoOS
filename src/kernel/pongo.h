@@ -402,7 +402,7 @@ extern void task_irq_dispatch(uint32_t intr);
 extern void task_yield_asserted();
 extern void task_register_unlinked(struct task* task, void (*entry)());
 extern void task_suspend_self();
-extern _Noreturn void panic(const char* string, ...);
+extern _Noreturn __attribute__((format(printf, 1, 2))) void panic(const char* string, ...);
 extern void pmgr_reset();
 extern void spin(uint32_t usec);
 extern void task_set_sched_head(struct task* task);

@@ -875,7 +875,7 @@ uint64_t alloc_phys(uint32_t size) {
         }
     }
     if (!found) panic("alloc_phys: OOM");
-    if (!rv) panic("alloc_phys: returning NULL?? (size %llx, npages %llx, found_pages %llx)", size, npages, found_pages);
+    if (!rv) panic("alloc_phys: returning NULL?? (size 0x%x, npages 0x%x, found_pages 0x%x)", size, npages, found_pages);
     phys_unlink_contiguous(rv, size);
     phys_reference(rv, size);
     enable_interrupts();

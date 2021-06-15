@@ -145,7 +145,7 @@ struct pongo_exports {
     void * value;
 };
 
-extern void panic(const char* string);
+extern _Noreturn __attribute__((format(printf, 1, 2))) void panic(const char* string, ...);
 extern void spin(uint32_t usec);
 extern uint64_t get_ticks();
 extern void usleep(uint32_t usec);
