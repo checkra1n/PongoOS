@@ -34,12 +34,20 @@
 uint32_t offsetof_p_flags, *dyld_hook;
 
 #if DEV_BUILD
-#define DEVLOG(x, ...) do { \
-    printf(x "\n", ##__VA_ARGS__); \
-} while (0)
+    #define DEVLOG(x, ...) do { \
+        printf(x "\n", ##__VA_ARGS__); \
+    } while (0)
+    #define panic_at(addr, str, ...) do { \
+        panic(str " (0x%llx)", ##__VA_ARGS__, xnu_ptr_to_va(addr)); \
+    } while (0)
 #else
-#define DEVLOG(x, ...) do {} while (0)
+    #define DEVLOG(x, ...) do {} while (0)
+    #define panic_at(addr, str, ...) do { \
+        (void)(addr); \
+        panic(str, ##__VA_ARGS__); \
+    } while (0)
 #endif
+
 #if 0
         // AES, sigh
         else if((fetch & 0xfffffc00) == 0x510fa000 && (apfs_privcheck[i+1] & 0xfffffc1f) == 0x7100081f && (apfs_privcheck[i+2] & 0xff00001f) == 0x54000003) {
@@ -197,9 +205,7 @@ bool kpf_amfi_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
         uint32_t* retpoint = find_next_insn(&opcode_stream[0], 0x180, RET, 0xffffffff);
         if (retpoint == NULL)
         {
-#if DEV_BUILD
-            puts("kpf_amfi_callback: failed to find retpoint");
-#endif
+            DEVLOG("kpf_amfi_callback: failed to find retpoint");
             return false;
         }
         uint32_t *patchpoint = find_prev_insn(retpoint, 0x40, 0xAA0003E0, 0xffe0ffff);
@@ -218,9 +224,7 @@ bool kpf_amfi_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
         }
         if(!found_something)
         {
-#if DEV_BUILD
-            puts("kpf_amfi_callback: failed to find anything");
-#endif
+            DEVLOG("kpf_amfi_callback: failed to find anything");
             return false;
         }
         puts("KPF: Found AMFI (Routine)");
@@ -239,9 +243,7 @@ bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     }
     if (!mac_mount_1) {
         kpf_has_done_mac_mount = false;
-#if DEV_BUILD
-        puts("kpf_mac_mount_callback: failed to find NOP point");
-#endif
+        DEVLOG("kpf_mac_mount_callback: failed to find NOP point");
         return false;
     }
     mac_mount_1[0] = NOP;
@@ -252,9 +254,7 @@ bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     }
     if (!mac_mount_1) {
         kpf_has_done_mac_mount = false;
-#if DEV_BUILD
-        puts("kpf_mac_mount_callback: failed to find xzr point");
-#endif
+        DEVLOG("kpf_mac_mount_callback: failed to find xzr point");
         return false;
     }
     // replace with a mov x8, xzr
@@ -267,9 +267,7 @@ bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
 }
 
 bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-#if DEV_BUILD
     uint32_t * const orig = opcode_stream;
-#endif
     uint32_t lr1 = opcode_stream[0],
              lr2 = opcode_stream[2];
     // step 2
@@ -277,11 +275,7 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
     // it makes also sure that both lr offsets are the same
     if((lr1 & 0x1f) != (opcode_stream[1] & 0x1f) || (lr2 & 0x1f) != (opcode_stream[3] & 0x1f) || (lr1 & 0x3ffc00) != (lr2 & 0x3ffc00))
     {
-#if DEV_BUILD
-        panic("kpf_conversion_callback: opcode check failed (0x%llx)", orig);
-#else
-        panic("kpf_conversion_callback: opcode check failed");
-#endif
+        panic_at(orig, "kpf_conversion_callback: opcode check failed");
     }
     puts("KPF: Found task_conversion_eval");
 
@@ -315,11 +309,7 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
             regs |= ((regs >> dst) & 1) << src;
         }
     }
-#if DEV_BUILD
-    panic("kpf_conversion_callback: failed to find cmp (0x%llx)", xnu_ptr_to_va(orig));
-#else
-    panic("kpf_conversion_callback: failed to find cmp");
-#endif
+    panic_at(orig, "kpf_conversion_callback: failed to find cmp");
 }
 void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // this patch is here to allow the usage of the extracted tfp0 port from userland (see https://bazad.github.io/2018/10/bypassing-platform-binary-task-threads/#the-platform-binary-mitigation)
@@ -687,9 +677,7 @@ bool kpf_find_shellcode_area_callback(struct xnu_pf_patch* patch, uint32_t* opco
 {
     if(shellcode_area)
     {
-#if DEV_BUILD
-        puts("kpf_find_shellcode_area_callback: already ran, skipping...");
-#endif
+        DEVLOG("kpf_find_shellcode_area_callback: already ran, skipping...");
         return false;
     }
     shellcode_area = opcode_stream;
@@ -717,9 +705,7 @@ bool kpf_mac_vm_map_protect_callback(struct xnu_pf_patch* patch, uint32_t* opcod
     uint32_t* first_ldr = find_next_insn(&opcode_stream[0], 0x400, 0x37480000, 0xFFFF0000);
     if(!first_ldr)
     {
-#if DEV_BUILD
-        puts("kpf_mac_vm_map_protect_callback: failed to find ldr");
-#endif
+        DEVLOG("kpf_mac_vm_map_protect_callback: failed to find ldr");
         return false;
     }
     first_ldr++;
@@ -828,9 +814,7 @@ bool vm_fault_enter_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
             return true;
         }
     }
-#if DEV_BUILD
-    puts("vm_fault_enter_callback: failed to find patch point");
-#endif
+    DEVLOG("vm_fault_enter_callback: failed to find patch point");
     return false;
 }
 
@@ -1076,9 +1060,7 @@ bool vnode_getpath_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
 {
     if(repatch_ldr_x19_vnode_pathoff)
     {
-#if DEV_BUILD
-        puts("vnode_getpath_callback: already ran, skipping...");
-#endif
+        DEVLOG("vnode_getpath_callback: already ran, skipping...");
         return false;
     }
     puts("KPF: Found vnode_getpath");
@@ -1091,9 +1073,7 @@ bool ret0_gadget_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
 {
     if(ret0_gadget)
     {
-#if DEV_BUILD
-        puts("ret0_gadget_callback: already ran, skipping...");
-#endif
+        DEVLOG("ret0_gadget_callback: already ran, skipping...");
         return false;
     }
     puts("KPF: Found ret0 gadget");
@@ -1110,9 +1090,7 @@ bool vnode_lookup_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
 {
     if(vnode_lookup)
     {
-#if DEV_BUILD
-        puts("vnode_lookup_callback: already ran, skipping...");
-#endif
+        DEVLOG("vnode_lookup_callback: already ran, skipping...");
         return false;
     }
     uint32_t *try = &opcode_stream[8]+((opcode_stream[8]>>5)&0xFFF);
@@ -1195,9 +1173,7 @@ bool mach_traps_callback(struct xnu_pf_patch* patch, uint64_t* mach_traps) {
     uint32_t* tfp0check = find_next_insn((uint32_t*)xnu_va_to_ptr(tfp), 0x20, 0x34000000, 0xff000000);
     if(!tfp0check)
     {
-#if DEV_BUILD
-        puts("mach_traps_callback: failed to find tfp0check");
-#endif
+        DEVLOG("mach_traps_callback: failed to find tfp0check");
         return false;
     }
 
@@ -1227,9 +1203,7 @@ bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     // cmp x0, x8
     uint32_t* f_apfs_privcheck = find_next_insn(opcode_stream, 0x10, 0xeb08001f, 0xFFFFFFFF);
     if (!f_apfs_privcheck) {
-#if DEV_BUILD
-        puts("kpf_apfs_patches_mount: failed to find f_apfs_privcheck");
-#endif
+        DEVLOG("kpf_apfs_patches_mount: failed to find f_apfs_privcheck");
         return false;
     }
     puts("KPF: Found APFS mount");
@@ -1297,9 +1271,7 @@ bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     amfi_ret = find_next_insn(opcode_stream, 0x80, RET, 0xFFFFFFFF);
     if (!amfi_ret)
     {
-#if DEV_BUILD
-        puts("kpf_amfi_execve_tail: failed to find amfi_ret");
-#endif
+        DEVLOG("kpf_amfi_execve_tail: failed to find amfi_ret");
         return false;
     }
     puts("KPF: Found AMFI execve hook");
@@ -1309,9 +1281,7 @@ bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
 bool kpf_amfi_sha1(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     uint32_t* cmp = find_next_insn(opcode_stream, 0x10, 0x7100081f, 0xFFFFFFFF); // cmp w0, 2
     if (!cmp) {
-#if DEV_BUILD
-        puts("kpf_amfi_sha1: failed to find cmp");
-#endif
+        DEVLOG("kpf_amfi_sha1: failed to find cmp");
         return false;
     }
     puts("KPF: Found AMFI hashtype check");
@@ -1359,28 +1329,28 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     }
     if(!foundit)
     {
-        panic("Failed to find w2 in mac_syscall at 0x%llx", xnu_ptr_to_va(rep));
+        panic_at(rep, "Failed to find w2 in mac_syscall");
     }
     uint32_t *copyin = find_next_insn(rep + 1, 2, 0x94000000, 0xfc000000); // bl
     if(!copyin)
     {
-        panic("Failed to find copyin in mac_syscall at 0x%llx", xnu_ptr_to_va(rep));
+        panic_at(rep, "Failed to find copyin in mac_syscall");
     }
     uint32_t *bl = find_next_insn(copyin + 1, 10, 0x94000000, 0xfc000000);
     if(!bl)
     {
-        panic("Failed to find check_dyld_policy_internal in mac_syscall at 0x%llx", xnu_ptr_to_va(rep));
+        panic_at(rep, "Failed to find check_dyld_policy_internal in mac_syscall");
     }
     uint32_t *check_dyld_policy_internal = follow_call(bl);
     if(!check_dyld_policy_internal)
     {
-        panic("Failed to follow call at 0x%llx to check_dyld_policy_internal", xnu_ptr_to_va(bl));
+        panic_at(bl, "Failed to follow call to check_dyld_policy_internal");
     }
     // Find call to proc_issetuid
     uint32_t *ref = find_next_insn(check_dyld_policy_internal, 10, 0x94000000, 0xfc000000);
     if((ref[1] & 0xff00001f) != 0x34000000)
     {
-        panic("CBZ missing after call to proc_issetuid in 0x%llx", xnu_ptr_to_va(check_dyld_policy_internal));
+        panic_at(check_dyld_policy_internal, "CBZ missing after call to proc_issetuid");
     }
     // Save offset of p_flags
     kpf_find_offset_p_flags(follow_call(ref));
@@ -1390,11 +1360,11 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     uint32_t *proc_has_get_task_allow = find_next_insn(ref, 5, 0x94000000, 0xfc000000);
     if(!proc_has_get_task_allow)
     {
-        panic("Failed to find proc_has_get_task_allow in check_dyld_policy_internal at 0x%llx", xnu_ptr_to_va(ref));
+        panic_at(ref, "Failed to find proc_has_get_task_allow in check_dyld_policy_internal");
     }
     if((proc_has_get_task_allow[1] != 0x7100001f /* cmp w0, 0 */) && ((proc_has_get_task_allow[1] & 0xfff8001f) != 0x36000000 /* tbz w0, 0, ... */))
     {
-        panic("CMP/TBZ missing after call to proc_has_get_task_allow in 0x%llx", xnu_ptr_to_va(check_dyld_policy_internal));
+        panic_at(check_dyld_policy_internal, "CMP/TBZ missing after call to proc_has_get_task_allow");
     }
     proc_has_get_task_allow[0] = 0x52800020; // MOV W0, #1
     return true;
