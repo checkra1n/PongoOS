@@ -30,6 +30,7 @@
 #include <string.h>
 
 #define DT_KEY_LEN 0x20
+#define BOOT_LINE_LENGTH 0x260
 
 struct Boot_Video {
 	unsigned long	v_baseAddr;	/* Base address of video memory */
@@ -51,7 +52,7 @@ typedef struct boot_args {
 	uint32_t		machineType;		/* Machine Type */
 	void			*deviceTreeP;		/* Base of flattened device tree */
 	uint32_t		deviceTreeLength;	/* Length of flattened tree */
-	char			CommandLine[256];	/* Passed in command line */
+	char			CommandLine[BOOT_LINE_LENGTH];	/* Passed in command line */
 	uint64_t		bootFlags;		/* Additional flags specified by the bootloader */
 	uint64_t		memSizeActual;		/* Actual size of memory */
 } boot_args;

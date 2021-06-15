@@ -71,7 +71,7 @@ typedef struct boot_args
     uint32_t machineType;
     void    *deviceTreeP;
     uint32_t deviceTreeLength;
-    char     CommandLine[256];
+    char     CommandLine[0x260];
     uint64_t bootFlags;
     uint64_t memSizeActual;
 } boot_args;

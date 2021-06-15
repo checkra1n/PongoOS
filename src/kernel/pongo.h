@@ -53,6 +53,7 @@
 #endif
 
 #define DT_KEY_LEN 0x20
+#define BOOT_LINE_LENGTH 0x260
 
 extern int service_cmd(const char* name, int cmd_id, void* data_in, size_t in_size, void* data_out, size_t* out_size);
 
@@ -83,7 +84,7 @@ typedef struct boot_args {
 	uint32_t		machineType;		/* Machine Type */
 	void			*deviceTreeP;		/* Base of flattened device tree */
 	uint32_t		deviceTreeLength;	/* Length of flattened tree */
-	char			CommandLine[256];	/* Passed in command line */
+	char			CommandLine[BOOT_LINE_LENGTH];	/* Passed in command line */
 	uint64_t		bootFlags;		/* Additional flags specified by the bootloader */
 	uint64_t		memSizeActual;		/* Actual size of memory */
 } boot_args;

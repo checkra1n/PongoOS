@@ -379,7 +379,7 @@ uint64_t xnu_ptr_to_va(void* ptr) {
 //       Kexts will never ever have been rebased when Pongo runs.
 static bool has_been_rebased(void) {
     static int8_t rebase_status = -1;
-    // First, determine whether we've been rebased. his feels really hacky, but it correctly covers all cases:
+    // First, determine whether we've been rebased. This feels really hacky, but it correctly covers all cases:
     //
     // 1. New-style kernels rebase themselves, so this is always false.
     // 2. Old-style kernels on a live device will always have been rebased.
