@@ -389,6 +389,21 @@ bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_t *opco
     return true;
 }
 
+bool kpf_convert_port_to_map_callback_ios15(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    opcode_stream[2] = NOP;
+    opcode_stream[6] = NOP;
+
+    // Only once
+    if(found_convert_port_to_map)
+    {
+        panic("convert_port_to_map found twice!");
+    }
+    puts("KPF: Found convert_port_to_map_with_flavor");
+    found_convert_port_to_map = true;
+    return true;
+}
+
 void kpf_convert_port_to_map_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // This patch is required because in some iOS 14.0 beta, Apple started cracking down on tfp0 usage.
     // In particular, convert_port_to_map_with_flavor will be called when a `vm_map_t` is required for
@@ -441,6 +456,42 @@ void kpf_convert_port_to_map_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xff00001f, // b.eq *
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_convert_port_to_map_callback);
+
+    // Alternate patch for ios 15 and above as it no longer matches.  Matches sample code below and NOP out the CBZ and B.NE
+    //
+    // FFFFFFF007D01370 loc_FFFFFFF007D01370                    ; CODE XREF: _convert_port_to_map_with_flavor+28↑j
+    // FFFFFFF007D01370                 MOV             X20, #0
+    // FFFFFFF007D01374                 B               loc_FFFFFFF007D013AC
+    // FFFFFFF007D01378 ; ---------------------------------------------------------------------------
+    // FFFFFFF007D01378
+    // FFFFFFF007D01378 loc_FFFFFFF007D01378                    ; CODE XREF: _convert_port_to_map_with_flavor+40↑j
+    // FFFFFFF007D01378                 CBZ             W21, loc_FFFFFFF007D013CC
+    // FFFFFFF007D0137C                 ADRP            X8, #_kernel_task@PAGE
+    // FFFFFFF007D01380                 LDR             X8, [X8,#_kernel_task@PAGEOFF]
+    // FFFFFFF007D01384                 CMP             X19, X8
+    // FFFFFFF007D01388                 B.NE            loc_FFFFFFF007D013EC
+    //
+    // r2 masked search:
+    // /x 000080D2000000140000003400000090000040f91f0000eb:E0FFFFFF000000FC000000ff0000009f0000c0ff1ffce0ff
+
+    uint64_t matches_2[] = {
+        0xD2800000, // MOV xn, #0
+        0x14000000, // B
+        0x34000000, // CBZ Wn
+        0x90000000, // ADRP
+        0xF9400000, // LDR
+        0xEB00001F, // CMP
+    };
+    uint64_t masks_2[] = {
+        0xFFFFFFE0,
+        0xFC000000,
+        0xff000000,
+        0x9F000000,
+        0xffc00000,
+        0xFFE0FC1F,
+        0xffffffff,
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches_2, masks_2, sizeof(matches_2)/sizeof(uint64_t), true, (void*)kpf_convert_port_to_map_callback_ios15);
 }
 
 void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
