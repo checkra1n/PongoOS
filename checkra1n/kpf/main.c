@@ -25,6 +25,8 @@
  *
  */
 #include <pongo.h>
+#include <errno.h>
+#include <inttypes.h>
 #include <mach-o/loader.h>
 #include <kerninfo.h>
 #include <mac.h>
@@ -143,6 +145,37 @@ uint32_t* follow_call(uint32_t* from) {
     }
     DEVLOG("followed call from 0x%llx to 0x%llx", xnu_ptr_to_va(from), xnu_ptr_to_va(target));
     return target;
+}
+
+bool foundKernelVersion;
+const char *kernelVersionString;
+struct {
+    int darwinMajor;
+    int darwinMinor;
+    int darwinRevision;
+    int xnuMajor;
+} kernelVersion;
+bool kpf_kernel_version_init(void) {
+    if (kernelVersionString == NULL) {
+        panic("kernel version not set");
+    }
+    const char *start = kernelVersionString + 35;
+    char *end = NULL;
+    errno=0;
+    kernelVersion.darwinMajor = strtoimax(start, &end, 10);
+    if (errno) panic("Error parsing kernel version");
+    start = end+1;
+    kernelVersion.darwinMinor = strtoimax(start, &end, 10);
+    if (errno) panic("Error parsing kernel version");
+    start = end+1;
+    kernelVersion.darwinRevision = strtoimax(start, &end, 10);
+    if (errno) panic("Error parsing kernel version");
+    start = strstr(end, "xnu-") + strlen("xnu-");
+    kernelVersion.xnuMajor = strtoimax(start, &end, 10);
+    if (errno) panic("Error parsing kernel version");
+    printf("Detected Kernel version Darwin: %d.%d.%d xnu: %d\n", kernelVersion.darwinMajor, kernelVersion.darwinMinor, kernelVersion.darwinRevision, kernelVersion.xnuMajor);
+    foundKernelVersion = true;
+    return true;
 }
 
 uint32_t* dyld_hook_addr;
@@ -1686,12 +1719,22 @@ void command_kpf() {
 
     struct mach_header_64* hdr = xnu_header();
 
+    xnu_pf_range_t* text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
+    kernelVersionString = (char*)memmem((unsigned char *)text_const_range->cacheable_base, text_const_range->size, (uint8_t *)"@(#)VERSION: Darwin Kernel Version ", strlen("@(#)VERSION: Darwin Kernel Version "));
+    if (kernelVersionString == NULL) {
+        panic("No kernel version string found");
+    }
+    kpf_kernel_version_init();
+
     // extern struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, const char* kext_bundle_id);
 
     xnu_pf_patchset_t* apfs_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     struct mach_header_64* apfs_header = xnu_pf_get_kext_header(hdr, "com.apple.filesystems.apfs");
     xnu_pf_range_t* apfs_text_exec_range = xnu_pf_section(apfs_header, "__TEXT_EXEC", "__text");
     kpf_apfs_patches(apfs_patchset);
+    if (kernelVersion.darwinMajor >= 21) {
+        kpf_root_livefs_patch(apfs_patchset);
+    }
     xnu_pf_emit(apfs_patchset);
     xnu_pf_apply(apfs_text_exec_range, apfs_patchset);
     xnu_pf_patchset_destroy(apfs_patchset);
@@ -1782,6 +1825,10 @@ void command_kpf() {
     if(kmap_port_string_14_match) // iOS 14 only
     {
         kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
+    }
+
+    if (kernelVersion.darwinMajor >= 21) {
+        kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
     }
 
     xnu_pf_emit(xnu_text_exec_patchset);
