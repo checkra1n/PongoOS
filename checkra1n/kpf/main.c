@@ -512,19 +512,22 @@ void kpf_convert_port_to_map_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0x14000000, // B
         0x34000000, // CBZ Wn
         0x90000000, // ADRP
-        0xF9400000, // LDR
-        0xEB00001F, // CMP
+        0xf9400000, // LDR
+        0xeb00001f, // CMP
+        0x54000001, // B.NE
     };
     uint64_t masks_2[] = {
-        0xFFFFFFE0,
-        0xFC000000,
+        0xffffffe0,
+        0xfc000000,
         0xff000000,
-        0x9F000000,
+        0x9f000000,
         0xffc00000,
-        0xFFE0FC1F,
-        0xffffffff,
+        0xffe0fc1f,
+        0xff00001f,
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches_2, masks_2, sizeof(matches_2)/sizeof(uint64_t), true, (void*)kpf_convert_port_to_map_callback_ios15);
+    if (kernelVersion.darwinMajor >= 21) {
+        xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches_2, masks_2, sizeof(matches_2)/sizeof(uint64_t), true, (void*)kpf_convert_port_to_map_callback_ios15);
+    }
 }
 
 void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
