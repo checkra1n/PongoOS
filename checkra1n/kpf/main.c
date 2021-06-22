@@ -1669,8 +1669,8 @@ void command_kpf() {
         xnu_pf_patchset_destroy(xnu_plk_data_const_patchset);
     }
 
-    const char kmap_port_string[] = "userspace has control access to a"; // panic string is broken up over multiple lines, which in some versions inserted quotes
-    const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, strlen(kmap_port_string));
+    const char kmap_port_string_14[] = "\"userspace has control access to a \" \"kernel map %p through task %p\""; // iOS 14 had broken panic strings
+    const char *kmap_port_string_14_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string_14, strlen(kmap_port_string_14));
 
     kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_amfi_patch(xnu_text_exec_patchset);
@@ -1682,7 +1682,7 @@ void command_kpf() {
     kpf_nvram_unlock(xnu_text_exec_patchset);
     kpf_find_shellcode_area(xnu_text_exec_patchset);
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
-    if(kmap_port_string_match) // Older versions don't have this
+    if(kmap_port_string_14_match) // iOS 14 only
     {
         kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
     }
