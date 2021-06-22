@@ -100,10 +100,13 @@ void pongo_copy_xnu(const char *cmd, char *args) {
 void pongo_boot_xargs(const char* cmd, char* args) {
     if (args[0] == 0) {
         // get
-        iprintf("xnu boot arg cmdline: [%s]\n", (char*)((int64_t)gBootArgs->CommandLine - 0x800000000 + kCacheableView) );
+        iprintf("Xnu boot arg cmdline: [%s]\n", (char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView) );
     } else {
-        strcpy((char*)((int64_t)gBootArgs->CommandLine - 0x800000000 + kCacheableView ), args);
-        iprintf("set xnu boot arg cmdline to: [%s]\n", (char*)((int64_t)gBootArgs->CommandLine - 0x800000000 + kCacheableView ));
+        strcpy((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView ), args);
+        iprintf("Set xnu boot arg cmdline to: [%s]\n", (char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView ));
+        if (strlen(args) > BOOT_LINE_LENGTH_iOS12) {
+            iprintf("This exceeds the size limit for iOS 12 and earlier, you better be on 13 or later.\n");
+        }
     }
 }
 
@@ -277,12 +280,40 @@ static int dt_cbp(void *a, dt_node_t *node, int depth, const char *key, void *va
 void log_bootargs(const char *cmd, char *args)
 {
     struct boot_args* cBootArgs = (struct boot_args*)((uint64_t)gBootArgs - 0x800000000 + kCacheableView);
-    iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
+    iprintf("gBootArgs:\n"
+            "\tRevision: 0x%x\n"
+            "\tVersion: 0x%x\n"
+            "\tvirtBase: 0x%llx\n"
+            "\tphysBase 0x%llx\n"
+            "\tmemSize: 0x%llx\n"
+            "\ttopOfKernelData: 0x%llx\n"
+            "\tmachineType: 0x%x\n"
+            "\tdeviceTreeP: 0x%llx\n"
+            "\tdeviceTreeLength: 0x%x\n"
+            "\tCommandLine: 0x%s\n"
+            "\tbootFlags (<=iOS12): 0x%llx\n"
+            "\tmemSizeActual (<=iOS12): 0x%llx\n"
+            "\tbootFlags (>=iOS13): 0x%llx\n"
+            "\tmemSizeActual (>=iOS13): 0x%llx\n",
+            cBootArgs->Revision,
+            cBootArgs->Version,
+            cBootArgs->virtBase,
+            cBootArgs->physBase,
+            cBootArgs->memSize,
+            cBootArgs->topOfKernelData,
+            cBootArgs->machineType,
+            (uint64_t)cBootArgs->deviceTreeP,
+            cBootArgs->deviceTreeLength,
+            cBootArgs->iOS13.CommandLine,
+            cBootArgs->iOS12.bootFlags,
+            cBootArgs->iOS12.memSizeActual,
+            cBootArgs->iOS13.bootFlags,
+            cBootArgs->iOS13.memSizeActual);
 }
 void log_dtree(const char *cmd, char *args)
 {
-    struct boot_args* cBootArgs = (struct boot_args*)((uint64_t)gBootArgs - 0x800000000 + kCacheableView);
-    iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
+    //struct boot_args* cBootArgs = (struct boot_args*)((uint64_t)gBootArgs - 0x800000000 + kCacheableView);
+    //iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
     dt_arg_t arg =
     {
         .name = NULL,

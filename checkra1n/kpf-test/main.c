@@ -71,9 +71,21 @@ typedef struct boot_args
     uint32_t machineType;
     void    *deviceTreeP;
     uint32_t deviceTreeLength;
-    char     CommandLine[0x260];
-    uint64_t bootFlags;
-    uint64_t memSizeActual;
+    union
+    {
+        struct
+        {
+            char     CommandLine[0x100];
+            uint64_t bootFlags;
+            uint64_t memSizeActual;
+        } iOS12;
+        struct
+        {
+            char     CommandLine[0x260];
+            uint64_t bootFlags;
+            uint64_t memSizeActual;
+        } iOS13;
+    };
 } boot_args;
 
 extern kern_return_t mach_vm_protect(vm_map_t task, mach_vm_address_t addr, mach_vm_size_t size, boolean_t set_max, vm_prot_t prot);
@@ -358,8 +370,8 @@ static void __attribute__((noreturn)) process_kernel(int fd)
     BootArgs.memSize            = mlen;
     BootArgs.topOfKernelData    = (uint64_t)mem + mlen;
     BootArgs.machineType        = 0x1984;
-    BootArgs.memSizeActual      = mlen;
-    strcpy(BootArgs.CommandLine, "-yeet");
+    //BootArgs.memSizeActual      = mlen;
+    strcpy(BootArgs.iOS12.CommandLine, "-yeet");
 
     gBootArgs = &BootArgs;
     gEntryPoint = (void*)((uintptr_t)mem + (entry - lowest));

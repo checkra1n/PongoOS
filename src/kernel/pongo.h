@@ -53,7 +53,8 @@
 #endif
 
 #define DT_KEY_LEN 0x20
-#define BOOT_LINE_LENGTH 0x260
+#define BOOT_LINE_LENGTH_iOS12 0x100
+#define BOOT_LINE_LENGTH_iOS13 0x260
 
 extern int service_cmd(const char* name, int cmd_id, void* data_in, size_t in_size, void* data_out, size_t* out_size);
 
@@ -84,9 +85,18 @@ typedef struct boot_args {
 	uint32_t		machineType;		/* Machine Type */
 	void			*deviceTreeP;		/* Base of flattened device tree */
 	uint32_t		deviceTreeLength;	/* Length of flattened tree */
-	char			CommandLine[BOOT_LINE_LENGTH];	/* Passed in command line */
-	uint64_t		bootFlags;		/* Additional flags specified by the bootloader */
-	uint64_t		memSizeActual;		/* Actual size of memory */
+	union {
+		struct {
+			char			CommandLine[BOOT_LINE_LENGTH_iOS12];	/* Passed in command line */
+			uint64_t		bootFlags;		/* Additional flags specified by the bootloader */
+			uint64_t		memSizeActual;		/* Actual size of memory */
+		} iOS12;
+		struct {
+			char			CommandLine[BOOT_LINE_LENGTH_iOS13];	/* Passed in command line */
+			uint64_t		bootFlags;		/* Additional flags specified by the bootloader */
+			uint64_t		memSizeActual;		/* Actual size of memory */
+		} iOS13;
+	};
 } boot_args;
 
 typedef struct
