@@ -24,6 +24,8 @@
  * SOFTWARE.
  *
  */
+#include <errno.h>
+#include <wchar.h>
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
 #include <mach-o/reloc.h>
@@ -31,7 +33,7 @@
 #include <pongo.h>
 #include <aes/aes.h>
 
-void f_stack_chk_fail() { panic("stack overflow!"); }
+/*void f_stack_chk_fail() { panic("stack overflow!"); }
 uint64_t f_stack_chk_guard = 0x4141414141414141;
 void *__memset_chk (void *dest, int c, size_t n, size_t dest_len) {
      if (n > dest_len) {
@@ -44,198 +46,1575 @@ void *__memcpy_chk (void *dest, const void * src, size_t n, size_t dest_len) {
          panic("__memcpy_chk: overflow detected");
      }
      return memcpy(dest,src,n);
-}
+}*/
+void __muldc3() { panic("__muldc3"); }
+void __mulsc3() { panic("__mulsc3"); }
+void __muloti4() { panic("__muloti4"); }
+wint_t _jp2uc_l (wint_t c, struct __locale_t *l) { return c; }
+wint_t _uc2jp_l (wint_t c, struct __locale_t *l) { return c; }
+int regcomp() { panic("regcomp"); }
+int regexec() { panic("regexec"); }
+int regfree() { panic("regfree"); }
+int getentropy()    { errno = ENOSYS; return -1; }
+int _gettimeofday() { errno = ENOSYS; return -1; }
+int _times()        { errno = ENOSYS; return -1; }
+int _fcntl()        { errno = ENOSYS; return -1; }
+int _stat()         { errno = ENOSYS; return -1; }
+int _link()         { errno = ENOSYS; return -1; }
+int _unlink()       { errno = ENOSYS; return -1; }
+int _mkdir()        { errno = ENOSYS; return -1; }
+int _fork()         { errno = ENOSYS; return -1; }
+int _execve()       { errno = ENOSYS; return -1; }
+int _wait()         { errno = ENOSYS; return -1; }
+int sigprocmask()   { errno = ENOSYS; return -1; }
 
-struct pongo_exports public_api[] = {
-    EXPORT_SYMBOL(xnu_pf_apply_each_kext),
-    EXPORT_SYMBOL(xnu_pf_get_first_kext),
-    EXPORT_SYMBOL(xnu_pf_get_kext_header),
-    EXPORT_SYMBOL(xnu_pf_disable_patch),
-    EXPORT_SYMBOL(xnu_pf_enable_patch),
-    EXPORT_SYMBOL(xnu_pf_ptr_to_data),
-    EXPORT_SYMBOL(xnu_pf_patchset_destroy),
-    EXPORT_SYMBOL(xnu_pf_patchset_create),
-    EXPORT_SYMBOL(print_register),
-    EXPORT_SYMBOL(alloc_static),
-    EXPORT_SYMBOL(xnu_slide_hdr_va),
-    EXPORT_SYMBOL(xnu_slide_value),
-    EXPORT_SYMBOL(xnu_header),
-    EXPORT_SYMBOL(xnu_va_to_ptr),
-    EXPORT_SYMBOL(xnu_ptr_to_va),
-    EXPORT_SYMBOL(xnu_rebase_va),
-    EXPORT_SYMBOL(kext_rebase_va),
-    EXPORT_SYMBOL(xnu_pf_range_from_va),
-    EXPORT_SYMBOL(xnu_pf_segment),
-    EXPORT_SYMBOL(xnu_pf_section),
-    EXPORT_SYMBOL(xnu_pf_all),
-    EXPORT_SYMBOL(xnu_pf_all_x),
-    EXPORT_SYMBOL(xnu_pf_maskmatch),
-    EXPORT_SYMBOL(xnu_pf_emit),
-    EXPORT_SYMBOL(xnu_pf_apply),
-    EXPORT_SYMBOL(macho_get_segment),
-    EXPORT_SYMBOL(macho_get_section),
-    EXPORT_SYMBOL(dt_check),
-    EXPORT_SYMBOL(dt_parse),
-    EXPORT_SYMBOL(dt_find),
-    EXPORT_SYMBOL(dt_prop),
-    EXPORT_SYMBOL(event_fire),
-    EXPORT_SYMBOL(event_wait),
-    EXPORT_SYMBOL(event_wait_asserted),
-    EXPORT_SYMBOL(dt_alloc_memmap),
-    EXPORT_SYMBOL(bzero),
-    EXPORT_SYMBOL(memset),
-    EXPORT_SYMBOL(memcpy_trap),
-    EXPORT_SYMBOL(free_contig),
-    EXPORT_SYMBOL(phys_reference),
-    EXPORT_SYMBOL(phys_dereference),
-    EXPORT_SYMBOL(phys_force_free),
-    EXPORT_SYMBOL(mark_phys_wired),
-    EXPORT_SYMBOL(phys_get_entry),
-    EXPORT_SYMBOL(phys_set_entry),
-    EXPORT_SYMBOL(vm_flush),
-    EXPORT_SYMBOL(vm_flush_by_addr),
-    EXPORT_SYMBOL(free_phys),
-    EXPORT_SYMBOL(vm_space_map_page_physical_prot),
-    EXPORT_SYMBOL(proc_reference),
-    EXPORT_SYMBOL(proc_release),
-    EXPORT_SYMBOL(proc_create_task),
-    EXPORT_SYMBOL(vm_deallocate),
-    EXPORT_SYMBOL(vm_allocate),
-    EXPORT_SYMBOL(strcmp),
-    EXPORT_SYMBOL(queue_rx_string),
-    EXPORT_SYMBOL(strlen),
-    EXPORT_SYMBOL(strcpy),
-    EXPORT_SYMBOL(task_create),
-    EXPORT_SYMBOL(task_create_extended),
-    EXPORT_SYMBOL(task_restart_and_link),
-    EXPORT_SYMBOL(task_critical_enter),
-    EXPORT_SYMBOL(task_critical_exit),
-    EXPORT_SYMBOL(task_bind_to_irq),
-    EXPORT_SYMBOL(task_release),
-    EXPORT_SYMBOL(task_reference),
-    EXPORT_SYMBOL(tz0_calculate_encrypted_block_addr),
-    EXPORT_SYMBOL(tz_blackbird),
-    EXPORT_SYMBOL(tz_lockdown),
-    EXPORT_SYMBOL(vatophys),
-    EXPORT_SYMBOL(vatophys_static),
-    EXPORT_SYMBOL(lock_take),
-    EXPORT_SYMBOL(lock_take_spin),
-    EXPORT_SYMBOL(lock_release),
-    EXPORT_SYMBOL(memmove),
-    EXPORT_SYMBOL(memmem),
-    EXPORT_SYMBOL(memstr),
-    EXPORT_SYMBOL(memstr_partial),
-    EXPORT_SYMBOL(memcpy),
-    EXPORT_SYMBOL(putc),
-    EXPORT_SYMBOL(putchar),
-    EXPORT_SYMBOL(puts),
-    EXPORT_SYMBOL(strtoul),
-    EXPORT_SYMBOL(invalidate_icache),
-    EXPORT_SYMBOL(task_current),
-    EXPORT_SYMBOL(task_register_irq),
-    EXPORT_SYMBOL(task_register),
-    EXPORT_SYMBOL(task_yield),
-    EXPORT_SYMBOL(task_wait),
-    EXPORT_SYMBOL(task_exit),
-    EXPORT_SYMBOL(task_switch_irq),
-    EXPORT_SYMBOL(task_exit_irq),
-    EXPORT_SYMBOL(task_switch),
-    EXPORT_SYMBOL(task_link),
-    EXPORT_SYMBOL(task_unlink),
-    EXPORT_SYMBOL(task_irq_dispatch),
-    EXPORT_SYMBOL(task_yield_asserted),
-    EXPORT_SYMBOL(task_register_unlinked),
-    EXPORT_SYMBOL(panic),
-    EXPORT_SYMBOL(spin),
-    EXPORT_SYMBOL(get_ticks),
-    EXPORT_SYMBOL(usleep),
-    EXPORT_SYMBOL(sleep),
-    EXPORT_SYMBOL(dt_get_prop),
-    EXPORT_SYMBOL(dt_get_u32_prop),
-    EXPORT_SYMBOL(dt_get_u64_prop),
-    EXPORT_SYMBOL(dt_get_u64_prop_i),
-    EXPORT_SYMBOL(wdt_reset),
-    EXPORT_SYMBOL(wdt_enable),
-    EXPORT_SYMBOL(wdt_disable),
-    EXPORT_SYMBOL(command_putc),
-    EXPORT_SYMBOL(command_puts),
-    EXPORT_SYMBOL(command_register),
-    EXPORT_SYMBOL(command_tokenize),
-    EXPORT_SYMBOL(hexparse),
-    EXPORT_SYMBOL(hexprint),
-    EXPORT_SYMBOL(get_el),
-    EXPORT_SYMBOL(cache_invalidate),
-    EXPORT_SYMBOL(cache_clean_and_invalidate),
-    EXPORT_SYMBOL(register_irq_handler),
-    EXPORT_SYMBOL(device_clock_by_id),
-    EXPORT_SYMBOL(device_clock_by_name),
-    EXPORT_SYMBOL(clock_gate),
-    EXPORT_SYMBOL(disable_interrupts),
-    EXPORT_SYMBOL(enable_interrupts),
-    EXPORT_SYMBOL(alloc_contig),
-    EXPORT_SYMBOL(alloc_phys),
-    EXPORT_SYMBOL(map_physical_range),
-    EXPORT_SYMBOL(task_vm_space),
-    EXPORT_SYMBOL(usbloader_init),
-    EXPORT_SYMBOL(task_irq_teardown),
-    EXPORT_SYMBOL(realloc),
-    EXPORT_SYMBOL(malloc),
-    EXPORT_SYMBOL(phystokv),
-    EXPORT_SYMBOL(free),
-    EXPORT_SYMBOL(hexdump),
-    EXPORT_SYMBOL(memcmp),
-    EXPORT_SYMBOL(map_range),
-    EXPORT_SYMBOL(linear_kvm_alloc),
-    EXPORT_SYMBOL(vm_flush_by_addr_all_asid),
-    EXPORT_SYMBOL(vatophys_force),
-    EXPORT_SYMBOL(serial_disable_rx),
-    EXPORT_SYMBOL(serial_enable_rx),
-    EXPORT_SYMBOL(__memset_chk),
-    EXPORT_SYMBOL(__memcpy_chk),
-    EXPORT_SYMBOL(resize_loader_xfer_data),
-    EXPORT_SYMBOL_P(gBootArgs),
-    EXPORT_SYMBOL_P(gEntryPoint),
-    EXPORT_SYMBOL_P(gDeviceTree),
-    EXPORT_SYMBOL_P(gIOBase),
-    EXPORT_SYMBOL_P(gPMGRBase),
-    EXPORT_SYMBOL(unlzma_decompress),
-    EXPORT_SYMBOL_P(gDevType),
-    EXPORT_SYMBOL_P(soc_name),
-    EXPORT_SYMBOL_P(socnum),
-    EXPORT_SYMBOL_P(loader_xfer_recv_data),
-    EXPORT_SYMBOL_P(loader_xfer_recv_count),
-    EXPORT_SYMBOL_P(preboot_hook),
-    EXPORT_SYMBOL_P(ramdisk_buf),
-    EXPORT_SYMBOL_P(ramdisk_size),
-    EXPORT_SYMBOL_P(autoboot_count),
-    EXPORT_SYMBOL_P(sep_boot_hook),
-    EXPORT_SYMBOL_P(aes),
-    EXPORT_SYMBOL_P(_impure_ptr),
-    EXPORT_SYMBOL_P(loader_xfer_recv_size),
-    EXPORT_SYMBOL_P(overflow_mode),
-    EXPORT_SYMBOL_P(gFramebuffer),
-    EXPORT_SYMBOL_P(gWidth),
-    EXPORT_SYMBOL_P(gHeight),
-    EXPORT_SYMBOL_P(gRowPixels),
-    EXPORT_SYMBOL_P(y_cursor),
-    EXPORT_SYMBOL_P(x_cursor),
-    EXPORT_SYMBOL_P(scale_factor),
-    {.name = "___stack_chk_guard", .value = &f_stack_chk_guard},
-    {.name = "___stack_chk_fail", .value = &f_stack_chk_fail},
-    {.name = "_iprintf", .value = iprintf},
-    {.name = "_printf", .value = iprintf},
-    {.name = "_fiprintf", .value = fiprintf},
-    {.name = "_fprintf", .value = fiprintf},
-    {.name = "_viprintf", .value = viprintf},
-    {.name = "_vprintf", .value = viprintf},
-    {.name = "_vfiprintf", .value = vfiprintf},
-    {.name = "_vfprintf", .value = vfiprintf},
-    {.name = "_sniprintf", .value = sniprintf},
-    {.name = "_snprintf", .value = sniprintf},
-    {.name = "_vsniprintf", .value = vsniprintf},
-    {.name = "_vsnprintf", .value = vsniprintf},
-    {.name = NULL}
-};
+
+__asm__
+(
+    ".section __DATA, __pongo_exports\n"
+    ".no_dead_strip pongo$exports\n"
+    "pongo$exports:\n"
+);
+#define STR_(x) #x
+#define STR(x) STR_(x)
+#define PONGO_EXPORT_RAW(name, value)       \
+__asm__                                     \
+(                                           \
+    ".section __TEXT, __cstring\n"          \
+    "1:\n"                                  \
+    "    .asciz \"_" #name "\"\n"           \
+    ".section __DATA, __pongo_exports\n"    \
+    ".align 4\n"                            \
+    "    .8byte 1b\n"                       \
+    "    .8byte " #value "\n"               \
+)
+#define PONGO_EXPORT_RENAME(name, orig) PONGO_EXPORT_RAW(name, _ ## orig)
+#define PONGO_EXPORT(name) PONGO_EXPORT_RENAME(name, name)
+
+// Newlib
+// TODO: generate these automatically & filter the float printf's out
+PONGO_EXPORT(_Balloc);
+PONGO_EXPORT(_Bfree);
+PONGO_EXPORT(_Exit);
+PONGO_EXPORT(__add_ovflpage);
+PONGO_EXPORT(__addel);
+PONGO_EXPORT(__adjust);
+PONGO_EXPORT(__any_on);
+PONGO_EXPORT(__ascii_mbtowc);
+PONGO_EXPORT(__ascii_wctomb);
+PONGO_EXPORT(__assert);
+PONGO_EXPORT(__assert_func);
+PONGO_EXPORT(__b2d);
+PONGO_EXPORT(__big_delete);
+PONGO_EXPORT(__big_insert);
+PONGO_EXPORT(__big_keydata);
+PONGO_EXPORT(__big_return);
+PONGO_EXPORT(__big_split);
+PONGO_EXPORT(__bsd_qsort_r);
+PONGO_EXPORT(__buf_free);
+PONGO_EXPORT(__buf_init);
+PONGO_EXPORT(__call_exitprocs);
+PONGO_EXPORT(__call_hash);
+PONGO_EXPORT(__chk_fail);
+PONGO_EXPORT(__copybits);
+PONGO_EXPORT(__ctloc);
+PONGO_EXPORT(__ctype_load_locale);
+PONGO_EXPORT(__cxa_atexit);
+PONGO_EXPORT(__cxa_finalize);
+PONGO_EXPORT(__d2b);
+PONGO_EXPORT(__delpair);
+PONGO_EXPORT(__dorand48);
+PONGO_EXPORT(__dprintf);
+PONGO_EXPORT(__dtoa);
+PONGO_EXPORT(__env_lock);
+PONGO_EXPORT(__env_unlock);
+PONGO_EXPORT(__eprintf);
+PONGO_EXPORT(__errno);
+PONGO_EXPORT(__exp10);
+PONGO_EXPORT(__expand_table);
+PONGO_EXPORT(__fbufsize);
+PONGO_EXPORT(__fgetwc);
+PONGO_EXPORT(__find_bigpair);
+PONGO_EXPORT(__find_last_page);
+PONGO_EXPORT(__flbf);
+PONGO_EXPORT(__fp_lock_all);
+PONGO_EXPORT(__fp_unlock_all);
+PONGO_EXPORT(__fpclassifyd);
+PONGO_EXPORT(__fpclassifyf);
+PONGO_EXPORT(__fpending);
+PONGO_EXPORT(__fpurge);
+PONGO_EXPORT(__fputwc);
+PONGO_EXPORT(__freadable);
+PONGO_EXPORT(__freading);
+PONGO_EXPORT(__free_ovflpage);
+PONGO_EXPORT(__fsetlocking);
+PONGO_EXPORT(__fwritable);
+PONGO_EXPORT(__fwriting);
+PONGO_EXPORT(__get_buf);
+PONGO_EXPORT(__get_page);
+PONGO_EXPORT(__getdelim);
+PONGO_EXPORT(__gethex);
+PONGO_EXPORT(__getline);
+PONGO_EXPORT(__getopt_long_only_r);
+PONGO_EXPORT(__getopt_long_r);
+PONGO_EXPORT(__getopt_r);
+PONGO_EXPORT(__getreent);
+PONGO_EXPORT(__gets_chk);
+PONGO_EXPORT(__gettzinfo);
+PONGO_EXPORT(__gnu_basename);
+PONGO_EXPORT(__hash_open);
+PONGO_EXPORT(__hexnan);
+PONGO_EXPORT(__hi0bits);
+PONGO_EXPORT(__i2b);
+PONGO_EXPORT(__ibitmap);
+PONGO_EXPORT(__ieee754_acos);
+PONGO_EXPORT(__ieee754_acosf);
+PONGO_EXPORT(__ieee754_acosh);
+PONGO_EXPORT(__ieee754_acoshf);
+PONGO_EXPORT(__ieee754_asin);
+PONGO_EXPORT(__ieee754_asinf);
+PONGO_EXPORT(__ieee754_atan2);
+PONGO_EXPORT(__ieee754_atan2f);
+PONGO_EXPORT(__ieee754_atanh);
+PONGO_EXPORT(__ieee754_atanhf);
+PONGO_EXPORT(__ieee754_cosh);
+PONGO_EXPORT(__ieee754_coshf);
+PONGO_EXPORT(__ieee754_fmod);
+PONGO_EXPORT(__ieee754_fmodf);
+PONGO_EXPORT(__ieee754_hypot);
+PONGO_EXPORT(__ieee754_hypotf);
+PONGO_EXPORT(__ieee754_hypotl);
+PONGO_EXPORT(__ieee754_j0);
+PONGO_EXPORT(__ieee754_j0f);
+PONGO_EXPORT(__ieee754_j1);
+PONGO_EXPORT(__ieee754_j1f);
+PONGO_EXPORT(__ieee754_jn);
+PONGO_EXPORT(__ieee754_jnf);
+PONGO_EXPORT(__ieee754_lgamma_r);
+PONGO_EXPORT(__ieee754_lgammaf_r);
+PONGO_EXPORT(__ieee754_log10);
+PONGO_EXPORT(__ieee754_log10f);
+PONGO_EXPORT(__ieee754_rem_pio2);
+PONGO_EXPORT(__ieee754_rem_pio2f);
+PONGO_EXPORT(__ieee754_remainder);
+PONGO_EXPORT(__ieee754_remainderf);
+PONGO_EXPORT(__ieee754_scalb);
+PONGO_EXPORT(__ieee754_scalbf);
+PONGO_EXPORT(__ieee754_sinh);
+PONGO_EXPORT(__ieee754_sinhf);
+PONGO_EXPORT(__ieee754_sqrt);
+PONGO_EXPORT(__ieee754_sqrtf);
+PONGO_EXPORT(__ieee754_tgamma);
+PONGO_EXPORT(__ieee754_tgammaf);
+PONGO_EXPORT(__ieee754_y0);
+PONGO_EXPORT(__ieee754_y0f);
+PONGO_EXPORT(__ieee754_y1);
+PONGO_EXPORT(__ieee754_y1f);
+PONGO_EXPORT(__ieee754_yn);
+PONGO_EXPORT(__ieee754_ynf);
+PONGO_EXPORT(__isinfd);
+PONGO_EXPORT(__isinff);
+PONGO_EXPORT(__isnand);
+PONGO_EXPORT(__isnanf);
+PONGO_EXPORT(__itoa);
+PONGO_EXPORT(__kernel_cos);
+PONGO_EXPORT(__kernel_cosf);
+PONGO_EXPORT(__kernel_rem_pio2);
+PONGO_EXPORT(__kernel_rem_pio2f);
+PONGO_EXPORT(__kernel_sin);
+PONGO_EXPORT(__kernel_sinf);
+PONGO_EXPORT(__kernel_standard);
+PONGO_EXPORT(__kernel_tan);
+PONGO_EXPORT(__kernel_tanf);
+PONGO_EXPORT(__lo0bits);
+PONGO_EXPORT(__locale_mb_cur_max);
+PONGO_EXPORT(__localeconv_l);
+PONGO_EXPORT(__log2);
+PONGO_EXPORT(__lshift);
+PONGO_EXPORT(__malloc_lock);
+PONGO_EXPORT(__malloc_unlock);
+PONGO_EXPORT(__malloc_update_mallinfo);
+PONGO_EXPORT(__match);
+PONGO_EXPORT(__math_check_oflow);
+PONGO_EXPORT(__math_check_uflow);
+PONGO_EXPORT(__math_divzero);
+PONGO_EXPORT(__math_divzerof);
+PONGO_EXPORT(__math_invalid);
+PONGO_EXPORT(__math_invalidf);
+PONGO_EXPORT(__math_may_uflow);
+PONGO_EXPORT(__math_may_uflowf);
+PONGO_EXPORT(__math_oflow);
+PONGO_EXPORT(__math_oflowf);
+PONGO_EXPORT(__math_uflow);
+PONGO_EXPORT(__math_uflowf);
+PONGO_EXPORT(__mcmp);
+PONGO_EXPORT(__mdiff);
+PONGO_EXPORT(__memcpy_chk);
+PONGO_EXPORT(__memmove_chk);
+PONGO_EXPORT(__mempcpy_chk);
+PONGO_EXPORT(__memset_chk);
+PONGO_EXPORT(__messages_load_locale);
+PONGO_EXPORT(__monetary_load_locale);
+PONGO_EXPORT(__multadd);
+PONGO_EXPORT(__multiply);
+PONGO_EXPORT(__numeric_load_locale);
+PONGO_EXPORT(__pow5mult);
+PONGO_EXPORT(__put_page);
+PONGO_EXPORT(__ratio);
+PONGO_EXPORT(__reclaim_buf);
+PONGO_EXPORT(__register_exitproc);
+PONGO_EXPORT(__s2b);
+PONGO_EXPORT(__sccl);
+PONGO_EXPORT(__sclose);
+PONGO_EXPORT(__seofread);
+PONGO_EXPORT(__sflags);
+PONGO_EXPORT(__sflush_r);
+PONGO_EXPORT(__sfmoreglue);
+PONGO_EXPORT(__sfp);
+PONGO_EXPORT(__sfp_lock_acquire);
+PONGO_EXPORT(__sfp_lock_release);
+PONGO_EXPORT(__sfvwrite_r);
+PONGO_EXPORT(__signbitd);
+PONGO_EXPORT(__signbitf);
+PONGO_EXPORT(__signgam);
+PONGO_EXPORT(__sigtramp);
+PONGO_EXPORT(__sigtramp_r);
+PONGO_EXPORT(__sinit);
+PONGO_EXPORT(__sinit_lock_acquire);
+PONGO_EXPORT(__sinit_lock_release);
+PONGO_EXPORT(__smakebuf_r);
+PONGO_EXPORT(__snprintf_chk);
+PONGO_EXPORT(__split_page);
+PONGO_EXPORT(__sprint_r);
+PONGO_EXPORT(__sprintf_chk);
+PONGO_EXPORT(__sread);
+PONGO_EXPORT(__srefill_r);
+PONGO_EXPORT(__srget);
+PONGO_EXPORT(__srget_r);
+PONGO_EXPORT(__sseek);
+PONGO_EXPORT(__ssprint_r);
+PONGO_EXPORT(__ssrefill_r);
+PONGO_EXPORT(__ssvfiscanf_r);
+PONGO_EXPORT(__ssvfiwscanf_r);
+PONGO_EXPORT(__ssvfscanf_r);
+PONGO_EXPORT(__ssvfwscanf_r);
+PONGO_EXPORT(__stack_chk_fail);
+PONGO_EXPORT(__stack_chk_init);
+PONGO_EXPORT(__stpcpy_chk);
+PONGO_EXPORT(__stpncpy_chk);
+PONGO_EXPORT(__strcat_chk);
+PONGO_EXPORT(__strcpy_chk);
+PONGO_EXPORT(__strncat_chk);
+PONGO_EXPORT(__strncpy_chk);
+PONGO_EXPORT(__strtok_r);
+PONGO_EXPORT(__submore);
+PONGO_EXPORT(__svfiscanf);
+PONGO_EXPORT(__svfiscanf_r);
+PONGO_EXPORT(__svfiwscanf);
+PONGO_EXPORT(__svfiwscanf_r);
+PONGO_EXPORT(__svfscanf);
+PONGO_EXPORT(__svfscanf_r);
+PONGO_EXPORT(__svfwscanf);
+PONGO_EXPORT(__svfwscanf_r);
+PONGO_EXPORT(__swbuf);
+PONGO_EXPORT(__swbuf_r);
+PONGO_EXPORT(__swhatbuf_r);
+PONGO_EXPORT(__swrite);
+PONGO_EXPORT(__swsetup_r);
+PONGO_EXPORT(__ten_mul);
+PONGO_EXPORT(__time_load_locale);
+PONGO_EXPORT(__tz_lock);
+PONGO_EXPORT(__tz_unlock);
+PONGO_EXPORT(__tzcalc_limits);
+PONGO_EXPORT(__ulp);
+PONGO_EXPORT(__utoa);
+PONGO_EXPORT(__vsnprintf_chk);
+PONGO_EXPORT(__vsprintf_chk);
+PONGO_EXPORT(__wcwidth);
+PONGO_EXPORT(__xpg_strerror_r);
+PONGO_EXPORT(_asiprintf_r);
+PONGO_EXPORT(_asniprintf_r);
+PONGO_EXPORT(_asnprintf_r);
+PONGO_EXPORT(_asprintf_r);
+PONGO_EXPORT(_atoi_r);
+PONGO_EXPORT(_atol_r);
+PONGO_EXPORT(_atoll_r);
+PONGO_EXPORT(_buf_findstr);
+PONGO_EXPORT(_calloc_r);
+PONGO_EXPORT(_cchsh);
+PONGO_EXPORT(_cchshf);
+PONGO_EXPORT(_cchshl);
+PONGO_EXPORT(_cleanup);
+PONGO_EXPORT(_cleanup_r);
+PONGO_EXPORT(_close_r);
+PONGO_EXPORT(_ctans);
+PONGO_EXPORT(_ctansf);
+PONGO_EXPORT(_ctansl);
+PONGO_EXPORT(_dcvt);
+PONGO_EXPORT(_diprintf_r);
+PONGO_EXPORT(_dprintf_r);
+PONGO_EXPORT(_drand48_r);
+PONGO_EXPORT(_dtoa_r);
+PONGO_EXPORT(_duplocale_r);
+PONGO_EXPORT(_erand48_r);
+PONGO_EXPORT(_execve_r);
+PONGO_EXPORT(_fclose_r);
+PONGO_EXPORT(_fcloseall_r);
+PONGO_EXPORT(_fcntl_r);
+PONGO_EXPORT(_fdopen_r);
+PONGO_EXPORT(_fflush_r);
+PONGO_EXPORT(_fflush_unlocked_r);
+PONGO_EXPORT(_fgetc_r);
+PONGO_EXPORT(_fgetc_unlocked_r);
+PONGO_EXPORT(_fgetpos_r);
+PONGO_EXPORT(_fgets_r);
+PONGO_EXPORT(_fgets_unlocked_r);
+PONGO_EXPORT(_fgetwc_r);
+PONGO_EXPORT(_fgetwc_unlocked_r);
+PONGO_EXPORT(_fgetws_r);
+PONGO_EXPORT(_fgetws_unlocked_r);
+PONGO_EXPORT(_findenv);
+PONGO_EXPORT(_findenv_r);
+PONGO_EXPORT(_fiprintf_r);
+PONGO_EXPORT(_fiscanf_r);
+PONGO_EXPORT(_fmemopen_r);
+PONGO_EXPORT(_fopen_r);
+PONGO_EXPORT(_fopencookie_r);
+PONGO_EXPORT(_fork_r);
+PONGO_EXPORT(_fprintf_r);
+PONGO_EXPORT(_fpurge_r);
+PONGO_EXPORT(_fputc_r);
+PONGO_EXPORT(_fputc_unlocked_r);
+PONGO_EXPORT(_fputs_r);
+PONGO_EXPORT(_fputs_unlocked_r);
+PONGO_EXPORT(_fputwc_r);
+PONGO_EXPORT(_fputwc_unlocked_r);
+PONGO_EXPORT(_fputws_r);
+PONGO_EXPORT(_fputws_unlocked_r);
+PONGO_EXPORT(_fread_r);
+PONGO_EXPORT(_fread_unlocked_r);
+PONGO_EXPORT(_free_r);
+PONGO_EXPORT(_freelocale_r);
+PONGO_EXPORT(_freopen_r);
+PONGO_EXPORT(_fscanf_r);
+PONGO_EXPORT(_fseek_r);
+PONGO_EXPORT(_fseeko_r);
+PONGO_EXPORT(_fsetpos_r);
+PONGO_EXPORT(_fstat_r);
+PONGO_EXPORT(_ftell_r);
+PONGO_EXPORT(_ftello_r);
+PONGO_EXPORT(_funopen_r);
+PONGO_EXPORT(_fwalk);
+PONGO_EXPORT(_fwalk_reent);
+PONGO_EXPORT(_fwide_r);
+PONGO_EXPORT(_fwprintf_r);
+PONGO_EXPORT(_fwrite_r);
+PONGO_EXPORT(_fwrite_unlocked_r);
+PONGO_EXPORT(_fwscanf_r);
+PONGO_EXPORT(_gcvt);
+PONGO_EXPORT(_getc_r);
+PONGO_EXPORT(_getc_unlocked_r);
+PONGO_EXPORT(_getchar_r);
+PONGO_EXPORT(_getchar_unlocked_r);
+PONGO_EXPORT(_getenv_r);
+PONGO_EXPORT(_getpid_r);
+PONGO_EXPORT(_gets_r);
+PONGO_EXPORT(_gettimeofday_r);
+PONGO_EXPORT(_getwc_r);
+PONGO_EXPORT(_getwc_unlocked_r);
+PONGO_EXPORT(_getwchar_r);
+PONGO_EXPORT(_getwchar_unlocked_r);
+PONGO_EXPORT(_init_signal);
+PONGO_EXPORT(_init_signal_r);
+PONGO_EXPORT(_iprintf_r);
+PONGO_EXPORT(_isatty_r);
+PONGO_EXPORT(_iscanf_r);
+PONGO_EXPORT(_jrand48_r);
+PONGO_EXPORT(_kill_r);
+PONGO_EXPORT(_l64a_r);
+PONGO_EXPORT(_lcong48_r);
+PONGO_EXPORT(_ldcheck);
+PONGO_EXPORT(_ldtoa_r);
+PONGO_EXPORT(_link_r);
+PONGO_EXPORT(_localeconv_r);
+PONGO_EXPORT(_lrand48_r);
+PONGO_EXPORT(_lseek_r);
+PONGO_EXPORT(_mallinfo_r);
+PONGO_EXPORT(_malloc_r);
+PONGO_EXPORT(_malloc_stats_r);
+PONGO_EXPORT(_malloc_trim_r);
+PONGO_EXPORT(_malloc_usable_size_r);
+PONGO_EXPORT(_mallopt_r);
+PONGO_EXPORT(_mblen_r);
+PONGO_EXPORT(_mbrtowc_r);
+PONGO_EXPORT(_mbsnrtowcs_r);
+PONGO_EXPORT(_mbsrtowcs_r);
+PONGO_EXPORT(_mbstowcs_r);
+PONGO_EXPORT(_mbtowc_r);
+PONGO_EXPORT(_memalign_r);
+PONGO_EXPORT(_mkdir_r);
+PONGO_EXPORT(_mkdtemp_r);
+PONGO_EXPORT(_mkostemp_r);
+PONGO_EXPORT(_mkostemps_r);
+PONGO_EXPORT(_mkstemp_r);
+PONGO_EXPORT(_mkstemps_r);
+PONGO_EXPORT(_mktemp_r);
+PONGO_EXPORT(_mprec_log10);
+PONGO_EXPORT(_mrand48_r);
+PONGO_EXPORT(_mstats_r);
+PONGO_EXPORT(_newlocale_r);
+PONGO_EXPORT(_nrand48_r);
+PONGO_EXPORT(_open_memstream_r);
+PONGO_EXPORT(_open_r);
+PONGO_EXPORT(_open_wmemstream_r);
+PONGO_EXPORT(_perror_r);
+PONGO_EXPORT(_printf_r);
+PONGO_EXPORT(_putc_r);
+PONGO_EXPORT(_putc_unlocked_r);
+PONGO_EXPORT(_putchar_r);
+PONGO_EXPORT(_putchar_unlocked_r);
+PONGO_EXPORT(_putenv_r);
+PONGO_EXPORT(_puts_r);
+PONGO_EXPORT(_putwc_r);
+PONGO_EXPORT(_putwc_unlocked_r);
+PONGO_EXPORT(_putwchar_r);
+PONGO_EXPORT(_putwchar_unlocked_r);
+PONGO_EXPORT(_pvalloc_r);
+PONGO_EXPORT(_raise_r);
+PONGO_EXPORT(_read_r);
+PONGO_EXPORT(_realloc_r);
+PONGO_EXPORT(_reallocf_r);
+PONGO_EXPORT(_reclaim_reent);
+PONGO_EXPORT(_redupi);
+PONGO_EXPORT(_redupif);
+PONGO_EXPORT(_redupil);
+PONGO_EXPORT(_remove_r);
+PONGO_EXPORT(_rename_r);
+PONGO_EXPORT(_rewind_r);
+PONGO_EXPORT(_sbrk_r);
+PONGO_EXPORT(_scanf_r);
+PONGO_EXPORT(_seed48_r);
+PONGO_EXPORT(_setenv_r);
+PONGO_EXPORT(_setlocale_r);
+PONGO_EXPORT(_sfread_r);
+PONGO_EXPORT(_signal_r);
+PONGO_EXPORT(_siprintf_r);
+PONGO_EXPORT(_siscanf_r);
+PONGO_EXPORT(_sniprintf_r);
+PONGO_EXPORT(_snprintf_r);
+PONGO_EXPORT(_sprintf_r);
+PONGO_EXPORT(_srand48_r);
+PONGO_EXPORT(_sscanf_r);
+PONGO_EXPORT(_stat_r);
+PONGO_EXPORT(_strdup_r);
+PONGO_EXPORT(_strerror_r);
+PONGO_EXPORT(_strndup_r);
+PONGO_EXPORT(_strtod_l);
+PONGO_EXPORT(_strtod_r);
+PONGO_EXPORT(_strtoimax_r);
+PONGO_EXPORT(_strtol_r);
+PONGO_EXPORT(_strtold_r);
+PONGO_EXPORT(_strtoll_r);
+PONGO_EXPORT(_strtoul_r);
+PONGO_EXPORT(_strtoull_r);
+PONGO_EXPORT(_strtoumax_r);
+PONGO_EXPORT(_sungetc_r);
+PONGO_EXPORT(_svfiprintf_r);
+PONGO_EXPORT(_svfiwprintf_r);
+PONGO_EXPORT(_svfprintf_r);
+PONGO_EXPORT(_svfwprintf_r);
+PONGO_EXPORT(_swprintf_r);
+PONGO_EXPORT(_swscanf_r);
+PONGO_EXPORT(_system_r);
+PONGO_EXPORT(_tempnam_r);
+PONGO_EXPORT(_times_r);
+PONGO_EXPORT(_tmpfile_r);
+PONGO_EXPORT(_tmpnam_r);
+PONGO_EXPORT(_towctrans_r);
+PONGO_EXPORT(_tzset_r);
+PONGO_EXPORT(_tzset_unlocked);
+PONGO_EXPORT(_tzset_unlocked_r);
+PONGO_EXPORT(_ungetc_r);
+PONGO_EXPORT(_ungetwc_r);
+PONGO_EXPORT(_unlink_r);
+PONGO_EXPORT(_unsetenv_r);
+PONGO_EXPORT(_uselocale_r);
+PONGO_EXPORT(_user_strerror);
+PONGO_EXPORT(_valloc_r);
+PONGO_EXPORT(_vasiprintf_r);
+PONGO_EXPORT(_vasniprintf_r);
+PONGO_EXPORT(_vasnprintf_r);
+PONGO_EXPORT(_vasprintf_r);
+PONGO_EXPORT(_vdiprintf_r);
+PONGO_EXPORT(_vdprintf_r);
+PONGO_EXPORT(_vfiprintf_r);
+PONGO_EXPORT(_vfiscanf_r);
+PONGO_EXPORT(_vfiwprintf_r);
+PONGO_EXPORT(_vfiwscanf_r);
+PONGO_EXPORT(_vfprintf_r);
+PONGO_EXPORT(_vfscanf_r);
+PONGO_EXPORT(_vfwprintf_r);
+PONGO_EXPORT(_vfwscanf_r);
+PONGO_EXPORT(_viprintf_r);
+PONGO_EXPORT(_viscanf_r);
+PONGO_EXPORT(_vprintf_r);
+PONGO_EXPORT(_vscanf_r);
+PONGO_EXPORT(_vsiprintf_r);
+PONGO_EXPORT(_vsiscanf_r);
+PONGO_EXPORT(_vsniprintf_r);
+PONGO_EXPORT(_vsnprintf_r);
+PONGO_EXPORT(_vsprintf_r);
+PONGO_EXPORT(_vsscanf_r);
+PONGO_EXPORT(_vswprintf_r);
+PONGO_EXPORT(_vswscanf_r);
+PONGO_EXPORT(_vwprintf_r);
+PONGO_EXPORT(_vwscanf_r);
+PONGO_EXPORT(_wait_r);
+PONGO_EXPORT(_wcrtomb_r);
+PONGO_EXPORT(_wcsdup_r);
+PONGO_EXPORT(_wcsnrtombs_l);
+PONGO_EXPORT(_wcsnrtombs_r);
+PONGO_EXPORT(_wcsrtombs_r);
+PONGO_EXPORT(_wcstod_l);
+PONGO_EXPORT(_wcstod_r);
+PONGO_EXPORT(_wcstof_r);
+PONGO_EXPORT(_wcstoimax_r);
+PONGO_EXPORT(_wcstol_r);
+PONGO_EXPORT(_wcstoll_l);
+PONGO_EXPORT(_wcstoll_r);
+PONGO_EXPORT(_wcstombs_r);
+PONGO_EXPORT(_wcstoul_l);
+PONGO_EXPORT(_wcstoul_r);
+PONGO_EXPORT(_wcstoull_l);
+PONGO_EXPORT(_wcstoull_r);
+PONGO_EXPORT(_wcstoumax_r);
+PONGO_EXPORT(_wctomb_r);
+PONGO_EXPORT(_wctrans_r);
+PONGO_EXPORT(_wctype_r);
+PONGO_EXPORT(_wprintf_r);
+PONGO_EXPORT(_write_r);
+PONGO_EXPORT(_wscanf_r);
+PONGO_EXPORT(a64l);
+PONGO_EXPORT(abort);
+PONGO_EXPORT(abs);
+PONGO_EXPORT(acos);
+PONGO_EXPORT(acosf);
+PONGO_EXPORT(acosh);
+PONGO_EXPORT(acoshf);
+PONGO_EXPORT(acoshl);
+PONGO_EXPORT(acosl);
+PONGO_EXPORT(aligned_alloc);
+PONGO_EXPORT(arc4random);
+PONGO_EXPORT(arc4random_buf);
+PONGO_EXPORT(arc4random_uniform);
+PONGO_EXPORT(argz_add);
+PONGO_EXPORT(argz_add_sep);
+PONGO_EXPORT(argz_append);
+PONGO_EXPORT(argz_count);
+PONGO_EXPORT(argz_create);
+PONGO_EXPORT(argz_create_sep);
+PONGO_EXPORT(argz_delete);
+PONGO_EXPORT(argz_extract);
+PONGO_EXPORT(argz_insert);
+PONGO_EXPORT(argz_next);
+PONGO_EXPORT(argz_replace);
+PONGO_EXPORT(argz_stringify);
+PONGO_EXPORT(asctime);
+PONGO_EXPORT(asctime_r);
+PONGO_EXPORT(asin);
+PONGO_EXPORT(asinf);
+PONGO_EXPORT(asinh);
+PONGO_EXPORT(asinhf);
+PONGO_EXPORT(asinhl);
+PONGO_EXPORT(asinl);
+PONGO_EXPORT(asiprintf);
+PONGO_EXPORT(asniprintf);
+PONGO_EXPORT(asnprintf);
+PONGO_EXPORT(asprintf);
+PONGO_EXPORT(at_quick_exit);
+PONGO_EXPORT(atan);
+PONGO_EXPORT(atan2);
+PONGO_EXPORT(atan2f);
+PONGO_EXPORT(atan2l);
+PONGO_EXPORT(atanf);
+PONGO_EXPORT(atanh);
+PONGO_EXPORT(atanhf);
+PONGO_EXPORT(atanhl);
+PONGO_EXPORT(atanl);
+PONGO_EXPORT(atexit);
+PONGO_EXPORT(atof);
+PONGO_EXPORT(atoff);
+PONGO_EXPORT(atoi);
+PONGO_EXPORT(atol);
+PONGO_EXPORT(atoll);
+PONGO_EXPORT(bcmp);
+PONGO_EXPORT(bcopy);
+PONGO_EXPORT(bsearch);
+PONGO_EXPORT(btowc);
+PONGO_EXPORT(bzero);
+PONGO_EXPORT(cabs);
+PONGO_EXPORT(cabsf);
+PONGO_EXPORT(cabsl);
+PONGO_EXPORT(cacos);
+PONGO_EXPORT(cacosf);
+PONGO_EXPORT(cacosh);
+PONGO_EXPORT(cacoshf);
+PONGO_EXPORT(cacoshl);
+PONGO_EXPORT(cacosl);
+PONGO_EXPORT(calloc);
+PONGO_EXPORT(carg);
+PONGO_EXPORT(cargf);
+PONGO_EXPORT(cargl);
+PONGO_EXPORT(casin);
+PONGO_EXPORT(casinf);
+PONGO_EXPORT(casinh);
+PONGO_EXPORT(casinhf);
+PONGO_EXPORT(casinhl);
+PONGO_EXPORT(casinl);
+PONGO_EXPORT(catan);
+PONGO_EXPORT(catanf);
+PONGO_EXPORT(catanh);
+PONGO_EXPORT(catanhf);
+PONGO_EXPORT(catanhl);
+PONGO_EXPORT(catanl);
+PONGO_EXPORT(category);
+PONGO_EXPORT(cbrt);
+PONGO_EXPORT(cbrtf);
+PONGO_EXPORT(cbrtl);
+PONGO_EXPORT(ccos);
+PONGO_EXPORT(ccosf);
+PONGO_EXPORT(ccosh);
+PONGO_EXPORT(ccoshf);
+PONGO_EXPORT(ccoshl);
+PONGO_EXPORT(ccosl);
+PONGO_EXPORT(ceil);
+PONGO_EXPORT(ceilf);
+PONGO_EXPORT(ceill);
+PONGO_EXPORT(cexp);
+PONGO_EXPORT(cexpf);
+PONGO_EXPORT(cexpl);
+PONGO_EXPORT(cfree);
+PONGO_EXPORT(cimag);
+PONGO_EXPORT(cimagf);
+PONGO_EXPORT(cimagl);
+PONGO_EXPORT(cleanup_glue);
+PONGO_EXPORT(clearerr);
+PONGO_EXPORT(clearerr_unlocked);
+PONGO_EXPORT(clock);
+PONGO_EXPORT(clog);
+PONGO_EXPORT(clog10);
+PONGO_EXPORT(clog10f);
+PONGO_EXPORT(clogf);
+PONGO_EXPORT(clogl);
+PONGO_EXPORT(close);
+PONGO_EXPORT(conj);
+PONGO_EXPORT(conjf);
+PONGO_EXPORT(conjl);
+PONGO_EXPORT(copysign);
+PONGO_EXPORT(copysignf);
+PONGO_EXPORT(copysignl);
+PONGO_EXPORT(cos);
+PONGO_EXPORT(cosf);
+PONGO_EXPORT(cosh);
+PONGO_EXPORT(coshf);
+PONGO_EXPORT(coshl);
+PONGO_EXPORT(cosl);
+PONGO_EXPORT(cpow);
+PONGO_EXPORT(cpowf);
+PONGO_EXPORT(cpowl);
+PONGO_EXPORT(cproj);
+PONGO_EXPORT(cprojf);
+PONGO_EXPORT(cprojl);
+PONGO_EXPORT(creal);
+PONGO_EXPORT(crealf);
+PONGO_EXPORT(creall);
+PONGO_EXPORT(csin);
+PONGO_EXPORT(csinf);
+PONGO_EXPORT(csinh);
+PONGO_EXPORT(csinhf);
+PONGO_EXPORT(csinhl);
+PONGO_EXPORT(csinl);
+PONGO_EXPORT(csqrt);
+PONGO_EXPORT(csqrtf);
+PONGO_EXPORT(csqrtl);
+PONGO_EXPORT(ctan);
+PONGO_EXPORT(ctanf);
+PONGO_EXPORT(ctanh);
+PONGO_EXPORT(ctanhf);
+PONGO_EXPORT(ctanhl);
+PONGO_EXPORT(ctanl);
+PONGO_EXPORT(ctime);
+PONGO_EXPORT(ctime_r);
+PONGO_EXPORT(dbm_clearerr);
+PONGO_EXPORT(dbm_close);
+PONGO_EXPORT(dbm_delete);
+PONGO_EXPORT(dbm_dirfno);
+PONGO_EXPORT(dbm_error);
+PONGO_EXPORT(dbm_fetch);
+PONGO_EXPORT(dbm_firstkey);
+PONGO_EXPORT(dbm_nextkey);
+PONGO_EXPORT(dbm_open);
+PONGO_EXPORT(dbm_store);
+PONGO_EXPORT(difftime);
+PONGO_EXPORT(diprintf);
+PONGO_EXPORT(div);
+PONGO_EXPORT(dprintf);
+PONGO_EXPORT(drand48);
+PONGO_EXPORT(drem);
+PONGO_EXPORT(dremf);
+PONGO_EXPORT(duplocale);
+PONGO_EXPORT(ecvt);
+PONGO_EXPORT(ecvtbuf);
+PONGO_EXPORT(ecvtf);
+PONGO_EXPORT(envz_add);
+PONGO_EXPORT(envz_entry);
+PONGO_EXPORT(envz_get);
+PONGO_EXPORT(envz_merge);
+PONGO_EXPORT(envz_remove);
+PONGO_EXPORT(envz_strip);
+PONGO_EXPORT(erand48);
+PONGO_EXPORT(erf);
+PONGO_EXPORT(erfc);
+PONGO_EXPORT(erfcf);
+PONGO_EXPORT(erfcl);
+PONGO_EXPORT(erff);
+PONGO_EXPORT(erfl);
+PONGO_EXPORT(execve);
+PONGO_EXPORT(exit);
+PONGO_EXPORT(exp);
+PONGO_EXPORT(exp10);
+PONGO_EXPORT(exp10f);
+PONGO_EXPORT(exp2);
+PONGO_EXPORT(exp2f);
+PONGO_EXPORT(exp2l);
+PONGO_EXPORT(expf);
+PONGO_EXPORT(expl);
+PONGO_EXPORT(explicit_bzero);
+PONGO_EXPORT(expm1);
+PONGO_EXPORT(expm1f);
+PONGO_EXPORT(expm1l);
+PONGO_EXPORT(fabs);
+PONGO_EXPORT(fabsf);
+PONGO_EXPORT(fabsl);
+PONGO_EXPORT(fclose);
+PONGO_EXPORT(fcloseall);
+PONGO_EXPORT(fcntl);
+PONGO_EXPORT(fcvt);
+PONGO_EXPORT(fcvtbuf);
+PONGO_EXPORT(fcvtf);
+PONGO_EXPORT(fdim);
+PONGO_EXPORT(fdimf);
+PONGO_EXPORT(fdiml);
+PONGO_EXPORT(fdopen);
+PONGO_EXPORT(feclearexcept);
+PONGO_EXPORT(fegetenv);
+PONGO_EXPORT(fegetexceptflag);
+PONGO_EXPORT(fegetround);
+PONGO_EXPORT(feholdexcept);
+PONGO_EXPORT(feof);
+PONGO_EXPORT(feof_unlocked);
+PONGO_EXPORT(feraiseexcept);
+PONGO_EXPORT(ferror);
+PONGO_EXPORT(ferror_unlocked);
+PONGO_EXPORT(fesetenv);
+PONGO_EXPORT(fesetexceptflag);
+PONGO_EXPORT(fesetround);
+PONGO_EXPORT(fetestexcept);
+PONGO_EXPORT(feupdateenv);
+PONGO_EXPORT(fflush);
+PONGO_EXPORT(fflush_unlocked);
+PONGO_EXPORT(ffs);
+PONGO_EXPORT(ffsl);
+PONGO_EXPORT(ffsll);
+PONGO_EXPORT(fgetc);
+PONGO_EXPORT(fgetc_unlocked);
+PONGO_EXPORT(fgetpos);
+PONGO_EXPORT(fgets);
+PONGO_EXPORT(fgets_unlocked);
+PONGO_EXPORT(fgetwc);
+PONGO_EXPORT(fgetwc_unlocked);
+PONGO_EXPORT(fgetws);
+PONGO_EXPORT(fgetws_unlocked);
+PONGO_EXPORT(fileno);
+PONGO_EXPORT(fileno_unlocked);
+PONGO_EXPORT(finite);
+PONGO_EXPORT(finitef);
+PONGO_EXPORT(finitel);
+PONGO_EXPORT(fiprintf);
+PONGO_EXPORT(fiscanf);
+PONGO_EXPORT(floor);
+PONGO_EXPORT(floorf);
+PONGO_EXPORT(floorl);
+PONGO_EXPORT(fls);
+PONGO_EXPORT(flsl);
+PONGO_EXPORT(flsll);
+PONGO_EXPORT(fma);
+PONGO_EXPORT(fmaf);
+PONGO_EXPORT(fmal);
+PONGO_EXPORT(fmax);
+PONGO_EXPORT(fmaxf);
+PONGO_EXPORT(fmaxl);
+PONGO_EXPORT(fmemopen);
+PONGO_EXPORT(fmin);
+PONGO_EXPORT(fminf);
+PONGO_EXPORT(fminl);
+PONGO_EXPORT(fmod);
+PONGO_EXPORT(fmodf);
+PONGO_EXPORT(fmodl);
+PONGO_EXPORT(fopen);
+PONGO_EXPORT(fopencookie);
+PONGO_EXPORT(fork);
+//PONGO_EXPORT(fprintf);
+PONGO_EXPORT(fpurge);
+PONGO_EXPORT(fputc);
+PONGO_EXPORT(fputc_unlocked);
+PONGO_EXPORT(fputs);
+PONGO_EXPORT(fputs_unlocked);
+PONGO_EXPORT(fputwc);
+PONGO_EXPORT(fputwc_unlocked);
+PONGO_EXPORT(fputws);
+PONGO_EXPORT(fputws_unlocked);
+PONGO_EXPORT(fread);
+PONGO_EXPORT(fread_unlocked);
+PONGO_EXPORT(free);
+PONGO_EXPORT(freelocale);
+PONGO_EXPORT(freopen);
+PONGO_EXPORT(frexp);
+PONGO_EXPORT(frexpf);
+PONGO_EXPORT(frexpl);
+PONGO_EXPORT(fscanf);
+PONGO_EXPORT(fseek);
+PONGO_EXPORT(fseeko);
+PONGO_EXPORT(fsetpos);
+PONGO_EXPORT(fstat);
+PONGO_EXPORT(ftell);
+PONGO_EXPORT(ftello);
+PONGO_EXPORT(funopen);
+PONGO_EXPORT(fwide);
+PONGO_EXPORT(fwprintf);
+PONGO_EXPORT(fwrite);
+PONGO_EXPORT(fwrite_unlocked);
+PONGO_EXPORT(fwscanf);
+PONGO_EXPORT(gamma);
+PONGO_EXPORT(gamma_r);
+PONGO_EXPORT(gammaf);
+PONGO_EXPORT(gammaf_r);
+PONGO_EXPORT(gcvt);
+PONGO_EXPORT(gcvtf);
+PONGO_EXPORT(getc);
+PONGO_EXPORT(getc_unlocked);
+PONGO_EXPORT(getchar);
+PONGO_EXPORT(getchar_unlocked);
+PONGO_EXPORT(getenv);
+PONGO_EXPORT(getopt);
+PONGO_EXPORT(getopt_long);
+PONGO_EXPORT(getopt_long_only);
+PONGO_EXPORT(getpid);
+PONGO_EXPORT(gets);
+PONGO_EXPORT(getsubopt);
+PONGO_EXPORT(gettimeofday);
+PONGO_EXPORT(getw);
+PONGO_EXPORT(getwc);
+PONGO_EXPORT(getwc_unlocked);
+PONGO_EXPORT(getwchar);
+PONGO_EXPORT(getwchar_unlocked);
+PONGO_EXPORT(gmtime);
+PONGO_EXPORT(gmtime_r);
+PONGO_EXPORT(hcreate);
+PONGO_EXPORT(hcreate_r);
+PONGO_EXPORT(hdestroy);
+PONGO_EXPORT(hdestroy_r);
+PONGO_EXPORT(hsearch);
+PONGO_EXPORT(hsearch_r);
+PONGO_EXPORT(hypot);
+PONGO_EXPORT(hypotf);
+PONGO_EXPORT(hypotl);
+PONGO_EXPORT(ilogb);
+PONGO_EXPORT(ilogbf);
+PONGO_EXPORT(ilogbl);
+PONGO_EXPORT(imaxabs);
+PONGO_EXPORT(imaxdiv);
+PONGO_EXPORT(index);
+PONGO_EXPORT(infinity);
+PONGO_EXPORT(infinityf);
+PONGO_EXPORT(iprintf);
+PONGO_EXPORT(isalnum);
+PONGO_EXPORT(isalnum_l);
+PONGO_EXPORT(isalpha);
+PONGO_EXPORT(isalpha_l);
+PONGO_EXPORT(isascii);
+PONGO_EXPORT(isascii_l);
+PONGO_EXPORT(isatty);
+PONGO_EXPORT(isblank);
+PONGO_EXPORT(isblank_l);
+PONGO_EXPORT(iscanf);
+PONGO_EXPORT(iscntrl);
+PONGO_EXPORT(iscntrl_l);
+PONGO_EXPORT(isdigit);
+PONGO_EXPORT(isdigit_l);
+PONGO_EXPORT(isgraph);
+PONGO_EXPORT(isgraph_l);
+PONGO_EXPORT(isinf);
+PONGO_EXPORT(isinff);
+PONGO_EXPORT(islower);
+PONGO_EXPORT(islower_l);
+PONGO_EXPORT(isnan);
+PONGO_EXPORT(isnanf);
+PONGO_EXPORT(isprint);
+PONGO_EXPORT(isprint_l);
+PONGO_EXPORT(ispunct);
+PONGO_EXPORT(ispunct_l);
+PONGO_EXPORT(isspace);
+PONGO_EXPORT(isspace_l);
+PONGO_EXPORT(isupper);
+PONGO_EXPORT(isupper_l);
+PONGO_EXPORT(iswalnum);
+PONGO_EXPORT(iswalnum_l);
+PONGO_EXPORT(iswalpha);
+PONGO_EXPORT(iswalpha_l);
+PONGO_EXPORT(iswblank);
+PONGO_EXPORT(iswblank_l);
+PONGO_EXPORT(iswcntrl);
+PONGO_EXPORT(iswcntrl_l);
+PONGO_EXPORT(iswctype);
+PONGO_EXPORT(iswctype_l);
+PONGO_EXPORT(iswdigit);
+PONGO_EXPORT(iswdigit_l);
+PONGO_EXPORT(iswgraph);
+PONGO_EXPORT(iswgraph_l);
+PONGO_EXPORT(iswlower);
+PONGO_EXPORT(iswlower_l);
+PONGO_EXPORT(iswprint);
+PONGO_EXPORT(iswprint_l);
+PONGO_EXPORT(iswpunct);
+PONGO_EXPORT(iswpunct_l);
+PONGO_EXPORT(iswspace);
+PONGO_EXPORT(iswspace_l);
+PONGO_EXPORT(iswupper);
+PONGO_EXPORT(iswupper_l);
+PONGO_EXPORT(iswxdigit);
+PONGO_EXPORT(iswxdigit_l);
+PONGO_EXPORT(isxdigit);
+PONGO_EXPORT(isxdigit_l);
+PONGO_EXPORT(itoa);
+PONGO_EXPORT(j0);
+PONGO_EXPORT(j0f);
+PONGO_EXPORT(j1);
+PONGO_EXPORT(j1f);
+PONGO_EXPORT(jn);
+PONGO_EXPORT(jnf);
+PONGO_EXPORT(jrand48);
+PONGO_EXPORT(kill);
+PONGO_EXPORT(l64a);
+PONGO_EXPORT(labs);
+PONGO_EXPORT(lcong48);
+PONGO_EXPORT(ldexp);
+PONGO_EXPORT(ldexpf);
+PONGO_EXPORT(ldexpl);
+PONGO_EXPORT(ldiv);
+PONGO_EXPORT(lgamma);
+PONGO_EXPORT(lgamma_r);
+PONGO_EXPORT(lgammaf);
+PONGO_EXPORT(lgammaf_r);
+PONGO_EXPORT(lgammal);
+PONGO_EXPORT(link);
+PONGO_EXPORT(llabs);
+PONGO_EXPORT(lldiv);
+PONGO_EXPORT(llrint);
+PONGO_EXPORT(llrintf);
+PONGO_EXPORT(llrintl);
+PONGO_EXPORT(llround);
+PONGO_EXPORT(llroundf);
+PONGO_EXPORT(llroundl);
+PONGO_EXPORT(localeconv);
+PONGO_EXPORT(localtime);
+PONGO_EXPORT(localtime_r);
+PONGO_EXPORT(log);
+PONGO_EXPORT(log10);
+PONGO_EXPORT(log10f);
+PONGO_EXPORT(log10l);
+PONGO_EXPORT(log1p);
+PONGO_EXPORT(log1pf);
+PONGO_EXPORT(log1pl);
+PONGO_EXPORT(log2);
+PONGO_EXPORT(log2f);
+PONGO_EXPORT(log2l);
+PONGO_EXPORT(logb);
+PONGO_EXPORT(logbf);
+PONGO_EXPORT(logbl);
+PONGO_EXPORT(logf);
+PONGO_EXPORT(logl);
+PONGO_EXPORT(longjmp);
+PONGO_EXPORT(lrand48);
+PONGO_EXPORT(lrint);
+PONGO_EXPORT(lrintf);
+PONGO_EXPORT(lrintl);
+PONGO_EXPORT(lround);
+PONGO_EXPORT(lroundf);
+PONGO_EXPORT(lroundl);
+PONGO_EXPORT(lseek);
+PONGO_EXPORT(mallinfo);
+PONGO_EXPORT(malloc);
+PONGO_EXPORT(malloc_stats);
+PONGO_EXPORT(malloc_trim);
+PONGO_EXPORT(malloc_usable_size);
+PONGO_EXPORT(mallopt);
+PONGO_EXPORT(mblen);
+PONGO_EXPORT(mbrlen);
+PONGO_EXPORT(mbrtowc);
+PONGO_EXPORT(mbsinit);
+PONGO_EXPORT(mbsnrtowcs);
+PONGO_EXPORT(mbsrtowcs);
+PONGO_EXPORT(mbstowcs);
+PONGO_EXPORT(mbtowc);
+PONGO_EXPORT(memalign);
+PONGO_EXPORT(memccpy);
+PONGO_EXPORT(memchr);
+PONGO_EXPORT(memcmp);
+PONGO_EXPORT(memcpy);
+PONGO_EXPORT(memmem);
+PONGO_EXPORT(memmove);
+PONGO_EXPORT(mempcpy);
+PONGO_EXPORT(memrchr);
+PONGO_EXPORT(memset);
+PONGO_EXPORT(mkdtemp);
+PONGO_EXPORT(mkostemp);
+PONGO_EXPORT(mkostemps);
+PONGO_EXPORT(mkstemp);
+PONGO_EXPORT(mkstemps);
+PONGO_EXPORT(mktemp);
+PONGO_EXPORT(mktime);
+PONGO_EXPORT(modf);
+PONGO_EXPORT(modff);
+PONGO_EXPORT(modfl);
+PONGO_EXPORT(mrand48);
+PONGO_EXPORT(mstats);
+PONGO_EXPORT(nan);
+PONGO_EXPORT(nanf);
+PONGO_EXPORT(nanl);
+PONGO_EXPORT(nearbyint);
+PONGO_EXPORT(nearbyintf);
+PONGO_EXPORT(nearbyintl);
+PONGO_EXPORT(newlocale);
+PONGO_EXPORT(nextafter);
+PONGO_EXPORT(nextafterf);
+PONGO_EXPORT(nextafterl);
+PONGO_EXPORT(nexttoward);
+PONGO_EXPORT(nexttowardf);
+PONGO_EXPORT(nexttowardl);
+PONGO_EXPORT(nl_langinfo);
+PONGO_EXPORT(nl_langinfo_l);
+PONGO_EXPORT(nrand48);
+PONGO_EXPORT(on_exit);
+PONGO_EXPORT(open);
+PONGO_EXPORT(open_memstream);
+PONGO_EXPORT(open_wmemstream);
+PONGO_EXPORT(perror);
+PONGO_EXPORT(pow);
+PONGO_EXPORT(pow10);
+PONGO_EXPORT(pow10f);
+PONGO_EXPORT(powf);
+PONGO_EXPORT(powl);
+//PONGO_EXPORT(printf);
+PONGO_EXPORT(psignal);
+PONGO_EXPORT(putc);
+PONGO_EXPORT(putc_unlocked);
+PONGO_EXPORT(putchar);
+PONGO_EXPORT(putchar_unlocked);
+PONGO_EXPORT(putenv);
+PONGO_EXPORT(puts);
+PONGO_EXPORT(putw);
+PONGO_EXPORT(putwc);
+PONGO_EXPORT(putwc_unlocked);
+PONGO_EXPORT(putwchar);
+PONGO_EXPORT(putwchar_unlocked);
+PONGO_EXPORT(pvalloc);
+PONGO_EXPORT(qsort);
+PONGO_EXPORT(qsort_r);
+PONGO_EXPORT(quick_exit);
+PONGO_EXPORT(raise);
+PONGO_EXPORT(rand);
+PONGO_EXPORT(rand_r);
+PONGO_EXPORT(random);
+PONGO_EXPORT(rawmemchr);
+PONGO_EXPORT(read);
+PONGO_EXPORT(realloc);
+PONGO_EXPORT(reallocarray);
+PONGO_EXPORT(reallocf);
+PONGO_EXPORT(remainder);
+PONGO_EXPORT(remainderf);
+PONGO_EXPORT(remainderl);
+PONGO_EXPORT(remove);
+PONGO_EXPORT(remquo);
+PONGO_EXPORT(remquof);
+PONGO_EXPORT(remquol);
+PONGO_EXPORT(rename);
+PONGO_EXPORT(rewind);
+PONGO_EXPORT(rindex);
+PONGO_EXPORT(rint);
+PONGO_EXPORT(rintf);
+PONGO_EXPORT(rintl);
+PONGO_EXPORT(round);
+PONGO_EXPORT(roundf);
+PONGO_EXPORT(roundl);
+PONGO_EXPORT(rpmatch);
+PONGO_EXPORT(sbrk);
+PONGO_EXPORT(scalb);
+PONGO_EXPORT(scalbf);
+PONGO_EXPORT(scalbln);
+PONGO_EXPORT(scalblnf);
+PONGO_EXPORT(scalblnl);
+PONGO_EXPORT(scalbn);
+PONGO_EXPORT(scalbnf);
+PONGO_EXPORT(scalbnl);
+PONGO_EXPORT(scanf);
+PONGO_EXPORT(seed48);
+PONGO_EXPORT(setbuf);
+PONGO_EXPORT(setbuffer);
+PONGO_EXPORT(setenv);
+PONGO_EXPORT(setjmp);
+PONGO_EXPORT(setlinebuf);
+PONGO_EXPORT(setlocale);
+PONGO_EXPORT(setvbuf);
+PONGO_EXPORT(signal);
+PONGO_EXPORT(significand);
+PONGO_EXPORT(significandf);
+PONGO_EXPORT(sin);
+PONGO_EXPORT(sincos);
+PONGO_EXPORT(sincosf);
+PONGO_EXPORT(sinf);
+PONGO_EXPORT(sinh);
+PONGO_EXPORT(sinhf);
+PONGO_EXPORT(sinhl);
+PONGO_EXPORT(sinl);
+PONGO_EXPORT(siprintf);
+PONGO_EXPORT(siscanf);
+PONGO_EXPORT(sniprintf);
+//PONGO_EXPORT(snprintf);
+PONGO_EXPORT(sprintf);
+PONGO_EXPORT(sqrt);
+PONGO_EXPORT(sqrtf);
+PONGO_EXPORT(sqrtl);
+PONGO_EXPORT(srand);
+PONGO_EXPORT(srand48);
+PONGO_EXPORT(srandom);
+PONGO_EXPORT(sscanf);
+PONGO_EXPORT(stat);
+PONGO_EXPORT(stpcpy);
+PONGO_EXPORT(stpncpy);
+PONGO_EXPORT(strcasecmp);
+PONGO_EXPORT(strcasecmp_l);
+PONGO_EXPORT(strcasestr);
+PONGO_EXPORT(strcat);
+PONGO_EXPORT(strchr);
+PONGO_EXPORT(strchrnul);
+PONGO_EXPORT(strcmp);
+PONGO_EXPORT(strcoll);
+PONGO_EXPORT(strcoll_l);
+PONGO_EXPORT(strcpy);
+PONGO_EXPORT(strcspn);
+PONGO_EXPORT(strdup);
+PONGO_EXPORT(strerror);
+PONGO_EXPORT(strerror_l);
+PONGO_EXPORT(strerror_r);
+PONGO_EXPORT(strftime);
+PONGO_EXPORT(strftime_l);
+PONGO_EXPORT(strlcat);
+PONGO_EXPORT(strlcpy);
+PONGO_EXPORT(strlen);
+PONGO_EXPORT(strlwr);
+PONGO_EXPORT(strncasecmp);
+PONGO_EXPORT(strncasecmp_l);
+PONGO_EXPORT(strncat);
+PONGO_EXPORT(strncmp);
+PONGO_EXPORT(strncpy);
+PONGO_EXPORT(strndup);
+PONGO_EXPORT(strnlen);
+PONGO_EXPORT(strnstr);
+PONGO_EXPORT(strpbrk);
+PONGO_EXPORT(strptime);
+PONGO_EXPORT(strptime_l);
+PONGO_EXPORT(strrchr);
+PONGO_EXPORT(strsep);
+PONGO_EXPORT(strsignal);
+PONGO_EXPORT(strspn);
+PONGO_EXPORT(strstr);
+PONGO_EXPORT(strtod);
+PONGO_EXPORT(strtod_l);
+PONGO_EXPORT(strtof);
+PONGO_EXPORT(strtof_l);
+PONGO_EXPORT(strtoimax);
+PONGO_EXPORT(strtoimax_l);
+PONGO_EXPORT(strtok);
+PONGO_EXPORT(strtok_r);
+PONGO_EXPORT(strtol);
+PONGO_EXPORT(strtol_l);
+PONGO_EXPORT(strtold);
+PONGO_EXPORT(strtold_l);
+PONGO_EXPORT(strtoll);
+PONGO_EXPORT(strtoll_l);
+PONGO_EXPORT(strtoul);
+PONGO_EXPORT(strtoul_l);
+PONGO_EXPORT(strtoull);
+PONGO_EXPORT(strtoull_l);
+PONGO_EXPORT(strtoumax);
+PONGO_EXPORT(strtoumax_l);
+PONGO_EXPORT(strupr);
+PONGO_EXPORT(strverscmp);
+PONGO_EXPORT(strxfrm);
+PONGO_EXPORT(strxfrm_l);
+PONGO_EXPORT(swab);
+PONGO_EXPORT(swprintf);
+PONGO_EXPORT(swscanf);
+PONGO_EXPORT(system);
+PONGO_EXPORT(tan);
+PONGO_EXPORT(tanf);
+PONGO_EXPORT(tanh);
+PONGO_EXPORT(tanhf);
+PONGO_EXPORT(tanhl);
+PONGO_EXPORT(tanl);
+PONGO_EXPORT(tdelete);
+PONGO_EXPORT(tdestroy);
+PONGO_EXPORT(tempnam);
+PONGO_EXPORT(tfind);
+PONGO_EXPORT(tgamma);
+PONGO_EXPORT(tgammaf);
+PONGO_EXPORT(tgammal);
+PONGO_EXPORT(time);
+PONGO_EXPORT(times);
+PONGO_EXPORT(timingsafe_bcmp);
+PONGO_EXPORT(timingsafe_memcmp);
+PONGO_EXPORT(tmpfile);
+PONGO_EXPORT(tmpnam);
+PONGO_EXPORT(toascii);
+PONGO_EXPORT(toascii_l);
+PONGO_EXPORT(tolower);
+PONGO_EXPORT(tolower_l);
+PONGO_EXPORT(toupper);
+PONGO_EXPORT(toupper_l);
+PONGO_EXPORT(towctrans);
+PONGO_EXPORT(towctrans_l);
+PONGO_EXPORT(towlower);
+PONGO_EXPORT(towlower_l);
+PONGO_EXPORT(towupper);
+PONGO_EXPORT(towupper_l);
+PONGO_EXPORT(trunc);
+PONGO_EXPORT(truncf);
+PONGO_EXPORT(truncl);
+PONGO_EXPORT(tsearch);
+PONGO_EXPORT(twalk);
+PONGO_EXPORT(tzset);
+PONGO_EXPORT(ungetc);
+PONGO_EXPORT(ungetwc);
+PONGO_EXPORT(unlink);
+PONGO_EXPORT(unsetenv);
+PONGO_EXPORT(uselocale);
+PONGO_EXPORT(utoa);
+PONGO_EXPORT(valloc);
+PONGO_EXPORT(vasiprintf);
+PONGO_EXPORT(vasniprintf);
+PONGO_EXPORT(vasnprintf);
+PONGO_EXPORT(vasprintf);
+PONGO_EXPORT(vdiprintf);
+PONGO_EXPORT(vdprintf);
+PONGO_EXPORT(vfiprintf);
+PONGO_EXPORT(vfiscanf);
+PONGO_EXPORT(vfiwprintf);
+PONGO_EXPORT(vfiwscanf);
+//PONGO_EXPORT(vfprintf);
+PONGO_EXPORT(vfscanf);
+PONGO_EXPORT(vfwprintf);
+PONGO_EXPORT(vfwscanf);
+PONGO_EXPORT(viprintf);
+PONGO_EXPORT(viscanf);
+//PONGO_EXPORT(vprintf);
+PONGO_EXPORT(vscanf);
+PONGO_EXPORT(vsiprintf);
+PONGO_EXPORT(vsiscanf);
+PONGO_EXPORT(vsniprintf);
+//PONGO_EXPORT(vsnprintf);
+PONGO_EXPORT(vsprintf);
+PONGO_EXPORT(vsscanf);
+PONGO_EXPORT(vswprintf);
+PONGO_EXPORT(vswscanf);
+PONGO_EXPORT(vwprintf);
+PONGO_EXPORT(vwscanf);
+PONGO_EXPORT(wait);
+PONGO_EXPORT(wcpcpy);
+PONGO_EXPORT(wcpncpy);
+PONGO_EXPORT(wcrtomb);
+PONGO_EXPORT(wcscasecmp);
+PONGO_EXPORT(wcscasecmp_l);
+PONGO_EXPORT(wcscat);
+PONGO_EXPORT(wcschr);
+PONGO_EXPORT(wcscmp);
+PONGO_EXPORT(wcscoll);
+PONGO_EXPORT(wcscoll_l);
+PONGO_EXPORT(wcscpy);
+PONGO_EXPORT(wcscspn);
+PONGO_EXPORT(wcsdup);
+PONGO_EXPORT(wcsftime);
+PONGO_EXPORT(wcsftime_l);
+PONGO_EXPORT(wcslcat);
+PONGO_EXPORT(wcslcpy);
+PONGO_EXPORT(wcslen);
+PONGO_EXPORT(wcsncasecmp);
+PONGO_EXPORT(wcsncasecmp_l);
+PONGO_EXPORT(wcsncat);
+PONGO_EXPORT(wcsncmp);
+PONGO_EXPORT(wcsncpy);
+PONGO_EXPORT(wcsnlen);
+PONGO_EXPORT(wcsnrtombs);
+PONGO_EXPORT(wcspbrk);
+PONGO_EXPORT(wcsrchr);
+PONGO_EXPORT(wcsrtombs);
+PONGO_EXPORT(wcsspn);
+PONGO_EXPORT(wcsstr);
+PONGO_EXPORT(wcstod);
+PONGO_EXPORT(wcstod_l);
+PONGO_EXPORT(wcstof);
+PONGO_EXPORT(wcstof_l);
+PONGO_EXPORT(wcstoimax);
+PONGO_EXPORT(wcstoimax_l);
+PONGO_EXPORT(wcstok);
+PONGO_EXPORT(wcstol);
+PONGO_EXPORT(wcstol_l);
+PONGO_EXPORT(wcstold);
+PONGO_EXPORT(wcstold_l);
+PONGO_EXPORT(wcstoll);
+PONGO_EXPORT(wcstoll_l);
+PONGO_EXPORT(wcstombs);
+PONGO_EXPORT(wcstoul);
+PONGO_EXPORT(wcstoul_l);
+PONGO_EXPORT(wcstoull);
+PONGO_EXPORT(wcstoull_l);
+PONGO_EXPORT(wcstoumax);
+PONGO_EXPORT(wcstoumax_l);
+PONGO_EXPORT(wcswidth);
+PONGO_EXPORT(wcsxfrm);
+PONGO_EXPORT(wcsxfrm_l);
+PONGO_EXPORT(wctob);
+PONGO_EXPORT(wctomb);
+PONGO_EXPORT(wctrans);
+PONGO_EXPORT(wctrans_l);
+PONGO_EXPORT(wctype);
+PONGO_EXPORT(wctype_l);
+PONGO_EXPORT(wcwidth);
+PONGO_EXPORT(wmemchr);
+PONGO_EXPORT(wmemcmp);
+PONGO_EXPORT(wmemcpy);
+PONGO_EXPORT(wmemmove);
+PONGO_EXPORT(wmempcpy);
+PONGO_EXPORT(wmemset);
+PONGO_EXPORT(wprintf);
+PONGO_EXPORT(write);
+PONGO_EXPORT(wscanf);
+PONGO_EXPORT(y0);
+PONGO_EXPORT(y0f);
+PONGO_EXPORT(y1);
+PONGO_EXPORT(y1f);
+PONGO_EXPORT(yn);
+PONGO_EXPORT(ynf);
+
+// Pongo
+// TODO: sort & clean up, match headers
+PONGO_EXPORT(xnu_pf_apply_each_kext);
+PONGO_EXPORT(xnu_pf_get_first_kext);
+PONGO_EXPORT(xnu_pf_get_kext_header);
+PONGO_EXPORT(xnu_pf_disable_patch);
+PONGO_EXPORT(xnu_pf_enable_patch);
+PONGO_EXPORT(xnu_pf_ptr_to_data);
+PONGO_EXPORT(xnu_pf_patchset_destroy);
+PONGO_EXPORT(xnu_pf_patchset_create);
+PONGO_EXPORT(print_register);
+PONGO_EXPORT(alloc_static);
+PONGO_EXPORT(xnu_slide_hdr_va);
+PONGO_EXPORT(xnu_slide_value);
+PONGO_EXPORT(xnu_header);
+PONGO_EXPORT(xnu_va_to_ptr);
+PONGO_EXPORT(xnu_ptr_to_va);
+PONGO_EXPORT(xnu_rebase_va);
+PONGO_EXPORT(kext_rebase_va);
+PONGO_EXPORT(xnu_pf_range_from_va);
+PONGO_EXPORT(xnu_pf_segment);
+PONGO_EXPORT(xnu_pf_section);
+PONGO_EXPORT(xnu_pf_all);
+PONGO_EXPORT(xnu_pf_all_x);
+PONGO_EXPORT(xnu_pf_maskmatch);
+PONGO_EXPORT(xnu_pf_emit);
+PONGO_EXPORT(xnu_pf_apply);
+PONGO_EXPORT(macho_get_segment);
+PONGO_EXPORT(macho_get_section);
+PONGO_EXPORT(dt_check);
+PONGO_EXPORT(dt_parse);
+PONGO_EXPORT(dt_find);
+PONGO_EXPORT(dt_prop);
+PONGO_EXPORT(event_fire);
+PONGO_EXPORT(event_wait);
+PONGO_EXPORT(event_wait_asserted);
+PONGO_EXPORT(dt_alloc_memmap);
+//PONGO_EXPORT(bzero);
+//PONGO_EXPORT(memset);
+PONGO_EXPORT(memcpy_trap);
+PONGO_EXPORT(free_contig);
+PONGO_EXPORT(phys_reference);
+PONGO_EXPORT(phys_dereference);
+PONGO_EXPORT(phys_force_free);
+PONGO_EXPORT(mark_phys_wired);
+PONGO_EXPORT(phys_get_entry);
+PONGO_EXPORT(phys_set_entry);
+PONGO_EXPORT(vm_flush);
+PONGO_EXPORT(vm_flush_by_addr);
+PONGO_EXPORT(free_phys);
+PONGO_EXPORT(vm_space_map_page_physical_prot);
+PONGO_EXPORT(proc_reference);
+PONGO_EXPORT(proc_release);
+PONGO_EXPORT(proc_create_task);
+PONGO_EXPORT(vm_deallocate);
+PONGO_EXPORT(vm_allocate);
+//PONGO_EXPORT(strcmp);
+PONGO_EXPORT(queue_rx_string);
+//PONGO_EXPORT(strlen);
+//PONGO_EXPORT(strcpy);
+PONGO_EXPORT(task_create);
+PONGO_EXPORT(task_create_extended);
+PONGO_EXPORT(task_restart_and_link);
+PONGO_EXPORT(task_critical_enter);
+PONGO_EXPORT(task_critical_exit);
+PONGO_EXPORT(task_bind_to_irq);
+PONGO_EXPORT(task_release);
+PONGO_EXPORT(task_reference);
+PONGO_EXPORT(tz0_calculate_encrypted_block_addr);
+PONGO_EXPORT(tz_blackbird);
+PONGO_EXPORT(tz_lockdown);
+PONGO_EXPORT(vatophys);
+PONGO_EXPORT(vatophys_static);
+PONGO_EXPORT(lock_take);
+PONGO_EXPORT(lock_take_spin);
+PONGO_EXPORT(lock_release);
+//PONGO_EXPORT(memmove);
+//PONGO_EXPORT(memmem);
+PONGO_EXPORT(memstr);
+PONGO_EXPORT(memstr_partial);
+//PONGO_EXPORT(memcpy);
+//PONGO_EXPORT(putc);
+//PONGO_EXPORT(putchar);
+//PONGO_EXPORT(puts);
+//PONGO_EXPORT(strtoul);
+PONGO_EXPORT(invalidate_icache);
+PONGO_EXPORT(task_current);
+PONGO_EXPORT(task_register_irq);
+PONGO_EXPORT(task_register);
+PONGO_EXPORT(task_yield);
+PONGO_EXPORT(task_wait);
+PONGO_EXPORT(task_exit);
+PONGO_EXPORT(task_switch_irq);
+PONGO_EXPORT(task_exit_irq);
+PONGO_EXPORT(task_switch);
+PONGO_EXPORT(task_link);
+PONGO_EXPORT(task_unlink);
+PONGO_EXPORT(task_irq_dispatch);
+PONGO_EXPORT(task_yield_asserted);
+PONGO_EXPORT(task_register_unlinked);
+PONGO_EXPORT(panic);
+PONGO_EXPORT(spin);
+PONGO_EXPORT(get_ticks);
+PONGO_EXPORT(usleep);
+PONGO_EXPORT(sleep);
+PONGO_EXPORT(dt_get_prop);
+PONGO_EXPORT(dt_get_u32_prop);
+PONGO_EXPORT(dt_get_u64_prop);
+PONGO_EXPORT(dt_get_u64_prop_i);
+PONGO_EXPORT(wdt_reset);
+PONGO_EXPORT(wdt_enable);
+PONGO_EXPORT(wdt_disable);
+PONGO_EXPORT(command_putc);
+PONGO_EXPORT(command_puts);
+PONGO_EXPORT(command_register);
+PONGO_EXPORT(command_tokenize);
+PONGO_EXPORT(hexparse);
+PONGO_EXPORT(hexprint);
+PONGO_EXPORT(get_el);
+PONGO_EXPORT(cache_invalidate);
+PONGO_EXPORT(cache_clean_and_invalidate);
+PONGO_EXPORT(register_irq_handler);
+PONGO_EXPORT(device_clock_by_id);
+PONGO_EXPORT(device_clock_by_name);
+PONGO_EXPORT(clock_gate);
+PONGO_EXPORT(disable_interrupts);
+PONGO_EXPORT(enable_interrupts);
+PONGO_EXPORT(alloc_contig);
+PONGO_EXPORT(alloc_phys);
+PONGO_EXPORT(map_physical_range);
+PONGO_EXPORT(task_vm_space);
+PONGO_EXPORT(usbloader_init);
+PONGO_EXPORT(task_irq_teardown);
+//PONGO_EXPORT(realloc);
+//PONGO_EXPORT(malloc);
+PONGO_EXPORT(phystokv);
+//PONGO_EXPORT(free);
+PONGO_EXPORT(hexdump);
+//PONGO_EXPORT(memcmp);
+PONGO_EXPORT(map_range);
+PONGO_EXPORT(linear_kvm_alloc);
+PONGO_EXPORT(vm_flush_by_addr_all_asid);
+PONGO_EXPORT(vatophys_force);
+PONGO_EXPORT(serial_disable_rx);
+PONGO_EXPORT(serial_enable_rx);
+//PONGO_EXPORT(__memset_chk);
+//PONGO_EXPORT(__memcpy_chk);
+PONGO_EXPORT(resize_loader_xfer_data);
+PONGO_EXPORT(gBootArgs);
+PONGO_EXPORT(gEntryPoint);
+PONGO_EXPORT(gDeviceTree);
+PONGO_EXPORT(gIOBase);
+PONGO_EXPORT(gPMGRBase);
+PONGO_EXPORT(unlzma_decompress);
+PONGO_EXPORT(gDevType);
+PONGO_EXPORT(soc_name);
+PONGO_EXPORT(socnum);
+PONGO_EXPORT(loader_xfer_recv_data);
+PONGO_EXPORT(loader_xfer_recv_count);
+PONGO_EXPORT(preboot_hook);
+PONGO_EXPORT(ramdisk_buf);
+PONGO_EXPORT(ramdisk_size);
+PONGO_EXPORT(autoboot_count);
+PONGO_EXPORT(sep_boot_hook);
+PONGO_EXPORT(aes);
+PONGO_EXPORT(_impure_ptr);
+PONGO_EXPORT(loader_xfer_recv_size);
+PONGO_EXPORT(overflow_mode);
+PONGO_EXPORT(gFramebuffer);
+PONGO_EXPORT(gWidth);
+PONGO_EXPORT(gHeight);
+PONGO_EXPORT(gRowPixels);
+PONGO_EXPORT(y_cursor);
+PONGO_EXPORT(x_cursor);
+PONGO_EXPORT(scale_factor);
+//PONGO_EXPORT_RENAME(__stack_chk_guard, f_stack_chk_guard);
+//PONGO_EXPORT_RENAME(__stack_chk_fail, f_stack_chk_fail);
+//PONGO_EXPORT_RENAME(iprintf, iprintf);
+PONGO_EXPORT_RENAME(printf, iprintf);
+//PONGO_EXPORT_RENAME(fiprintf, fiprintf);
+PONGO_EXPORT_RENAME(fprintf, fiprintf);
+//PONGO_EXPORT_RENAME(viprintf, viprintf);
+PONGO_EXPORT_RENAME(vprintf, viprintf);
+//PONGO_EXPORT_RENAME(vfiprintf, vfiprintf);
+PONGO_EXPORT_RENAME(vfprintf, vfiprintf);
+//PONGO_EXPORT_RENAME(sniprintf, sniprintf);
+PONGO_EXPORT_RENAME(snprintf, sniprintf);
+//PONGO_EXPORT_RENAME(vsniprintf, vsniprintf);
+PONGO_EXPORT_RENAME(vsnprintf, vsniprintf);
+__asm__
+(
+    ".section __DATA, __pongo_exports\n"
+    ".align 4\n"
+    "    .8byte 0x0\n"
+    "    .8byte 0x0\n"
+);
+
+extern struct pongo_exports public_api[] __asm__("section$start$__DATA$__pongo_exports");
+
 void link_exports(struct pongo_exports* export) {
     struct pongo_exports* api = &public_api[0];
     while (1) {

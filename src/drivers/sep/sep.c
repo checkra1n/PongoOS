@@ -369,7 +369,9 @@ void seprom_fwload() {
     is_waiting_to_boot = 0;
     seprom_load_sepos(gSEPFW, 0);
 }
-asm(".globl _copy_block\n"
+asm(".text\n"
+    ".align 2\n"
+    ".globl _copy_block\n"
     "_copy_block:\n"
     "ldp x2, x3, [x1]\n"
     "stp x2, x3, [x0]\n"

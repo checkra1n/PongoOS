@@ -301,7 +301,7 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     ttb_alloc = ttb_alloc_early;
     volatile extern uint64_t start[] __asm__("start");
     volatile uint64_t pongo_base = ((uint64_t) &start);
-    volatile extern uint64_t __bss_end[] __asm__("segment$end$__BSS");
+    volatile extern uint64_t __bss_end[] __asm__("segment$end$__DATA");
     volatile uint64_t pongo_size = ((uint64_t) __bss_end) - pongo_base;
     volatile extern uint64_t __text_end[] __asm__("segment$start$__DATA");
     __unused volatile uint64_t pongo_text_size = ((uint64_t) __text_end) - pongo_base;
