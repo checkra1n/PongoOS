@@ -407,7 +407,7 @@ bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_t *opco
 
     if (isBNE) {
         // Follow branch (convert to B)
-        *patchpoint |= 7;
+        *patchpoint |= 0xf;
     } else {
         // Don't follow branch
         *patchpoint = NOP;
