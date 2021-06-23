@@ -147,21 +147,22 @@ uint32_t* follow_call(uint32_t* from) {
     return target;
 }
 
-bool foundKernelVersion;
-const char *kernelVersionString;
+#if DEV_BUILD
 struct {
     int darwinMajor;
     int darwinMinor;
     int darwinRevision;
     int xnuMajor;
 } kernelVersion;
-bool kpf_kernel_version_init(void) {
+void kpf_kernel_version_init(xnu_pf_range_t* text_const_range) {
+    const char kernelVersionStringMarker[] = "@(#)VERSION: Darwin Kernel Version ";
+    const char *kernelVersionString = memmem(text_const_range->cacheable_base, text_const_range->size, kernelVersionStringMarker, strlen(kernelVersionStringMarker));
     if (kernelVersionString == NULL) {
-        panic("kernel version not set");
+        panic("No kernel version string found");
     }
-    const char *start = kernelVersionString + 35;
+    const char *start = kernelVersionString + strlen(kernelVersionStringMarker);
     char *end = NULL;
-    errno=0;
+    errno = 0;
     kernelVersion.darwinMajor = strtoimax(start, &end, 10);
     if (errno) panic("Error parsing kernel version");
     start = end+1;
@@ -170,13 +171,14 @@ bool kpf_kernel_version_init(void) {
     start = end+1;
     kernelVersion.darwinRevision = strtoimax(start, &end, 10);
     if (errno) panic("Error parsing kernel version");
-    start = strstr(end, "xnu-") + strlen("xnu-");
-    kernelVersion.xnuMajor = strtoimax(start, &end, 10);
+    start = strstr(end, "root:xnu");
+    if (start) start = strchr(start + strlen("root:xnu"), '-');
+    if (!start) panic("Error parsing kernel version");
+    kernelVersion.xnuMajor = strtoimax(start+1, &end, 10);
     if (errno) panic("Error parsing kernel version");
     printf("Detected Kernel version Darwin: %d.%d.%d xnu: %d\n", kernelVersion.darwinMajor, kernelVersion.darwinMinor, kernelVersion.darwinRevision, kernelVersion.xnuMajor);
-    foundKernelVersion = true;
-    return true;
 }
+#endif
 
 uint32_t* dyld_hook_addr;
 bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
@@ -1627,7 +1629,7 @@ bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stre
 void kpf_vnop_rootvp_auth_patch(xnu_pf_patchset_t* patchset) {
     uint64_t matches[] = {
         0x528D0661, // MOV             W1, #0x80046833  // command
-        0x72B00081, // 
+        0x72B00081, //
         0xD2800002, // MOV             X2, #0           // data
         0x52800003, // MOV             W3, #0           // fflag
         0x94000000, // BL              _VNOP_IOCTL
@@ -1685,21 +1687,32 @@ void command_kpf() {
     offsetof_p_flags = -1;
 
     struct mach_header_64* hdr = xnu_header();
+    xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
 
+#if DEV_BUILD
     xnu_pf_range_t* text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
-    kernelVersionString = (char*)memmem((unsigned char *)text_const_range->cacheable_base, text_const_range->size, (uint8_t *)"@(#)VERSION: Darwin Kernel Version ", strlen("@(#)VERSION: Darwin Kernel Version "));
-    if (kernelVersionString == NULL) {
-        panic("No kernel version string found");
-    }
-    kpf_kernel_version_init();
+    kpf_kernel_version_init(text_const_range);
+#endif
 
     // extern struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, const char* kext_bundle_id);
 
     xnu_pf_patchset_t* apfs_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     struct mach_header_64* apfs_header = xnu_pf_get_kext_header(hdr, "com.apple.filesystems.apfs");
     xnu_pf_range_t* apfs_text_exec_range = xnu_pf_section(apfs_header, "__TEXT_EXEC", "__text");
+    xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
+
+    const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
+    const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, strlen(livefs_string)) : NULL;
+    if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, strlen(livefs_string));
+
+#if DEV_BUILD
+    // 15.0 beta 1 onwards, but only iOS/iPadOS
+    if((livefs_string_match != NULL) != (kernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
+#endif
+
     kpf_apfs_patches(apfs_patchset);
-    if (kernelVersion.darwinMajor >= 21) {
+    if(livefs_string_match)
+    {
         kpf_root_livefs_patch(apfs_patchset);
     }
     xnu_pf_emit(apfs_patchset);
@@ -1749,11 +1762,10 @@ void command_kpf() {
             text_exec_range->size -= text_exec_end_real - text_exec_end;
         }
     }
-    xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
     xnu_pf_range_t* plk_text_range = xnu_pf_section(hdr, "__PRELINK_TEXT", "__text");
-    xnu_pf_patchset_t* xnu_data_const_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_64BIT);
     xnu_pf_range_t* data_const_range = xnu_pf_section(hdr, "__DATA_CONST", "__const");
     xnu_pf_range_t* plk_data_const_range = xnu_pf_section(hdr, "__PLK_DATA_CONST", "__data");
+    xnu_pf_patchset_t* xnu_data_const_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_64BIT);
 
     uint64_t tick_0 = get_ticks();
     uint64_t tick_1;
@@ -1778,6 +1790,15 @@ void command_kpf() {
 
     const char kmap_port_string[] = "userspace has control access to a"; // iOS 14 had broken panic strings
     const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, strlen(kmap_port_string));
+    const char rootvp_string[] = "rootvp not authenticated after mounting";
+    const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, strlen(rootvp_string));
+
+#if DEV_BUILD
+    // 14.0 beta 2 onwards
+    if((kmap_port_string_match != NULL) != (kernelVersion.xnuMajor > 7090)) panic("convert_to_port panic doesn't match expected XNU version");
+    // 15.0 beta 1 onwards
+    if((rootvp_string_match != NULL) != (kernelVersion.darwinMajor >= 21)) panic("rootvp_auth panic doesn't match expected Darwin version");
+#endif
 
     kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_amfi_patch(xnu_text_exec_patchset);
@@ -1793,8 +1814,8 @@ void command_kpf() {
     {
         kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
     }
-
-    if (kernelVersion.darwinMajor >= 21) {
+    if(rootvp_string_match)
+    {
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
     }
 

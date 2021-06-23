@@ -353,6 +353,27 @@ struct mach_header_64* xnu_header(void) {
     return xnu_header_cached;
 }
 
+static uint32_t xnu_platform_cached = 0;
+uint32_t xnu_platform(void)
+{
+    if(!xnu_platform_cached)
+    {
+        struct mach_header_64 *hdr = xnu_header();
+        struct load_command* lc = (struct load_command*)(hdr + 1);
+        for(size_t i = 0; i < hdr->ncmds; ++i)
+        {
+            if(lc->cmd == LC_BUILD_VERSION)
+            {
+                struct build_version_command *blc = (struct build_version_command*)lc;
+                xnu_platform_cached = blc->platform;
+                break;
+            }
+            lc = (struct load_command*)((uintptr_t)lc + lc->cmdsize);
+        }
+    }
+    return xnu_platform_cached;
+}
+
 struct segment_command_64* macho_get_segment(struct mach_header_64* header, const char* segname) {
     struct load_command* lc;
     lc = (struct load_command*)(header + 1);

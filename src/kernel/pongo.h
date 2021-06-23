@@ -313,7 +313,8 @@ typedef struct xnu_pf_patchset {
 #define TICKS_IN_1MS 24000
 extern uint64_t xnu_slide_hdr_va(struct mach_header_64* header, uint64_t hdr_va);
 extern uint64_t xnu_slide_value(struct mach_header_64* header);
-extern struct mach_header_64* xnu_header();
+extern struct mach_header_64* xnu_header(void);
+extern uint32_t xnu_platform(void);
 extern xnu_pf_range_t* xnu_pf_range_from_va(uint64_t va, uint64_t size);
 extern xnu_pf_range_t* xnu_pf_segment(struct mach_header_64* header, char* segment_name);
 extern xnu_pf_range_t* xnu_pf_section(struct mach_header_64* header, void* segment, char* section_name);
