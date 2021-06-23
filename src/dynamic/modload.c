@@ -1432,6 +1432,7 @@ PONGO_EXPORT(alloc_static);
 PONGO_EXPORT(xnu_slide_hdr_va);
 PONGO_EXPORT(xnu_slide_value);
 PONGO_EXPORT(xnu_header);
+PONGO_EXPORT(xnu_platform);
 PONGO_EXPORT(xnu_va_to_ptr);
 PONGO_EXPORT(xnu_ptr_to_va);
 PONGO_EXPORT(xnu_rebase_va);
