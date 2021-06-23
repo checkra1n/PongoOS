@@ -400,32 +400,16 @@ bool found_convert_port_to_map = false;
 
 bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
-    // Verify that the high regs actually match
-    if((opcode_stream[0] & 0x1f) != ((opcode_stream[3] >> 5) & 0x1f))
-    {
-        return false;
-    }
-    // Find the next b.eq
-    uint32_t *patchpoint = find_next_insn(opcode_stream + 5, 0x18, 0x54000000, 0xff00001f); // b.eq *
-    if(!patchpoint)
-    {
-        return false;
-    }
-    // Only once
-    if(found_convert_port_to_map)
-    {
-        panic("convert_port_to_map found twice!");
-    }
-    puts("KPF: Found convert_port_to_map_with_flavor");
-    found_convert_port_to_map = true;
-    *patchpoint = NOP;
-    return true;
-}
+    uint32_t *patchpoint = &opcode_stream[7];
+    bool isBNE = *patchpoint & 1;
 
-bool kpf_convert_port_to_map_callback_ios15(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    opcode_stream[2] = NOP;
-    opcode_stream[6] = NOP;
+    if (isBNE) {
+        // Follow branch (convert to B)
+        *patchpoint |= 7;
+    } else {
+        // Don't follow branch
+        *patchpoint = NOP;
+    }
 
     // Only once
     if(found_convert_port_to_map)
@@ -470,64 +454,44 @@ void kpf_convert_port_to_map_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // 0xfffffff00713dbd4      1f0008eb       cmp x0, x8
     // 0xfffffff00713dbd8      80010054       b.eq 0xfffffff00713dc08
     //
-    // We look for the first 5 instructions, then find the next `b.eq` and NOP it out.
-
+    // We look for the last 8 instructions then follow b.ne or nop b.eq
+    //
     // r2 masked search:
-    // /x f00301aa3f080071000000541f06007100000054:f0ffffffffffffff1f0000ff1ffeffff1f0000ff
+    // /x 0000003900000034000040f9002440f900000090000040f91f0000eb00000054:0000007F000000ff0000c0ff00fcffff0000009f0000c0ff1ffce0ff1e0000ff
+    // or
+    // /x 0000003900000034000040f9002440f91f2003d5000000581f0000eb00000054:0000007F000000ff0000c0ff00fcffffffffffff000000ff1ffce0ff1e0000ff
+
     uint64_t matches[] = {
-        0xaa0103f0, // mov x[16-31], x1
-        0x7100083f, // cmp w2, #2
-        0x54000000, // b.eq *
-        0x7100061f, // cmp w[16-31], #1
-        0x54000000, // b.eq *
-    };
-    uint64_t masks[] = {
-        0xfffffff0, // mov x[16-31], x1
-        0xffffffff, // cmp w2, #2
-        0xff00001f, // b.eq *
-        0xfffffe1f, // cmp w[16-31], #1
-        0xff00001f, // b.eq *
-    };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_convert_port_to_map_callback);
-
-    // Alternate patch for ios 15 and above as it no longer matches.  Matches sample code below and NOP out the CBZ and B.NE
-    //
-    // FFFFFFF007D01370 loc_FFFFFFF007D01370                    ; CODE XREF: _convert_port_to_map_with_flavor+28↑j
-    // FFFFFFF007D01370                 MOV             X20, #0
-    // FFFFFFF007D01374                 B               loc_FFFFFFF007D013AC
-    // FFFFFFF007D01378 ; ---------------------------------------------------------------------------
-    // FFFFFFF007D01378
-    // FFFFFFF007D01378 loc_FFFFFFF007D01378                    ; CODE XREF: _convert_port_to_map_with_flavor+40↑j
-    // FFFFFFF007D01378                 CBZ             W21, loc_FFFFFFF007D013CC
-    // FFFFFFF007D0137C                 ADRP            X8, #_kernel_task@PAGE
-    // FFFFFFF007D01380                 LDR             X8, [X8,#_kernel_task@PAGEOFF]
-    // FFFFFFF007D01384                 CMP             X19, X8
-    // FFFFFFF007D01388                 B.NE            loc_FFFFFFF007D013EC
-    //
-    // r2 masked search:
-    // /x 000080D2000000140000003400000090000040f91f0000eb:E0FFFFFF000000FC000000ff0000009f0000c0ff1ffce0ff
-
-    uint64_t matches_2[] = {
-        0xD2800000, // MOV xn, #0
-        0x14000000, // B
-        0x34000000, // CBZ Wn
+        0x39000000, // LDR(B) Wn
+        0x34000000, // CBZ
+        0xf9400000, // LDR
+        0xf9402400, // LDR Xn, [Xy, #0x48]
         0x90000000, // ADRP
         0xf9400000, // LDR
         0xeb00001f, // CMP
-        0x54000001, // B.NE
+        0x54000000, // B.NE / B.EQ
     };
-    uint64_t masks_2[] = {
-        0xffffffe0,
-        0xfc000000,
+    uint64_t masks[] = {
+        0x7f000000,
         0xff000000,
+        0xffc00000,
+        0xfffffc00,
         0x9f000000,
         0xffc00000,
         0xffe0fc1f,
-        0xff00001f,
+        0xff00001e,
     };
-    if (kernelVersion.darwinMajor >= 21) {
-        xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches_2, masks_2, sizeof(matches_2)/sizeof(uint64_t), true, (void*)kpf_convert_port_to_map_callback_ios15);
-    }
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback);
+
+    // This can be NOP in some kernels when it can use LDR literal ...
+    // /x 0000003900000034000040f9002440f91f2003d5000000581f0000eb00000054:0000007F000000ff0000c0ff00fcffffffffffff000000ff1ffce0ff1e0000ff
+
+    matches[4] = NOP;
+    masks[4] = 0xffffffff;
+    matches[5] = 0x58000000; // LDR (literal)
+    masks[5] = 0xff000000;
+
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map_alt", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback);
 }
 
 void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
@@ -1317,7 +1281,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset) {
     // r2 cmd:
     // /x 0000003908011b3200000039000000b9:000000ffffffffff000000ff000000ff
     uint64_t matches[] = {
-        0x39000000, // strb w*, [x*]
+        0x39000000, // ldrb w*, [x*]
         0x321b0108, // orr w8, w8, 0x20
         0x39000000, // strb w*, [x*]
         0xb9000000  // str w*, [x*]
@@ -1812,8 +1776,8 @@ void command_kpf() {
         xnu_pf_patchset_destroy(xnu_plk_data_const_patchset);
     }
 
-    const char kmap_port_string_14[] = "\"userspace has control access to a \" \"kernel map %p through task %p\""; // iOS 14 had broken panic strings
-    const char *kmap_port_string_14_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string_14, strlen(kmap_port_string_14));
+    const char kmap_port_string[] = "userspace has control access to a"; // iOS 14 had broken panic strings
+    const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, strlen(kmap_port_string));
 
     kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_amfi_patch(xnu_text_exec_patchset);
@@ -1825,7 +1789,7 @@ void command_kpf() {
     kpf_nvram_unlock(xnu_text_exec_patchset);
     kpf_find_shellcode_area(xnu_text_exec_patchset);
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
-    if(kmap_port_string_14_match) // iOS 14 only
+    if(kmap_port_string_match) // iOS 14+ only
     {
         kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
     }
@@ -1852,6 +1816,7 @@ void command_kpf() {
     if (offsetof_p_flags == -1) panic("no p_flags?");
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
     if (!vfs_context_current) panic("missing patch: vfs_context_current");
+    if (kmap_port_string_match && !found_convert_port_to_map) panic("missing patch: convert_port_to_map");
 
     uint32_t delta = (&shellcode_area[1]) - amfi_ret;
     delta &= 0x03ffffff;
