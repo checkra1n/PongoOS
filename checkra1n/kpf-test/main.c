@@ -403,12 +403,13 @@ static const char *color_yellow = "\e[1;93m";
 static const char *color_blue   = "\e[1;96m";
 static const char *color_reset  = "\e[0m";
 
-// 4 = full stdout, stderr and exit codes of all children
-// 3 = full stderr and exit codes of all children
-// 2 = only exit codes of children
+// 5 = full stdout, stderr and exit codes of all children
+// 4 = full stderr and exit codes of all children
+// 3 = only exit codes of children
+// 2 = stderr and errornous exit codes of children
 // 1 = only errornous exit codes of children
 // 0 = only things that should never happen
-static int verbose = 3;
+static int verbose = 4;
 
 static int copy_output(int *fdin, int fdout, FILE *f)
 {
@@ -468,7 +469,7 @@ static int wait_for_child(child_t *children, size_t *num_bad, child_t **slot)
             r = copy_output(&child->fderr, STDERR_FILENO, stderr);
             fputs(color_reset, stderr);
             if(r != 0) return r;
-            if(verbose >= 2 || (verbose >= 1 && retval != 0))
+            if(verbose >= 3 || (verbose >= 1 && retval != 0))
             {
                 printf("%s%s: %d%s\n", retval == 0 ? color_blue : color_red, child->file, retval, color_reset);
             }
@@ -577,7 +578,7 @@ int main(int argc, const char **argv)
                         }
                         int fdout[2];
                         int fderr[2];
-                        if(verbose < 4)
+                        if(verbose < 5)
                         {
                             fdout[0] = fdout[1] = -1;
                         }
@@ -586,7 +587,7 @@ int main(int argc, const char **argv)
                             fprintf(stderr, "pipe(fdout): %s\n", strerror(errno));
                             return -1;
                         }
-                        if(verbose < 3)
+                        if(verbose == 3 || verbose < 2)
                         {
                             fderr[0] = fderr[1] = -1;
                         }
@@ -665,7 +666,7 @@ int main(int argc, const char **argv)
                 }
                 if(num_bad > 0)
                 {
-                    printf("%sFailed on %lu kernels.%s\n", color_red, num_bad, color_reset);
+                    fprintf(stderr, "%sFailed on %lu kernels.%s\n", color_red, num_bad, color_reset);
                 }
                 return num_bad == 0 ? 0 : -1;
             }
