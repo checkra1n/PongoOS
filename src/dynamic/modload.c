@@ -299,6 +299,7 @@ PONGO_EXPORT(__ssvfiwscanf_r);
 PONGO_EXPORT(__ssvfscanf_r);
 PONGO_EXPORT(__ssvfwscanf_r);
 PONGO_EXPORT(__stack_chk_fail);
+PONGO_EXPORT(__stack_chk_guard);
 PONGO_EXPORT(__stack_chk_init);
 PONGO_EXPORT(__stpcpy_chk);
 PONGO_EXPORT(__stpncpy_chk);
