@@ -110,6 +110,7 @@ void pongo_boot_xargs(const char* cmd, char* args) {
     }
 }
 
+_Static_assert(__builtin_offsetof(struct boot_args, deviceTreeLength) + 4 == __builtin_offsetof(struct boot_args, iOS13.CommandLine), "boot-args CommandLine offset");
 
 // DTree printing
 

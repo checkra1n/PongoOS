@@ -63,12 +63,14 @@ typedef struct boot_args
 {
     uint16_t Revision;
     uint16_t Version;
+    uint32_t __pad0;
     uint64_t virtBase;
     uint64_t physBase;
     uint64_t memSize;
     uint64_t topOfKernelData;
     uint64_t Video[6];
     uint32_t machineType;
+    uint32_t __pad1;
     void    *deviceTreeP;
     uint32_t deviceTreeLength;
     union
@@ -76,17 +78,19 @@ typedef struct boot_args
         struct
         {
             char     CommandLine[0x100];
+            uint32_t __pad;
             uint64_t bootFlags;
             uint64_t memSizeActual;
         } iOS12;
         struct
         {
             char     CommandLine[0x260];
+            uint32_t __pad;
             uint64_t bootFlags;
             uint64_t memSizeActual;
         } iOS13;
     };
-} boot_args;
+} __attribute__((packed)) boot_args;
 
 extern kern_return_t mach_vm_protect(vm_map_t task, mach_vm_address_t addr, mach_vm_size_t size, boolean_t set_max, vm_prot_t prot);
 
