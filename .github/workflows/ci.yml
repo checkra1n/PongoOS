@@ -21,10 +21,11 @@ jobs:
       - name: Voodoo magic
         id: voodoo
         uses: actions/cache@v2
-        env:
-          cache-name: repocache
         with:
-          key: repocache
+          key: ${{ github.event_name }}-${{ github.ref }}-${{ github.run_id }}
+          restore-keys: |
+            push-${{ github.ref }}-
+            push-
           path: |
             **
       - name: Checkout repository
@@ -34,7 +35,10 @@ jobs:
           submodules: true
       - name: Update repository
         if: steps.voodoo.outputs.cache-hit == 'true'
-        run: git pull && git submodule update --recursive
+        run: |
+          git fetch --all
+          git reset --hard origin/$(git branch --show-current)
+          git submodule update --recursive --remote
       - name: Compile
         run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make all
       - name: Archive
