@@ -1665,9 +1665,9 @@ void kpf_root_livefs_patch(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "root_livefs", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)root_livefs_callback);
 }
 
-struct kerninfo *legacy_info;
+struct kpfinfo *legacy_info;
 char is_oldstyle_rd;
-int gkpf_flags;
+checkrain_option_t gkpf_flags, checkra1n_flags;
 
 int gkpf_didrun = 0;
 int gkpf_spin_on_fail = 1;
@@ -1967,38 +1967,43 @@ void command_kpf() {
     *snapshotString = 'x';
     puts("KPF: Disabled snapshot temporarily");
 
+    struct kerninfo *info = NULL;
     if (!is_oldstyle_rd && ramdisk_buf) {
         puts("KPF: Found ramdisk, appending kernelinfo");
 
+        // XXX: Why 0x10000?
         ramdisk_buf = realloc(ramdisk_buf, ramdisk_size + 0x10000);
+        info = (struct kerninfo*)(ramdisk_buf+ramdisk_size);
+        bzero(info, sizeof(struct kerninfo));
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
-
-        struct kerninfo *info = (struct kerninfo*)(ramdisk_buf+ramdisk_size);
-        bzero(info, sizeof(struct kerninfo));
+        ramdisk_size += 0x10000;
+    } else if (is_oldstyle_rd) {
+        info = &legacy_info->k;
+    }
+    if (info) {
         info->size = sizeof(struct kerninfo);
         info->base = xnu_slide_value(hdr) + 0xFFFFFFF007004000ULL;
         info->slide = xnu_slide_value(hdr);
-        info->flags = gkpf_flags;
-
-        ramdisk_size += 0x10000;
-    } else if (is_oldstyle_rd) {
-        legacy_info->base = xnu_slide_value(hdr) + 0xFFFFFFF007004000ULL;
-        legacy_info->slide = xnu_slide_value(hdr);
-        if (checkrain_option_enabled(legacy_info->flags, checkrain_option_verbose_boot))
-            gBootArgs->Video.v_display = 0;
+        info->flags = checkra1n_flags;
     }
+    if (checkrain_option_enabled(gkpf_flags, checkrain_option_verbose_boot))
+        gBootArgs->Video.v_display = 0;
     tick_1 = get_ticks();
     printf("KPF: Applied patchset in %llu ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
 }
 void kpf_flags(const char* cmd, char* args) {
-    uint32_t nflags = 0;
     if (args[0] != 0) {
-        nflags = strtoul(args, NULL, 16);
-        printf("setting kpf_flags to %x\n", nflags);
+        uint32_t nflags = strtoul(args, NULL, 16);
+        printf("setting kpf_flags to 0x%08x\n", nflags);
         gkpf_flags = nflags;
+        if (args[1] != 0) {
+            nflags = strtoul(args, NULL, 16);
+            printf("setting checkra1n_flags to 0x%08x\n", nflags);
+        }
+        checkra1n_flags = nflags;
     } else {
-        printf("kpf_flags: %x\n", gkpf_flags);
+        printf("kpf_flags: 0x%08x 0x%08x\n", gkpf_flags, checkra1n_flags);
     }
 }
 void kpf_do_autoboot() {
@@ -2018,24 +2023,27 @@ void kpf_autoboot() {
             printf("corrupted oldstyle rdsk\n");
             return;
         }
+        // XXX: Why 0x10000?
         ramdisk_buf = malloc(rdsksz + 0x10000);
         memcpy(ramdisk_buf, ramdisk + 12, rdsksz + 0x10000);
 
         ramdisk_size = rdsksz + 0x10000;
 
         char should_populate_kerninfo = 0;
-        struct kerninfo *info = (struct kerninfo*)(ramdisk_buf+rdsksz);
-        if (info->size == sizeof(struct kerninfo)) {
+        struct kpfinfo *info = (struct kpfinfo*)(ramdisk_buf+rdsksz);
+        if (info->k.size == sizeof(*info)) {
             should_populate_kerninfo = 1;
         } else {
             printf("Detected corrupted kerninfo!\n");
             return;
         }
+        gkpf_flags = info->kpf_flags;
+        checkra1n_flags = info->k.flags;
         queue_rx_string("xargs ");
         queue_rx_string(info->bootargs);
         is_oldstyle_rd = 1;
         legacy_info = info;
-        if (checkrain_option_enabled(legacy_info->flags, checkrain_option_pongo_shell))
+        if (checkrain_option_enabled(gkpf_flags, checkrain_option_pongo_shell))
         {
             printf("Pongo shell requested, stopping here!\n");
             queue_rx_string("\n");
