@@ -879,11 +879,19 @@ bool vm_fault_enter_callback14(struct xnu_pf_patch* patch, uint32_t* opcode_stre
         return false;
     }
     DEVLOG("Trying vm_fault_enter at 0x%llx", xnu_ptr_to_va(opcode_stream));
-    // r2 /x 4006805200000014:ffffffff000000ff
-    // make sure this was preceeded by mov x0, 50 and a B
-    uint32_t *mov;
-    if (!(mov = find_prev_insn(opcode_stream, 0x18, 0x52800640, 0xffffffff)) || (mov[1]&0xff000000) != 0x14000000 ) {
+    // r2 /x
+    // Make sure this was preceded by a "tbz w[16-31], 2, ..." that jumps to the code we're currently looking at
+    uint32_t *tbz = find_prev_insn(opcode_stream, 0x18, 0x36100010, 0xfff80010);
+    if(!tbz)
+    {
         // This isn't our TBZ
+        return false;
+    }
+    tbz += sxt32(*tbz >> 5, 14); // uint32 takes care of << 2
+    // A few instructions close is good enough
+    if(tbz > opcode_stream || opcode_stream - tbz > 2)
+    {
+        // Apparently still not our TBZ
         return false;
     }
     opcode_stream[0] = NOP;
