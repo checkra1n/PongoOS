@@ -1825,6 +1825,8 @@ void command_kpf() {
     if(rootvp_string_match)
     {
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
+        // Signal to ramdisk that we can't have union mounts
+        checkra1n_flags |= checkrain_option_bind_mount;
     }
 
     xnu_pf_emit(xnu_text_exec_patchset);

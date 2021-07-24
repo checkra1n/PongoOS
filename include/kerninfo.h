@@ -51,6 +51,7 @@
 
 // Global options
 #define checkrain_option_safemode           (1 << 0)
+#define checkrain_option_bind_mount         (1 << 1)
 #define checkrain_option_force_revert       (1 << 7) /* keep this at 7 */
 
 typedef uint32_t checkrain_option_t, *checkrain_option_p;
