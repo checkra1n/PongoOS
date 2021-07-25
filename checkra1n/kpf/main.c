@@ -1902,7 +1902,6 @@ void command_kpf() {
 
     kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_amfi_patch(xnu_text_exec_patchset);
-    kpf_mac_mount_patch(xnu_text_exec_patchset);
     kpf_conversion_patch(xnu_text_exec_patchset);
     kpf_mac_dounmount_patch_0(xnu_text_exec_patchset);
     kpf_mac_vm_map_protect_patch(xnu_text_exec_patchset);
@@ -1914,7 +1913,11 @@ void command_kpf() {
     {
         kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
     }
-    if(rootvp_string_match)
+    if(!rootvp_string_match) // Union mounts still work
+    {
+        kpf_mac_mount_patch(xnu_text_exec_patchset);
+    }
+    else // Union mounts no longer work
     {
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
         kpf_shared_region_root_dir_patch(xnu_text_exec_patchset);
@@ -1941,6 +1944,7 @@ void command_kpf() {
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
     if (!vfs_context_current) panic("missing patch: vfs_context_current");
     if (kmap_port_string_match && !found_convert_port_to_map) panic("missing patch: convert_port_to_map");
+    if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
 
     uint32_t delta = (&shellcode_area[1]) - amfi_ret;
     delta &= 0x03ffffff;
@@ -2058,10 +2062,6 @@ void command_kpf() {
         panic("Missing patch: nvram_unlock");
     }
 #endif
-
-    if (!kpf_has_done_mac_mount) {
-        panic("Missing patch: mac_mount");
-    }
 
     char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
     if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
