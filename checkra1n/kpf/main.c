@@ -402,22 +402,38 @@ bool found_convert_port_to_map = false;
 
 bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
-    uint32_t *patchpoint = &opcode_stream[7];
-    bool isBNE = *patchpoint & 1;
-
-    if (isBNE) {
-        // Follow branch (convert to B)
-        *patchpoint |= 0xf;
-    } else {
-        // Don't follow branch
-        *patchpoint = NOP;
-    }
-
     // Only once
     if(found_convert_port_to_map)
     {
         panic("convert_port_to_map found twice!");
     }
+
+    uint32_t *patchpoint = &opcode_stream[7];
+    bool isBNE = *patchpoint & 1;
+    if (isBNE) {
+        // Follow branch (convert to B)
+        *patchpoint |= 0xf;
+        patchpoint += sxt32(*patchpoint >> 5, 19); // uint32 takes care of << 2
+    } else {
+        // Don't follow branch
+        *patchpoint = NOP;
+        // Continue at next instr
+        ++patchpoint;
+    }
+
+    // New in iOS 15: zone_require just to annoy us
+    bool have_zone_require = patchpoint[0] == 0x52800060 &&                 // movz w0, 3
+                            (patchpoint[1] & 0xffffe0ff) == 0x52800001 &&   // movz w1, {0x0-0x100 with granularity 8}
+                            (patchpoint[2] & 0xfc000000) == 0x94000000;     // bl zone_require
+#if DEV_BUILD
+    // 15.0 beta 2 onwards
+    if(have_zone_require != (kernelVersion.xnuMajor > 7938)) panic("zone_require in convert_port_to_map doesn't match expected XNU version");
+#endif
+    if(have_zone_require)
+    {
+        patchpoint[2] = NOP;
+    }
+
     puts("KPF: Found convert_port_to_map_with_flavor");
     found_convert_port_to_map = true;
     return true;
