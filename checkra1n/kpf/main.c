@@ -1307,15 +1307,15 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset) {
     // r2 cmd:
     // /x 0000003908011b3200000039000000b9:000000ffffffffff000000ff000000ff
     uint64_t matches[] = {
-        0x39000000, // ldrb w*, [x*]
+        0x39400000, // ldr{b|h} w*, [x*]
         0x321b0108, // orr w8, w8, 0x20
-        0x39000000, // strb w*, [x*]
+        0x39000000, // str{b|h} w*, [x*]
         0xb9000000  // str w*, [x*]
     };
     uint64_t masks[] = {
-        0xff000000,
+        0xbfc00000,
         0xffffffff,
-        0xff000000,
+        0xbfc00000,
         0xff000000,
     };
     xnu_pf_maskmatch(patchset, "apfs_patch_mount", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_mount);
