@@ -30,7 +30,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>             // exit
+#include <stdlib.h>             // exit, strtoull
 #include <string.h>             // strlen, strerror, memcpy, memmove
 #include <unistd.h>             // close
 #include <wordexp.h>
@@ -92,10 +92,49 @@ static usb_ret_t USBControlTransfer(usb_device_handle_t handle, uint8_t bmReques
 
 static usb_ret_t USBBulkUpload(usb_device_handle_t handle, void *data, uint32_t len)
 {
-    int transferred;
-    usb_ret_t r = libusb_bulk_transfer(handle, 2, data, len, &transferred, 0);
-    if(r != 0) return r;
-    return transferred == len ? USB_RET_SUCCESS : LIBUSB_ERROR_INTERRUPTED;
+    static uint32_t maxLen = 0;
+    int transferred = 0;
+    usb_ret_t r;
+    if(maxLen == 0)
+    {
+        r = libusb_bulk_transfer(handle, 2, data, len, &transferred, 0);
+        if(r == LIBUSB_SUCCESS)
+        {
+            return transferred == len ? USB_RET_SUCCESS : LIBUSB_ERROR_INTERRUPTED;
+        }
+        else if(r != LIBUSB_ERROR_NO_MEM)
+        {
+            return r;
+        }
+        // We only get here on ENOMEM
+        char str[32]; // More than enough to hold a uint64 in decimal
+        FILE *f = fopen("/sys/module/usbcore/parameters/usbfs_memory_mb", "r");
+        if(!f) return r;
+        size_t s = fread(str, 1, sizeof(str), f);
+        fclose(f);
+        if(s == 0 || s >= sizeof(str)) return r;
+        str[s] = '\0';
+        char *end = NULL;
+        unsigned long long max = strtoull(str, &end, 0);
+        // Using the limit as-is will lead to ENOMEM, so we multiply
+        // by half a MB and impose an appropriate max value.
+        if(*end == '\n') ++end;
+        if(*end != '\0' || max == 0 || max >= 0x2000) return r;
+        maxLen = (uint32_t)(max << 19);
+    }
+    // If we get here, we have to chunk our data
+    for(uint32_t done = transferred; done < len; )
+    {
+        uint32_t chunk = len - done;
+        if(chunk > maxLen) chunk = maxLen;
+        transferred = 0;
+        r = libusb_bulk_transfer(handle, 2, (unsigned char*)data + done, chunk, &transferred, 0);
+        done += transferred;
+        if(r == LIBUSB_SUCCESS) continue;
+        if(r != LIBUSB_ERROR_NO_MEM || maxLen <= 0x40) return r;
+        maxLen /= 2;
+    }
+    return LIBUSB_SUCCESS;
 }
 
 struct stuff
