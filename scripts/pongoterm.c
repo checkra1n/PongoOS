@@ -121,6 +121,27 @@ static int FoundDevice(libusb_context *ctx, libusb_device *dev, libusb_hotplug_e
         return r;
     }
 
+    r = libusb_detach_kernel_driver(handle, 0);
+    if(r != LIBUSB_SUCCESS && r != LIBUSB_ERROR_NOT_FOUND)
+    {
+        ERR("libusb_detach_kernel_driver: %s", libusb_error_name(r));
+        return r;
+    }
+
+    r = libusb_set_configuration(handle, 1);
+    if(r != LIBUSB_SUCCESS)
+    {
+        ERR("libusb_set_configuration: %s", libusb_error_name(r));
+        return r;
+    }
+
+    r = libusb_claim_interface(handle, 0);
+    if(r != LIBUSB_SUCCESS)
+    {
+        ERR("libusb_claim_interface: %s", libusb_error_name(r));
+        return r;
+    }
+
     stuff->dev = dev;
     stuff->handle = handle;
     io_start(stuff);
@@ -719,7 +740,7 @@ bad:;
     {
         return NULL;
     }
-    ERR("USBControlTransfer: %s", usb_strerror(ret));
+    ERR("USB error: %s", usb_strerror(ret));
     exit(-1); // TODO: ok with libusb?
 }
 
