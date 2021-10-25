@@ -107,20 +107,27 @@ static usb_ret_t USBBulkUpload(usb_device_handle_t handle, void *data, uint32_t 
             return r;
         }
         // We only get here on ENOMEM
-        char str[32]; // More than enough to hold a uint64 in decimal
         FILE *f = fopen("/sys/module/usbcore/parameters/usbfs_memory_mb", "r");
-        if(!f) return r;
-        size_t s = fread(str, 1, sizeof(str), f);
-        fclose(f);
-        if(s == 0 || s >= sizeof(str)) return r;
-        str[s] = '\0';
-        char *end = NULL;
-        unsigned long long max = strtoull(str, &end, 0);
-        // Using the limit as-is will lead to ENOMEM, so we multiply
-        // by half a MB and impose an appropriate max value.
-        if(*end == '\n') ++end;
-        if(*end != '\0' || max == 0 || max >= 0x2000) return r;
-        maxLen = (uint32_t)(max << 19);
+        if(f)
+        {
+            char str[32]; // More than enough to hold a uint64 in decimal
+            size_t s = fread(str, 1, sizeof(str), f);
+            fclose(f);
+            if(s == 0 || s >= sizeof(str)) return r;
+            str[s] = '\0';
+            char *end = NULL;
+            unsigned long long max = strtoull(str, &end, 0);
+            // Using the limit as-is will lead to ENOMEM, so we multiply
+            // by half a MB and impose an appropriate max value.
+            if(*end == '\n') ++end;
+            if(*end != '\0' || max == 0 || max >= 0x2000) return r;
+            maxLen = (uint32_t)(max << 19);
+        }
+        else
+        {
+            // Just 8MB by default?
+            maxLen = 0x800000;
+        }
     }
     // If we get here, we have to chunk our data
     for(uint32_t done = transferred; done < len; )
