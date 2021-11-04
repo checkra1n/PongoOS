@@ -1644,28 +1644,77 @@ void kpf_md0_patches(xnu_pf_patchset_t* patchset) {
 }
 
 bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    // Replace the call with MOV X0, #0
-    puts("KPF: Found vnop_rootvp_auth");
-    opcode_stream[4] = 0xD2800000;
-    return true;
+    // cmp xN, xM - wrong match
+    if((opcode_stream[2] & 0xffe0ffe0) == 0xeb000300)
+    {
+        return false;
+    }
+    // Old sequence like:
+    // 0xfffffff00759d9f8      61068d52       mov w1, 0x6833
+    // 0xfffffff00759d9fc      8100b072       movk w1, 0x8004, lsl 16
+    // 0xfffffff00759da00      020080d2       mov x2, 0
+    // 0xfffffff00759da04      03008052       mov w3, 0
+    // 0xfffffff00759da08      4ca3f797       bl sym._VNOP_IOCTL
+    if
+    (
+        opcode_stream[0] == 0x528d0661 &&
+        opcode_stream[1] == 0x72b00081 &&
+        opcode_stream[2] == 0xd2800002 &&
+        opcode_stream[3] == 0x52800003 &&
+        (opcode_stream[4] & 0xfc000000) == 0x94000000
+    )
+    {
+        puts("KPF: Found vnop_rootvp_auth");
+        // Replace the call with mov x0, 0
+        opcode_stream[4] = 0xd2800000;
+        return true;
+    }
+    // New sequence like:
+    // 0xfffffff00759c994      6a068d52       mov w10, 0x6833
+    // 0xfffffff00759c998      8a00b072       movk w10, 0x8004, lsl 16
+    // 0xfffffff00759c99c      ea7f0ca9       stp x10, xzr, [sp, 0xc0]
+    // 0xfffffff00759c9a0      ffd300b9       str wzr, [sp, 0xd0]
+    // 0xfffffff00759c9a4      f36f00f9       str x19, [sp, 0xd8]
+    // 0xfffffff00759c9a8      086940f9       ldr x8, [x8, 0xd0]
+    // 0xfffffff00759c9ac      290180b9       ldrsw x9, [x9]
+    // 0xfffffff00759c9b0      087969f8       ldr x8, [x8, x9, lsl 3]
+    // 0xfffffff00759c9b4      e0c30291       add x0, sp, 0xb0
+    // 0xfffffff00759c9b8      00013fd6       blr x8
+    if
+    (
+        (
+            (opcode_stream[2] & 0xffc003e0) == 0xa90003e0 && // stp xN, xM, [sp, ...]
+            ((opcode_stream[2] & 0x1f) == (opcode_stream[1] & 0x1f) || ((opcode_stream[2] >> 10) & 0x1f) == (opcode_stream[1] & 0x1f)) // match reg
+        ) ||
+        (
+            (opcode_stream[2] & 0xffc003e0) == 0xF90003E0 && // str xN, [sp, ...]
+            (opcode_stream[2] & 0x1f) == (opcode_stream[1] & 0x1f) // match reg
+        )
+    )
+    {
+        // add x0, sp, 0x...
+        uint32_t *sp = find_next_insn(opcode_stream + 3, 0x10, 0x910003e0, 0xffc003ff);
+        if(sp && (sp[1] & 0xfffffc1f) == 0xd63f0000) // blr
+        {
+            puts("KPF: Found vnop_rootvp_auth");
+            // Replace the call with mov x0, 0
+            sp[1] = 0xd2800000;
+            return true;
+        }
+    }
+    return false;
 }
 
 void kpf_vnop_rootvp_auth_patch(xnu_pf_patchset_t* patchset) {
+    // /x 60068d528000b072:f0fffffff0ffffff
     uint64_t matches[] = {
-        0x528D0661, // MOV             W1, #0x80046833  // command
-        0x72B00081, //
-        0xD2800002, // MOV             X2, #0           // data
-        0x52800003, // MOV             W3, #0           // fflag
-        0x94000000, // BL              _VNOP_IOCTL
+        0x528d0660, // movz w{0-15}, 0x6833
+        0x72b00080, // movk w{0-15}, 0x8004, lsl 16
     };
     uint64_t masks[] = {
-        0xFFFFFFFF,
-        0xFFFFFFFF,
-        0xFFFFFFFF,
-        0xFFFFFFFF,
-        0xFC000000,
+        0xfffffff0,
+        0xfffffff0,
     };
-
     xnu_pf_maskmatch(patchset, "vnop_rootvp_auth", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)vnop_rootvp_auth_callback);
 }
 
