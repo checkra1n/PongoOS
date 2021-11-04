@@ -422,7 +422,7 @@ bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_t *opco
     }
 
     // New in iOS 15: zone_require just to annoy us
-    bool have_zone_require = (patchpoint[0] & 0xffffff1f) == 0x52800000 &&  // movz w0, {0-7}
+    bool have_zone_require = (patchpoint[0] & 0xfffffe1f) == 0x52800000 &&  // movz w0, {0-15}
                              (patchpoint[1] & 0xffffe0ff) == 0x52800001 &&  // movz w1, {0x0-0x100 with granularity 8}
                              (patchpoint[2] & 0xfc000000) == 0x94000000;    // bl zone_require
 #if DEV_BUILD
