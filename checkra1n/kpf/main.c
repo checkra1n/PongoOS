@@ -1952,6 +1952,7 @@ void command_kpf() {
     kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_amfi_patch(xnu_text_exec_patchset);
     kpf_conversion_patch(xnu_text_exec_patchset);
+    kpf_mac_mount_patch(xnu_text_exec_patchset);
     kpf_mac_dounmount_patch_0(xnu_text_exec_patchset);
     kpf_mac_vm_map_protect_patch(xnu_text_exec_patchset);
     kpf_mac_vm_fault_enter_patch(xnu_text_exec_patchset);
@@ -1962,11 +1963,7 @@ void command_kpf() {
     {
         kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
     }
-    if(!rootvp_string_match) // Union mounts still work
-    {
-        kpf_mac_mount_patch(xnu_text_exec_patchset);
-    }
-    else // Union mounts no longer work
+    if(rootvp_string_match) // Union mounts no longer work
     {
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
         kpf_shared_region_root_dir_patch(xnu_text_exec_patchset);
@@ -2112,12 +2109,15 @@ void command_kpf() {
     }
 #endif
 
-    char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
-    if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
-    if (!snapshotString) panic("no snapshot string");
+    if(!rootvp_string_match) // Only use underlying fs on union mounts
+    {
+        char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
+        if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
+        if (!snapshotString) panic("no snapshot string");
 
-    *snapshotString = 'x';
-    puts("KPF: Disabled snapshot temporarily");
+        *snapshotString = 'x';
+        puts("KPF: Disabled snapshot temporarily");
+    }
 
     struct kerninfo *info = NULL;
     if (!is_oldstyle_rd && ramdisk_buf) {
