@@ -28,8 +28,39 @@
 .globl _clear_hook_end
 .globl _clear_hook_orig_backing
 
-
 .align 4
+// This must not exceed 0x60 bytes (24 instructions), otherwise we start overwriting iBoot data.
+_clear_hook:
+    // counterpart to the bl we emitted
+    mov x16, x30
+    // counterpart to the "mov x5, x30" we emitted
+    mov x30, x5
+
+    add x2, x1, x0
+    mov x3, 0x800000000
+    movk x3, 0x1800, lsl 16
+    add x4, x3, 0xfff, lsl 12
+    cmp x2, x3
+    b.ls _clear_hook_orig_backing
+    cmp x0, x4
+    b.hs _clear_hook_orig_backing
+    // Let bzero handle the chunk before our region
+    subs x1, x3, x0
+    csel x1, xzr, x1, lt
+L_clear_hook_zeroloop:
+    // Zero the part after it ourselves
+    cmp x4, x2
+    b.hs _clear_hook_orig_backing
+    strb wzr, [x4], 1
+    b L_clear_hook_zeroloop
+
+_clear_hook_orig_backing:
+    nop
+    nop
+    br x16
+_clear_hook_end:
+
+#if 0
 _clear_hook:
 mov x16, x30
 mov x30, x5
@@ -53,3 +84,4 @@ nop
 nop
 br x16
 _clear_hook_end:
+#endif

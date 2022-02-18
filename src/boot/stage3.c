@@ -60,21 +60,28 @@ uint32_t* find_prev_insn(uint32_t* from, uint32_t size, uint32_t insn, uint32_t 
 }
 
 extern uint32_t clear_hook_orig_backing[2];
-extern uint8_t clear_hook, clear_hook_end;
+extern uint32_t clear_hook[], clear_hook_end[];
 
 void patch_bootloader(void* boot_image)
 {
     // 1. disable DRAM clear
 
-    uint32_t* sys_3_c7_c4_1 = find_next_insn(boot_image, 0x80000, 0xd50b7423, 0xFFFFFFFF);
-    if (sys_3_c7_c4_1) {
-        uint32_t* func_prolog = find_prev_insn(sys_3_c7_c4_1, 0x100, 0xaa0103e2, 0xffffffff);
+    uint32_t* dc_zva = find_next_insn(boot_image, 0x80000, 0xd50b7423, 0xFFFFFFFF);
+    if (dc_zva) {
+        uint32_t* func_prolog = find_prev_insn(dc_zva, 0x100, 0xaa0103e2, 0xffffffff);
         if (func_prolog) {
             for (int i = 0; i < 2; i++) {
                 clear_hook_orig_backing[i] = func_prolog[i];
             }
-            memcpy(((void*)0x180 + (uint64_t)boot_image), &clear_hook, &clear_hook_end - &clear_hook);
-            int64_t offset = (0x180 + (int64_t)boot_image) - (4 + (int64_t)func_prolog);
+            size_t hooksz = (clear_hook_end - clear_hook) * sizeof(uint32_t);
+            // TODO: _Static_assert(hooksz <= 0x60, "Clearhook exceeds max size");
+            // NOTE: memcpy breaks here because we run with MMU off
+            volatile uint32_t *from = clear_hook, *to = (uint32_t*)((uintptr_t)boot_image + 0x300 - hooksz);
+            for(size_t i = 0; i < hooksz / sizeof(uint32_t); ++i)
+            {
+                to[i] = from[i];
+            }
+            int64_t offset = (int64_t)((uintptr_t)boot_image + 0x300 - hooksz) - (int64_t)((uintptr_t)func_prolog + 4);
             func_prolog[0] = 0xaa1e03e5;
             func_prolog[1] = 0x94000000 | ((((uint64_t)offset) >> 2) & 0x3FFFFFF);
         }
