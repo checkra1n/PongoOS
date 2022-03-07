@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-ifndef $(HOST_OS)
+ifndef HOST_OS
 	ifeq ($(OS),Windows_NT)
 		HOST_OS = Windows
 	else
@@ -35,7 +35,7 @@ ifeq ($(HOST_OS),Darwin)
 else
 ifeq ($(HOST_OS),Linux)
 	EMBEDDED_CC         ?= clang
-	EMBEDDED_LDFLAGS    ?= -fuse-ld=/usr/bin/ld64
+	EMBEDDED_LDFLAGS    ?= -fuse-ld='$(shell which ld64)'
 	STRIP               ?= cctools-strip
 	STAT                ?= stat -L -c %s
 endif
@@ -96,10 +96,10 @@ $(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
 	$(BUILD)/vmacho -f $(BUILD)/Pongo $@
 
 $(BUILD)/Pongo: Makefile $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(LIB)/lib/libc.a | $(BUILD)
-	$(EMBEDDED_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS) $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C)
+	$(EMBEDDED_CC) -o $@ $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS)
 
 $(BUILD)/checkra1n-kpf-pongo: Makefile $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
-	$(CHECKRA1N_CC) -o $@ $(EMBEDDED_CC_FLAGS) $(CHECKRA1N_CC_FLAGS) $(CHECKRA1N_C)
+	$(CHECKRA1N_CC) -o $@ $(CHECKRA1N_C) $(EMBEDDED_CC_FLAGS) $(CHECKRA1N_CC_FLAGS)
 	$(STRIP) -x $@ -s $(CHECKRA1N_NOSTRIP)
 	$(STRIP) -u $@ -s $(CHECKRA1N_NOSTRIP)
 
@@ -113,10 +113,10 @@ $(DEP)/Makefile:
 	git submodule update --init --recursive
 
 $(LIB)/lib/libc.a: always | $(DEP)/Makefile
-	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) all
+	$(MAKE) -C $(DEP) all
 
 clean:
 	rm -rf $(BUILD)
 
 distclean: | clean $(DEP)/Makefile
-	$(MAKE) $(AM_MAKEFLAGS) -C $(DEP) distclean
+	$(MAKE) -C $(DEP) distclean
