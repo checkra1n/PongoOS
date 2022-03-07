@@ -1925,10 +1925,10 @@ void command_kpf() {
     xnu_pf_emit(xnu_data_const_patchset);
     xnu_pf_apply(data_const_range, xnu_data_const_patchset);
     xnu_pf_patchset_destroy(xnu_data_const_patchset);
-    bool is_unified = true;
+    //bool is_unified = true;
 
     if (!has_found_sbops) {
-        is_unified = false;
+        //is_unified = false;
         if (!plk_text_range) panic("no plk_text_range");
         xnu_pf_patchset_t* xnu_plk_data_const_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_64BIT);
         xnu_pf_ptr_to_data(xnu_plk_data_const_patchset, xnu_slide_value(hdr), plk_text_range, "Seatbelt sandbox policy", strlen("Seatbelt sandbox policy")+1, true, (void*)sb_ops_callback);
@@ -2181,10 +2181,10 @@ void kpf_autoboot() {
 
         ramdisk_size = rdsksz + 0x10000;
 
-        char should_populate_kerninfo = 0;
+        //char should_populate_kerninfo = 0;
         struct kpfinfo *info = (struct kpfinfo*)(ramdisk_buf+rdsksz);
         if (info->k.size == sizeof(*info)) {
-            should_populate_kerninfo = 1;
+            //should_populate_kerninfo = 1;
         } else {
             printf("Detected corrupted kerninfo!\n");
             return;
