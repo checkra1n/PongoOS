@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2022 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -2216,7 +2216,7 @@ void module_entry() {
     puts("# checkra1n kpf " CHECKRAIN_VERSION);
     puts("#");
     puts("# Proudly written in nano");
-    puts("# (c) 2019-2021 Kim Jong Cracks");
+    puts("# (c) 2019-2022 Kim Jong Cracks");
     puts("#");
     puts("# This software is not for sale");
     puts("# If you purchased this, please");
