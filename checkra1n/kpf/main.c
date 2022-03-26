@@ -2213,7 +2213,7 @@ void module_entry() {
     puts("");
     puts("#==================");
     puts("#");
-    puts("# checkra1n kpf " CHECKRAIN_VERSION);
+    puts("# checkra1n kpf " CHECKRA1N_VERSION);
     puts("#");
     puts("# Proudly written in nano");
     puts("# (c) 2019-2022 Kim Jong Cracks");

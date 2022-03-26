@@ -20,69 +20,113 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
+
+CHECKRA1N_VERSION           ?= beta 0.12.4
+PONGO_VERSION               ?= 2.5.1-$(shell git rev-parse HEAD | cut -c1-8)
+PONGO_BUILD                 := $(shell git rev-parse HEAD)
+
+ifdef CHECKRA1N_EXTRAVERSION
+    CHECKRA1N_VERSION       := $(CHECKRA1N_VERSION)-$(CHECKRA1N_EXTRAVERSION)
+endif
+
+ifdef PONGO_DISPLAY_NAME
+    PONGO_BUILD             += $(PONGO_DISPLAY_NAME)
+else
+    PONGO_BUILD             += ($(shell git rev-parse --abbrev-ref HEAD), $(shell if test -n "$$(git status --porcelain)"; then echo "dirty"; else echo "clean"; fi))
+endif
+
+SRC                         := src
+AUX                         := tools
+DEP                         := newlib
+LIB                         := $(DEP)/aarch64-none-darwin
+INC                         := include
+BUILD                       := build
+RA1N                        := checkra1n/kpf
+
 ifndef HOST_OS
-	ifeq ($(OS),Windows_NT)
-		HOST_OS = Windows
-	else
-		HOST_OS := $(shell uname -s)
-	endif
+    ifeq ($(OS),Windows_NT)
+        HOST_OS             := Windows
+    else
+        HOST_OS             := $(shell uname -s)
+    endif
+endif
+
+# Toolchain
+ifdef LLVM_CONFIG
+    EMBEDDED_LLVM_CONFIG    ?= $(LLVM_CONFIG)
+endif
+
+# ifdef+ifndef is ugly, but we really don't wanna use ?= when shell expansion is involved
+ifdef EMBEDDED_LLVM_CONFIG
+ifndef EMBEDDED_LLVM_PREFIX
+    EMBEDDED_LLVM_PREFIX    := $(shell $(EMBEDDED_LLVM_CONFIG) --obj-root)
+endif
+endif
+
+ifdef LLVM_PREFIX
+    EMBEDDED_LLVM_PREFIX    ?= $(LLVM_PREFIX)
+endif
+
+ifdef EMBEDDED_LLVM_PREFIX
+    EMBEDDED_CC             ?= $(EMBEDDED_LLVM_PREFIX)/bin/clang
+#   EMBEDDED_LD             ?= $(EMBEDDED_LLVM_PREFIX)/bin/ld64.lld
 endif
 
 ifeq ($(HOST_OS),Darwin)
-	EMBEDDED_CC         ?= xcrun -sdk iphoneos clang
-	STRIP               ?= strip
-	STAT                ?= stat -L -f %z
+    CC                      ?= clang
+    EMBEDDED_CC             ?= xcrun -sdk iphoneos clang
+    STRIP                   ?= strip
+    STAT                    ?= stat -L -f %z
 else
 ifeq ($(HOST_OS),Linux)
-	EMBEDDED_CC         ?= clang
-	EMBEDDED_LDFLAGS    ?= -fuse-ld='$(shell which ld64)'
-	STRIP               ?= cctools-strip
-	STAT                ?= stat -L -c %s
+    CC                      ?= gcc
+    EMBEDDED_CC             ?= clang
+#   EMBEDDED_LD             ?= lld
+ifndef EMBEDDED_LD
+    EMBEDDED_LD             := $(shell which ld64)
+endif
+    STRIP                   ?= cctools-strip
+    STAT                    ?= stat -L -c %s
 endif
 endif
 
-PONGO_VERSION           := 2.5.1-$(shell git log -1 --pretty=format:"%H" | cut -c1-8)
-SRC                     := src
-AUX                     := tools
-DEP                     := newlib
-LIB                     := $(DEP)/aarch64-none-darwin
-INC                     := include
-BUILD                   := build
-RA1N                    := checkra1n/kpf
+ifdef EMBEDDED_LD
+    EMBEDDED_LDFLAGS        ?= -fuse-ld='$(EMBEDDED_LD)'
+endif
 
 # General options
-EMBEDDED_LD_FLAGS       ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
-EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -std=gnu17 -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -DTARGET_OS_OSX=0 -DTARGET_OS_MACCATALYST=0 -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
+EMBEDDED_LD_FLAGS           ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
+EMBEDDED_CC_FLAGS           ?= --target=arm64-apple-ios12.0 -std=gnu17 -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -DTARGET_OS_OSX=0 -DTARGET_OS_MACCATALYST=0 -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
 
 # Pongo options
-PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
-PONGO_CC_FLAGS          ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8
+PONGO_LDFLAGS               ?= -L$(LIB)/lib -lc -lm -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
+PONGO_CC_FLAGS              ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DPONGO_BUILD='"$(PONGO_BUILD)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8
 
 # KPF options
-CHECKRA1N_LDFLAGS       ?= -Wl,-kext
-CHECKRA1N_CC_FLAGS      ?= -DCHECKRAIN_VERSION='"0.12.4"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) -DDER_TAG_SIZE=8 -I$(SRC)/lib -DPONGO_PRIVATE=1
+CHECKRA1N_LDFLAGS           ?= -Wl,-kext
+CHECKRA1N_CC_FLAGS          ?= -DCHECKRA1N_VERSION='"$(CHECKRA1N_VERSION)"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) -DDER_TAG_SIZE=8 -I$(SRC)/lib -DPONGO_PRIVATE=1
 
-STAGE3_ENTRY_C          := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.S patches.S demote_patch.S jump_to_image.S main.c)
-PONGO_C                 := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/kernel/support/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.S) $(wildcard $(SRC)/shell/*.c)
-PONGO_DRIVERS_C         := $(wildcard $(SRC)/drivers/*/*.c) $(wildcard $(SRC)/drivers/*/*.S) $(wildcard $(SRC)/modules/linux/*/*.c) $(wildcard $(SRC)/modules/linux/*.c) $(wildcard $(SRC)/lib/*/*.c)
+STAGE3_ENTRY_C              := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.S patches.S demote_patch.S jump_to_image.S main.c)
+PONGO_C                     := $(wildcard $(SRC)/kernel/*.c) $(wildcard $(SRC)/kernel/support/*.c) $(wildcard $(SRC)/dynamic/*.c) $(wildcard $(SRC)/kernel/*.S) $(wildcard $(SRC)/shell/*.c)
+PONGO_DRIVERS_C             := $(wildcard $(SRC)/drivers/*/*.c) $(wildcard $(SRC)/drivers/*/*.S) $(wildcard $(SRC)/modules/linux/*/*.c) $(wildcard $(SRC)/modules/linux/*.c) $(wildcard $(SRC)/lib/*/*.c)
 
-CHECKRA1N_C             := $(RA1N)/main.c $(RA1N)/shellcode.S
-CHECKRA1N_NOSTRIP       := $(RA1N)/not_strip.txt
+CHECKRA1N_C                 := $(RA1N)/main.c $(RA1N)/shellcode.S
+CHECKRA1N_NOSTRIP           := $(RA1N)/not_strip.txt
 
 ifeq ($(OBF),yes)
-	ifeq ($(HOST_OS),Darwin)
-		CHECKRA1N_CC    ?= hikari -arch arm64
-	else
-	ifeq ($(HOST_OS),Linux)
-		CHECKRA1N_CC_FLAGS += -Xclang -load -Xclang /usr/local/lib64/libLLVMObfuscation.so
-	endif
-	endif
-	CHECKRA1N_CC_FLAGS  += -Xclang -mllvm -Xclang -enable-bcfobf -Xclang -mllvm -Xclang -bcf_prob=50 -Xclang -mllvm -Xclang -enable-strcry -Xclang -mllvm -Xclang -enable-cffobf -Xclang -mllvm -Xclang -enable-subobf -Xclang -mllvm -Xclang -enable-indibran -Xclang -mllvm -Xclang -enable-splitobf -Xclang -mllvm -Xclang -enable-funcwra -Xclang -mllvm -Xclang -enable-fco -DSEP_AUTO_ONLY=1
+    ifeq ($(HOST_OS),Darwin)
+        CHECKRA1N_CC        ?= hikari -arch arm64
+    else
+    ifeq ($(HOST_OS),Linux)
+        CHECKRA1N_CC_FLAGS  += -Xclang -load -Xclang /usr/local/lib64/libLLVMObfuscation.so
+    endif
+    endif
+    CHECKRA1N_CC_FLAGS      += -Xclang -mllvm -Xclang -enable-bcfobf -Xclang -mllvm -Xclang -bcf_prob=50 -Xclang -mllvm -Xclang -enable-strcry -Xclang -mllvm -Xclang -enable-cffobf -Xclang -mllvm -Xclang -enable-subobf -Xclang -mllvm -Xclang -enable-indibran -Xclang -mllvm -Xclang -enable-splitobf -Xclang -mllvm -Xclang -enable-funcwra -Xclang -mllvm -Xclang -enable-fco -DSEP_AUTO_ONLY=1
 endif
 ifeq ($(SEP_AUTO_ONLY),yes)
-	CHECKRA1N_CC_FLAGS  += -DSEP_AUTO_ONLY=1
+    CHECKRA1N_CC_FLAGS      += -DSEP_AUTO_ONLY=1
 endif
-CHECKRA1N_CC            ?= $(EMBEDDED_CC)
+CHECKRA1N_CC                ?= $(EMBEDDED_CC)
 
 
 .PHONY: all always clean distclean
