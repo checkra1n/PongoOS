@@ -33,6 +33,17 @@
 // **                                                    **
 // ********************************************************
 
+#ifdef NO_GLOBAL
+    .macro sym
+    L_$0:
+    .endmacro
+#else
+    .macro sym
+    .globl $0
+    $0:
+    .endmacro
+#endif
+
 .align 2
 
 // void iorvbar_yeet(volatile void *boot_image)
@@ -103,12 +114,7 @@ We just yeet out the orr, so that iBoot sets the RVBAR address but doesn't lock 
 This means we change the instruction from orr-immediate to orr-register, with xzr as 3rd operand.
 */
 
-#ifndef NO_GLOBAL
-.globl iorvbar_yeet
-iorvbar_yeet:
-#else
-L_iorvbar_yeet:
-#endif
+sym iorvbar_yeet
     mov x2, x0 // instr
     movz w5, 0x9275, lsl 16 // and xN, x0, 0xfffffffffffff800
     movk w5, 0xd000
@@ -232,12 +238,7 @@ We find this sequence, seek to the next bl, then dereference it and write a "ret
 We do this rather than nop'ing the branch because there is more than one call site.
 */
 
-#ifndef NO_GLOBAL
-.globl aes_keygen
-aes_keygen:
-#else
-L_aes_keygen:
-#endif
+sym aes_keygen
     mov x2, x0 // instr
     movz w7, 0x320e, lsl 16 // orr w0, wzr, 0x40000
     movk w7, 0x03e0
@@ -389,12 +390,7 @@ a ret to nop the lock. Absolutely everything else is deferred to PongoOS.
 
 #ifndef NO_RECFG
 
-#ifndef NO_GLOBAL
-.globl recfg_yoink
-recfg_yoink:
-#else
-L_recfg_yoink:
-#endif
+sym recfg_yoink
     mov x2, x0 // instr
     movz w8, 0x3200, lsl 16 // orr w0, wzr, 3
     movk w8, 0x07e0
