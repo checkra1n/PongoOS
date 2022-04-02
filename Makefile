@@ -96,14 +96,14 @@ endif
 
 # General options
 EMBEDDED_LD_FLAGS           ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
-EMBEDDED_CC_FLAGS           ?= --target=arm64-apple-ios12.0 -std=gnu17 -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -DTARGET_OS_OSX=0 -DTARGET_OS_MACCATALYST=0 -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
+EMBEDDED_CC_FLAGS           ?= --target=arm64-apple-ios12.0 -std=gnu17 -Wall -Wunused-label -Werror -Os -flto -ffreestanding -U__nonnull -nostdlibinc -DTARGET_OS_OSX=0 -DTARGET_OS_MACCATALYST=0 -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
 
 # Pongo options
 PONGO_LDFLAGS               ?= -L$(LIB)/lib -lc -lm -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
 PONGO_CC_FLAGS              ?= -DPONGO_VERSION='"$(PONGO_VERSION)"' -DPONGO_BUILD='"$(PONGO_BUILD)"' -DAUTOBOOT -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LDFLAGS) -DDER_TAG_SIZE=8
 
 # KPF options
-CHECKRA1N_LDFLAGS           ?= -Wl,-kext
+CHECKRA1N_LDFLAGS           ?= -Wl,-kext -L$(LIB)/lib -lc -lm
 CHECKRA1N_CC_FLAGS          ?= -DCHECKRA1N_VERSION='"$(CHECKRA1N_VERSION)"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) -DDER_TAG_SIZE=8 -I$(SRC)/lib -DPONGO_PRIVATE=1
 
 STAGE3_ENTRY_C              := $(patsubst %, $(SRC)/boot/%, stage3.c clearhook.S patches.S demote_patch.S jump_to_image.S main.c)
