@@ -2158,55 +2158,6 @@ void kpf_flags(const char* cmd, char* args) {
         printf("kpf_flags: 0x%08x 0x%08x\n", gkpf_flags, checkra1n_flags);
     }
 }
-void kpf_do_autoboot() {
-    queue_rx_string("bootx\n");
-}
-void kpf_autoboot() {
-    DEVLOG("XNU slide: 0x%llx", xnu_slide_value(xnu_header()));
-
-    char lol[9];
-    strcpy(lol, "EDSKRDSK");
-    lol[0] = 'R';
-    char* ramdisk = memmem(loader_xfer_recv_data, autoboot_count, lol, 8);
-    if (ramdisk) {
-        printf("Found old-style rdsk!\n");
-        uint32_t rdsksz = *(uint32_t*)(ramdisk + 8);
-        if (rdsksz > autoboot_count) {
-            printf("corrupted oldstyle rdsk\n");
-            return;
-        }
-        // XXX: Why 0x10000?
-        ramdisk_buf = malloc(rdsksz + 0x10000);
-        memcpy(ramdisk_buf, ramdisk + 12, rdsksz + 0x10000);
-
-        ramdisk_size = rdsksz + 0x10000;
-
-        //char should_populate_kerninfo = 0;
-        struct kpfinfo *info = (struct kpfinfo*)(ramdisk_buf+rdsksz);
-        if (info->k.size == sizeof(*info)) {
-            //should_populate_kerninfo = 1;
-        } else {
-            printf("Detected corrupted kerninfo!\n");
-            return;
-        }
-        gkpf_flags = info->kpf_flags;
-        checkra1n_flags = info->k.flags;
-        queue_rx_string("xargs ");
-        queue_rx_string(info->bootargs);
-        is_oldstyle_rd = 1;
-        legacy_info = info;
-        if (checkrain_option_enabled(gkpf_flags, checkrain_option_pongo_shell))
-        {
-            printf("Pongo shell requested, stopping here!\n");
-            queue_rx_string("\n");
-            return;
-        }
-    } else
-        queue_rx_string("xargs serial=3");
-
-    queue_rx_string("\nsep auto\n");
-    command_register("shell", "kickstarts auto-boot", kpf_do_autoboot);
-}
 
 void module_entry() {
     puts("");
@@ -2234,7 +2185,6 @@ void module_entry() {
 
     preboot_hook = command_kpf;
     command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags);
-    command_register("autoboot", "checkra1n-kpf autoboot hook", kpf_autoboot);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
 }
 char* module_name = "checkra1n-kpf2-12.0,14.5";

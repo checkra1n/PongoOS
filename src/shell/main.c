@@ -25,7 +25,6 @@
  *
  */
 #include <pongo.h>
-uint32_t autoboot_count;
 
 extern volatile char gBootFlag;
 
@@ -81,13 +80,10 @@ void pongo_spin() {
     spin(1000000);
 }
 
-extern char is_masking_autoboot;
 void start_host_shell() {
     task_current()->flags |= TASK_CAN_EXIT;
 
-    is_masking_autoboot = 1;
     command_unregister("shell");
-    command_unregister("autoboot");
     serial_enable_rx();
     screen_puts("Enabling USB");
     usb_init();
@@ -277,11 +273,6 @@ void shell_main() {
     command_init();
 
     xnu_init();
-
-#ifdef AUTOBOOT
-    extern void pongo_autoboot();
-    pongo_autoboot();
-#endif
 
     queue_rx_string("shell\n");
 

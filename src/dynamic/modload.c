@@ -651,7 +651,6 @@ PONGO_EXPORT(loader_xfer_recv_count);
 PONGO_EXPORT(preboot_hook);
 PONGO_EXPORT(ramdisk_buf);
 PONGO_EXPORT(ramdisk_size);
-PONGO_EXPORT(autoboot_count);
 PONGO_EXPORT(sep_boot_hook);
 PONGO_EXPORT(aes);
 PONGO_EXPORT(_impure_ptr);

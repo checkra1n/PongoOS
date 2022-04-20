@@ -28,6 +28,10 @@
 #include <stdlib.h>
 #include <pongo.h>
 
+// XXX: We're back to this since we moved Pongo to SRAM.
+//      Ideally we'd get rid of this and alloc from the start/end of available DRAM.
+#define MAGIC_BASE 0x818000000
+
 #define MAX_WANT_PAGES_IN_FREELIST 512
 void* free_list;
 bool is_16k_v = false;
@@ -300,18 +304,17 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     uint64_t pgsz = 1ULL << (tt_bits + 3);
     ttb_alloc = ttb_alloc_early;
     volatile extern uint64_t start[] __asm__("start");
-    volatile uint64_t pongo_base = ((uint64_t) &start);
+    volatile uint64_t pongo_base = ((uint64_t) start);
     volatile extern uint64_t __bss_end[] __asm__("segment$end$__DATA");
     volatile uint64_t pongo_size = ((uint64_t) __bss_end) - pongo_base;
     volatile extern uint64_t __text_end[] __asm__("segment$start$__DATA");
-    __unused volatile uint64_t pongo_text_size = ((uint64_t) __text_end) - pongo_base;
+    volatile uint64_t pongo_text_size = ((uint64_t) __text_end) - pongo_base;
 
-    ttb_alloc_base = pongo_base - 0x4000;
-
-    //ttb_alloc_base = MAGIC_BASE - 0x4000;
+    ttb_alloc_base = MAGIC_BASE - 0x4000;
 
     ttbr0 = ttb_alloc();
     ttbr1 = ttb_alloc();
+    map_range_noflush_rwx(0x180000000, 0x180000000, 0x80000, 2, 0, false);
     map_range_noflush_rw(0x200000000, 0x200000000, 0x100000000, 2, 0, false);
     phys_off += (pgsz-1);
     phys_off &= ~(pgsz-1);
@@ -320,7 +323,7 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     // TLB flush is done by enable_mmu_el1
 
     if (!early_heap_base) {
-        early_heap_base = (pongo_base - 0x800000000 + kCacheableView + pongo_size + 0x7fff) & ~0x3fff;
+        early_heap_base = MAGIC_BASE - 0x800000000 + kCacheableView;
     }
     map_range_noflush_rx(0x100000000ULL, pongo_base, pongo_text_size, 3, 1, false);
     map_range_noflush_rw(0x100000000ULL + pongo_text_size, pongo_base + pongo_text_size, (pongo_size - pongo_text_size + 0x3fff) & ~0x3fff, 3, 1, false);
@@ -798,17 +801,6 @@ void alloc_init() {
     ppages = memory_size >> 14;
 
     uint64_t early_heap = early_heap_base;
-#ifdef AUTOBOOT
-    uint64_t* _autoboot_block = (uint64_t*)0x418e00000;
-    extern uint64_t* autoboot_block;
-    if (_autoboot_block[0] == 0x746F6F626F747561) {
-        autoboot_block = (void*) early_heap;
-        memcpy(autoboot_block, _autoboot_block, _autoboot_block[1] + 0x20);
-        early_heap += _autoboot_block[1] + 0x20;
-        early_heap = ((early_heap + 0x3fff) & (~0x3fff));
-        bzero(_autoboot_block, _autoboot_block[1] + 0x20);
-    }
-#endif
 
     ppage_list = (uint32_t*)early_heap;
     early_heap += 4 * ppages;
@@ -819,7 +811,7 @@ void alloc_init() {
     }
 
     alloc_static_current = alloc_static_base = (kCacheableView - 0x800000000 + gBootArgs->topOfKernelData) & (~0x3fff);
-    alloc_static_end = 0x417fe0000;
+    alloc_static_end = MAGIC_BASE - 0x800000000 + kCacheableView - 0x20000;
     uint64_t alloc_static_hardcap = alloc_static_base + (1024 * 1024 * 64);
     if (alloc_static_end > alloc_static_hardcap) {
         phys_force_free(vatophys_static((void*)alloc_static_hardcap), alloc_static_end - alloc_static_hardcap);

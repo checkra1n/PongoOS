@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2022 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,13 +22,14 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 // shellcode to patch out the img4 checks that verify if the image type is correct in order to boot a production image with demotion active
 // assumptions:
 // - we can write anywhere
 // - x0 is the base address of the image we should search through
 
+.text
 .align 2
 .globl d$demote_patch
 d$demote_patch:
@@ -42,7 +43,7 @@ d$demote_patch:
 	// there are multiple places (because it also checks if the tag exists etc), we only care about the one where it's put into w/x0
 
 	// because of this we need to find sth like this:
-	// 00aaa8d2       movz x0, 0x4550, lsl 16 
+	// 00aaa8d2       movz x0, 0x4550, lsl 16
 	// e0498af2       movk x0, 0x524f
 	// or a variant
 	// e0498a52       movz w0, 0x524f
@@ -93,7 +94,7 @@ _d$_found_first:
     movz x2, 0xff00, lsl 16
 
 _d$_find_strb:
-    ldr w3, [x0], #-4 
+    ldr w3, [x0], #-4
     and w3, w3, w2
     cmp w3,w1
     b.ne _d$_find_strb

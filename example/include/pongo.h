@@ -199,7 +199,6 @@ extern uint64_t gPMGRBase;
 extern char* gDevType;
 extern void* ramdisk_buf;
 extern uint32_t ramdisk_size;
-extern uint32_t autoboot_count;
 extern uint8_t * loader_xfer_recv_data;
 extern uint32_t loader_xfer_recv_count;
 #endif

@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2022 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,8 +22,10 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
+.text
+.align 2
 .globl _sep_racer
 _sep_racer:
     stp x29, x30, [sp, -0x60]!
@@ -52,7 +54,7 @@ _sep_racer:
 1:
     // tight hot observation loop
     isb
-    
+
     ldr x0, [x20] // fetch current b0 tz0
     cmp x0, x24
     b.ne 4f
@@ -74,7 +76,7 @@ _sep_racer:
     ldr x8, =_sep_has_panicked
     ldr w8, [x8]
     cbnz w8, 3f
-    
+
     mov x29, #0x100
     b 1b
 
@@ -186,4 +188,3 @@ _swap_blocks:
     b _swap_blocks
 1:
     ret
-

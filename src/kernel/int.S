@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2022 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,9 +22,12 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
-.align 12
+.text
+// XXX: Why do some of these do "msr spsel, 1"? Exception entry already
+//      does that for us. Moreover, why is it done *twice*?
+.align 11
 .globl _exception_vector
 _exception_vector:
     /* Current EL with SP0, handle within SP0 */
@@ -63,8 +66,8 @@ _exception_vector:
     msr spsel, #1
     adr x0, Jserror_exc
     b exc_handler /* SError/vSError */
-.balign 128
 
+.balign 128
     /* Current EL with SPn */
     sub sp, sp, #0x340
     stp x0,x1,[sp]
@@ -89,8 +92,8 @@ _exception_vector:
     adr x0, Jserror_exc
     add x1, sp, #0x340
     b exc_handler /* SError/vSError */
-.balign 128
 
+.balign 128
     /* Lower EL with Aarch64 */
     msr spsel, #1
     str x0, [sp, #-0x10]
@@ -144,7 +147,6 @@ _exception_vector:
     mov sp, x0
     adr x0, Jserror_exc
     b exc_handler /* SError/vSError */
-.balign 128
 
     /* Lower EL with Aarch32 */
 
@@ -243,9 +245,9 @@ exc_done:
 
     ldr x1, [sp, #0x110]
     msr spsr_el1, x1
-    
+
     mov x0, sp
-    
+
     ldp x2,x3,[x0,#0x10]
     ldp x4,x5,[x0,#0x20]
     ldp x6,x7,[x0,#0x30]
@@ -332,7 +334,7 @@ __task_switch_asserted:
     stp x4, x5, [x2,#0x20]
     stp x6, x7, [x2,#0x30]
     stp x8, x9, [x2,#0x40]
-    
+
     mrs x1, ttbr1_el1
     str x1, [x2, #0x1C8]
     mrs x1, spsel
@@ -447,7 +449,7 @@ _task_load_asserted:
     ldp d10, d11, [x0,#0x140]
     ldp d12, d13, [x0,#0x160]
     ldp d14, d15, [x0,#0x180]
-        
+
     msr tpidr_el1, x0
     mov sp, x1
     ldr x1, [x0, #0x100]
@@ -469,7 +471,7 @@ _task_entry_j:
     mov x29, xzr
     mrs x0, tpidr_el1
     add x0, x0, #0x220 // -> struct task initial_state
-    
+
     ldp x2, x3, [x0,#0x10]
     ldp x4, x5, [x0,#0x20]
     ldp x6, x7, [x0,#0x30]

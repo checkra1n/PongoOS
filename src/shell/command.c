@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2022 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <stdlib.h>
 #include <pongo.h>
@@ -35,7 +35,6 @@ struct command {
     const char* desc;
     void (*cb)(const char* cmd, char* args);
 } commands[64];
-char is_masking_autoboot;
 static lock command_lock;
 
 static int cmp_cmd(const void *a, const void *b)
@@ -60,7 +59,6 @@ void command_unregister(const char* name) {
     lock_release(&command_lock);
 }
 void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args)) {
-    if (is_masking_autoboot && strcmp(name,"autoboot") == 0) return;
     lock_take(&command_lock);
     for (int i=0; i<64; i++) {
         if (!commands[i].name || strcmp(commands[i].name, name) == 0) {

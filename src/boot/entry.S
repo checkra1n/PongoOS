@@ -24,58 +24,63 @@
  * SOFTWARE.
  *
  */
+.text
 .globl start
-.align 4
+.align 2
 start:
-// branch from x27 will end up here
-    mov x9, x8
-// branch from x29 here
+    // Since version 2.6.0, Pongo lives in SRAM, is always invoked at the first
+    // instruction and maintains the following ABI on the way in and out:
+    // x30 = next-stage binary (iBoot/KPP/XNU)
+    //  x0 = argument to next stage
     adr x4, start
-    mov x5, #0x800000000
-    movk x5, #0x1800, lsl#16
-    and x30, x30, 0x4
-    orr x30, x30, x5
+    mov x5, 0x180000000
     cmp x4, x5
-    b.eq start$l0
-    add x6, x4, #0x200000
-
+    b.eq L_relocated
+    // Since we wanna be at the very start of SRAM, we don't need to check the direction of copying
+    .loh AdrpAdd Lloh0, Lloh1
+Lloh0:
+    adrp x6, section$end$__DATA$__pongo_exports@PAGE
+Lloh1:
+    add x6, x6, section$end$__DATA$__pongo_exports@PAGEOFF
 copyloop:
-    ldr x3, [x4], #8
-    str x3, [x5], #8
+    ldp x7, x8, [x4], 0x10
+    stp x7, x8, [x5], 0x10
     cmp x4, x6
-    b.ne copyloop
+    b.lo copyloop
+    dsb sy
+    mov x5, 0x180000000
+    br x5
 
-#ifdef AUTOBOOT
-    ldr x3, [x6]
-    mov x4, #0x800000000
-    movk x4, #0x18e0, lsl#16
-    mov x2, #0x7561
-    movk x2, #0x6f74, lsl#16
-    movk x2, #0x6f62, lsl#32
-    movk x2, #0x746f, lsl#48
-    cmp x3, x2
-    b.ne nullsub
-    ldr w2, [x6, #8]
-    add w2, w2, #16
-    and w2, w2, #(~15)
-
-copyloop_2:
-    cbz w2, copyloop_3
-    sub w2, w2, #16
-    ldp x10,x15, [x4], #16
-    stp x10,x15, [x5], #16
-    b copyloop_2
-#endif
-copyloop_3:
-#ifdef AUTOBOOT
-    str xzr, [x6]
-#endif
-    ret
-
-start$l0:
+L_relocated:
     mov x1, x0
-    mov x0, x9
+    mov x0, x30
     mov x29, xzr
+    cbz x1, L_zeroed
+    // Zero the zerofill sections
+    .loh AdrpAdd Lloh2, Lloh3
+    .loh AdrpAdd Lloh4, Lloh5
+Lloh2:
+    adrp x2, section$start$__DATA$__common@PAGE
+Lloh3:
+    add x2, x2, section$start$__DATA$__common@PAGEOFF
+Lloh4:
+    adrp x3, segment$end$__DATA@PAGE
+Lloh5:
+    add x3, x3, segment$end$__DATA@PAGEOFF
+L_unaligned_zero:
+    tst x2, 0xf
+    b.eq L_aligned_zero
+    cmp x2, x3
+    b.hs L_zeroed
+    strb wzr, [x2], 1
+    b L_unaligned_zero
+L_aligned_zero:
+    cmp x2, x3
+    b.hs L_zeroed
+    stp xzr, xzr, [x2], 0x10
+    b L_aligned_zero
+L_zeroed:
+    dsb sy
     bl _set_exception_stack_core0
     bl _set_execution_stack_core0
     bl _trampoline_entry
@@ -84,16 +89,13 @@ start$l0:
 .globl _setup_el1
 _setup_el1:
     stp x29, x30, [sp, #-0x10]!
-    mov x20, x1
-    mov x21, x2
     mrs x16, currentel
-    cmp x16, #0x4
+    cmp x16, (1 << 2)
     b.eq el1_entry
-    cmp x16, #0xc
+    cmp x16, (3 << 2)
     b.ne .
 
 el3_entry:
-
     adr x16, _exception_vector_el3
     msr vbar_el3, x16
     mov x16, #0x430
@@ -101,11 +103,11 @@ el3_entry:
     mov x16, #4
     msr spsr_el3, x16
     adr x16, el1_entry
-    msr elr_el3, x0
+    msr elr_el3, x16
     eret
 
 el1_entry:
-    blr x0
+    blr x2
     b .
 
 .globl _set_exception_stack_core0
@@ -129,28 +131,7 @@ _set_execution_stack_core0:
     mov sp, x8
     ret
 
-.globl _smemcpy128
-_smemcpy128:
-    cbz w2, nullsub
-    sub w2, w2, #1
-    ldp x3,x4, [x1], #16
-    stp x3,x4, [x0], #16
-    b _smemcpy128
-
-.globl _smemset
-_smemset:
-    and w1, w1, #0xFF
-    mov x3, x0
-memset$continue:
-    cbz x2, nullsub
-    strb w1, [x0], #1
-    sub x2, x2, #1
-    b memset$continue
-
-nullsub:
-    ret
-
-.align 12
+.align 11
 .globl _exception_vector_el3
 _exception_vector_el3:
     b .
@@ -160,19 +141,6 @@ _exception_vector_el3:
     b .
 .balign 128
     b .
-.balign 128
-    b .
-.balign 128
-    b .
-.balign 128
-    b .
-.balign 128
-    b .
-.balign 128
-    /* Lower EL with Aarch64 */
-    mov x18, #0xc
-    msr spsr_el3, x18
-    eret
 
 .balign 128
     b .
@@ -180,6 +148,21 @@ _exception_vector_el3:
     b .
 .balign 128
     b .
+.balign 128
+    b .
+
+.balign 128
+    /* Lower EL with Aarch64 */
+    mov x18, #0xc
+    msr spsr_el3, x18
+    eret
+.balign 128
+    b .
+.balign 128
+    b .
+.balign 128
+    b .
+
 .balign 128
     b .
 .balign 128

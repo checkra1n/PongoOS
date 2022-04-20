@@ -38,6 +38,7 @@
     L_$0:
     .endmacro
 #else
+    .text
     .macro sym
     .globl $0
     $0:
@@ -150,8 +151,6 @@ sym iorvbar_yeet
     // Patch
     bfi w7, w4, 0, 10
     str w7, [x2]
-    dmb sy
-    isb sy
     ret
 
 
@@ -284,8 +283,6 @@ sym aes_keygen
     sbfx w3, w3, 0, 26
     ldr w7, Lol
     str w7, [x2, w3, sxtw 2]
-    dmb sy
-    isb sy
 Lol:
     ret
 
@@ -424,8 +421,6 @@ sym recfg_yoink
     sbfx w7, w7, 0, 26
     ldr w3, Lul
     str w3, [x2, w7, sxtw 2]
-    dmb sy
-    isb sy
 Lul:
     ret
 

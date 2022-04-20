@@ -30,6 +30,7 @@ uint64_t gPMGRBase;
 uint64_t gWDTBase;
 
 __asm__(
+    ".text\n"
     ".globl _get_el\n"
     ".globl _rebase_pc\n"
     ".globl _set_vbar_el1\n"
@@ -159,8 +160,8 @@ __asm__(
     );
 extern void copy_retn(void);
 extern size_t copy_trap_internal(void* dest, void* src, size_t size);
-uint64_t exception_stack[0x4000/8] = {1};
-uint64_t sched_stack[0x4000/8] = {1};
+uint64_t exception_stack[0x4000/8] = {};
+uint64_t sched_stack[0x4000/8] = {};
 size_t memcpy_trap(void* dest, void* src, size_t size) {
     disable_interrupts();
     if (!task_current()) panic("memcpy_trap requires task_current() to be populated");
