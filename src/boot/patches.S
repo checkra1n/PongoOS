@@ -25,13 +25,14 @@
  *
  */
 
-// ********************************************************
-// **                                                    **
-// ** THIS FILE IS SHARED BETWEEN PONGOOS AND CHECKRA1N! **
-// **                                                    **
-// **   MAKE SURE ANY EDIT IS REFLECTED IN BOTH REPOS!   **
-// **                                                    **
-// ********************************************************
+// ************************************************************
+// **                                                        **
+// **         THIS FILE IS USED BY MULTIPLE PROJECTS!        **
+// **                                                        **
+// ** Before committing changes to this file, make sure both **
+// ** PongoOS and the checkra1n payload project still build! **
+// **                                                        **
+// ************************************************************
 
 #ifdef NO_GLOBAL
     .macro sym
