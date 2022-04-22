@@ -58,18 +58,18 @@ endif
 
 # ifdef+ifndef is ugly, but we really don't wanna use ?= when shell expansion is involved
 ifdef EMBEDDED_LLVM_CONFIG
-ifndef EMBEDDED_LLVM_PREFIX
-    EMBEDDED_LLVM_PREFIX    := $(shell $(EMBEDDED_LLVM_CONFIG) --obj-root)
+ifndef EMBEDDED_LLVM_BINDIR
+    EMBEDDED_LLVM_BINDIR    := $(shell $(EMBEDDED_LLVM_CONFIG) --bindir)
 endif
 endif
 
-ifdef LLVM_PREFIX
-    EMBEDDED_LLVM_PREFIX    ?= $(LLVM_PREFIX)
+ifdef LLVM_BINDIR
+    EMBEDDED_LLVM_BINDIR    ?= $(LLVM_BINDIR)
 endif
 
-ifdef EMBEDDED_LLVM_PREFIX
-    EMBEDDED_CC             ?= $(EMBEDDED_LLVM_PREFIX)/bin/clang
-#   EMBEDDED_LD             ?= $(EMBEDDED_LLVM_PREFIX)/bin/ld64.lld
+ifdef EMBEDDED_LLVM_BINDIR
+    EMBEDDED_CC             ?= $(EMBEDDED_LLVM_BINDIR)/clang
+#   EMBEDDED_LD             ?= $(EMBEDDED_LLVM_BINDIR)/ld64.lld
 endif
 
 ifeq ($(HOST_OS),Darwin)
@@ -113,6 +113,9 @@ CHECKRA1N_CC                ?= $(EMBEDDED_CC)
 
 
 .PHONY: all always clean distclean
+
+# Preserve intermediate files
+.SECONDARY:
 
 all: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo | $(BUILD)
 
