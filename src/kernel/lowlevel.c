@@ -199,7 +199,7 @@ __asm__(
     "1:\n"
     "   lsr x1, x1, 4\n"
     "   and x2, x1, 0xf\n"
-    "   cbz 2f\n"
+    "   cbz x2, 2f\n"
     "   add x0, x0, 2\n"
     "   cmp x0, 14\n"
     "   b.eq 2f\n"
@@ -207,7 +207,7 @@ __asm__(
     "2:\n"
     "   msr csselr_el1, x0\n"
     "   isb\n"
-    "   msr x5, ccsidr_el1\n"
+    "   mrs x5, ccsidr_el1\n"
     "   ubfx w3, w5, 13, 15\n" // w3 = Sets
     "   ubfx w5, w5, 3, 10\n"  // w5 = Ways
     "   clz w6, w5\n" // lsb of ways

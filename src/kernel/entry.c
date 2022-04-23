@@ -308,6 +308,14 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
     lowlevel_cleanup();
     if(gBootFlag == BOOT_FLAG_RAW)
     {
+        // We're in EL1 here, but we might need to go back to EL3
+        uint64_t pfr0;
+        __asm__ volatile("mrs %0, id_aa64pfr0_el1" : "=r"(pfr0));
+        if((pfr0 & 0xf000) != 0)
+        {
+            __asm__ volatile("smc 0"); // elevate to EL3
+        }
+        // XXX: We should really replace loader_xfer_recv_data with something dedicated here.
         jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000000, (uint64_t)gBootArgs, (uint64_t)gEntryPoint);
     }
     else if(gBootFlag == BOOT_FLAG_LINUX)
