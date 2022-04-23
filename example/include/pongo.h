@@ -167,6 +167,7 @@ extern void sleep(uint32_t sec);
 extern volatile uint8_t get_el(void);
 extern void cache_invalidate(void *address, size_t size);
 extern void cache_clean_and_invalidate(void *address, size_t size);
+extern void cache_clean_and_invalidate_all(void);
 extern void clock_gate(uint64_t addr, char val);
 extern void disable_preemption();
 extern void enable_preemption();

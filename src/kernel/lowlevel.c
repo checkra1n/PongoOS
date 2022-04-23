@@ -49,6 +49,10 @@ __asm__(
     ".globl _copy_retn\n"
     ".globl _pan_on\n"
     ".globl _pan_off\n"
+    ".globl _cache_invalidate\n"
+    ".globl _cache_clean_and_invalidate\n"
+    ".globl _cache_clean\n"
+    ".globl _cache_clean_and_invalidate_all\n"
 
     "_get_el:\n"
     "    mrs x0, currentel\n"
@@ -145,7 +149,7 @@ __asm__(
     "_copy_trap_internal:\n"
     "    stp x29, x30, [sp, -0x10]!\n"
     "    mov x4, xzr\n"
-    "    1:\n"
+    "1:\n"
     "    cbz x2, 2f\n"
     "    ldrb w5, [x1], #1\n"
     "    strb w5, [x0], #1\n"
@@ -157,7 +161,76 @@ __asm__(
     "    mov x0, x4\n"
     "    ldp x29, x30, [sp], 0x10\n"
     "    ret\n"
-    );
+
+    "_cache_invalidate:\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "   add x1, x0, x1\n"
+    "1:\n"
+    "   dc ivac, x0\n"
+    "   add x0, x0, 0x40\n"
+    "   cmp x0, x1\n"
+    "   b.lo 1b\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "   ret\n"
+
+    "_cache_clean_and_invalidate:\n"
+    "_cache_clean:\n" // invalidates too, because Apple
+    "   dsb sy\n"
+    "   isb\n"
+    "   add x1, x0, x1\n"
+    "1:\n"
+    "   dc civac, x0\n"
+    "   add x0, x0, 0x40\n"
+    "   cmp x0, x1\n"
+    "   b.lo 1b\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "   ret\n"
+
+    "_cache_clean_and_invalidate_all:\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "   mrs x1, clidr_el1\n"
+    "   and x2, x1, 0xf\n"
+    "   cbz x2, 5f\n" // No cache?
+    "   mov w0, 0\n" // w0 = Cache level
+    "1:\n"
+    "   lsr x1, x1, 4\n"
+    "   and x2, x1, 0xf\n"
+    "   cbz 2f\n"
+    "   add x0, x0, 2\n"
+    "   cmp x0, 14\n"
+    "   b.eq 2f\n"
+    "   b 1b\n"
+    "2:\n"
+    "   msr csselr_el1, x0\n"
+    "   isb\n"
+    "   msr x5, ccsidr_el1\n"
+    "   ubfx w3, w5, 13, 15\n" // w3 = Sets
+    "   ubfx w5, w5, 3, 10\n"  // w5 = Ways
+    "   clz w6, w5\n" // lsb of ways
+    "   mov w4, 0\n" // w4 = Way counter
+    "3:\n"
+    "   mov w2, 0\n" // w2 = Set counter
+    "4:\n"
+    "   lsl w1, w4, w6\n"
+    "   bfi w1, w2, 6, 13\n"
+    "   orr w1, w1, w0\n"
+    "   dc cisw, x1\n"
+    "   add w2, w2, 1\n"
+    "   cmp w2, w3\n"
+    "   b.ls 4b\n"
+    "   add w4, w4, 1\n"
+    "   cmp w4, w5\n"
+    "   b.ls 3b\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "5:\n"
+    "   ret\n"
+);
+
 extern void copy_retn(void);
 extern size_t copy_trap_internal(void* dest, void* src, size_t size);
 uint64_t exception_stack[0x4000/8] = {};
@@ -625,47 +698,6 @@ void clock_gate(uint64_t addr, char val)
     }
 }
 
-void
-cache_invalidate(void *address, size_t size) {
-    uint64_t cache_line_size = 64;
-    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-    asm volatile("isb");
-    asm volatile("dsb sy");
-    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-        asm volatile("dc ivac, %0" : : "r"(addr));
-    }
-    asm volatile("dsb sy");
-    asm volatile("isb");
-}
-
-void
-cache_clean_and_invalidate(void *address, size_t size) {
-    uint64_t cache_line_size = 64;
-    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-    asm volatile("isb");
-    asm volatile("dsb sy");
-    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-        asm volatile("dc civac, %0" : : "r"(addr));
-    }
-    asm volatile("dsb sy");
-    asm volatile("isb");
-}
-
-void
-cache_clean(void *address, size_t size) { // invalidates too, because Apple
-    uint64_t cache_line_size = 64;
-    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-    asm volatile("isb");
-    asm volatile("dsb sy");
-    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-        asm volatile("dc civac, %0" : : "r"(addr));
-    }
-    asm volatile("dsb sy");
-    asm volatile("isb");
-}
 extern uint64_t heap_base;
 extern uint64_t heap_end;
 extern uint64_t linear_kvm_base;

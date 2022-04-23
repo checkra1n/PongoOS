@@ -341,12 +341,13 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
 }
 void lowlevel_set_identity(void)
 {
+    map_range_noflush_rwx(0x180000000, 0x180000000, 0x80000, 2, 0, false);
     map_range_noflush_rwx(0x800000000ULL + g_phys_off, 0x800000000 + g_phys_off, ram_phys_size, 2, 0, true);
     flush_tlb();
 }
 void lowlevel_cleanup(void)
 {
-    cache_clean_and_invalidate((void*)ram_phys_off, ram_phys_size);
+    cache_clean_and_invalidate_all();
     disable_mmu_el1();
 }
 struct vm_space* task_vm_space(struct task* task) {

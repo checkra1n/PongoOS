@@ -610,6 +610,7 @@ PONGO_EXPORT(hexprint);
 PONGO_EXPORT(get_el);
 PONGO_EXPORT(cache_invalidate);
 PONGO_EXPORT(cache_clean_and_invalidate);
+PONGO_EXPORT(cache_clean_and_invalidate_all);
 PONGO_EXPORT(register_irq_handler);
 PONGO_EXPORT(device_clock_by_id);
 PONGO_EXPORT(device_clock_by_name);
