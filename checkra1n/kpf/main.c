@@ -1814,8 +1814,6 @@ void kpf_root_livefs_patch(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "root_livefs", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)root_livefs_callback);
 }
 
-struct kpfinfo *legacy_info;
-char is_oldstyle_rd;
 checkrain_option_t gkpf_flags, checkra1n_flags;
 
 int gkpf_didrun = 0;
@@ -2120,7 +2118,7 @@ void command_kpf() {
     }
 
     struct kerninfo *info = NULL;
-    if (!is_oldstyle_rd && ramdisk_buf) {
+    if (ramdisk_buf) {
         puts("KPF: Found ramdisk, appending kernelinfo");
 
         // XXX: Why 0x10000?
@@ -2130,8 +2128,6 @@ void command_kpf() {
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
         ramdisk_size += 0x10000;
-    } else if (is_oldstyle_rd) {
-        info = &legacy_info->k;
     }
     if (info) {
         info->size = sizeof(struct kerninfo);
