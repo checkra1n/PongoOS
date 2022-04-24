@@ -288,10 +288,10 @@ __attribute__((noinline)) void pongo_entry_cached()
     Description: entry point in llktrw
 
 */
-_Noreturn void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t original_image);
+_Noreturn void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t tramp, uint64_t original_image);
 extern uint64_t gPongoSlide;
 
-_Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point))
+_Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point, void *trampoline))
 {
     gBootArgs = (boot_args*)kernel_args;
     gEntryPoint = entryp;
@@ -316,7 +316,7 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
             __asm__ volatile("smc 0"); // elevate to EL3
         }
         // XXX: We should really replace loader_xfer_recv_data with something dedicated here.
-        jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000000, (uint64_t)gBootArgs, (uint64_t)gEntryPoint);
+        jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000000, (uint64_t)gBootArgs, 0, (uint64_t)gEntryPoint);
     }
     else if(gBootFlag == BOOT_FLAG_LINUX)
     {
@@ -327,7 +327,7 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
         tz_lockdown();
         xnu_boot();
     }
-    exit_to_el1_image((void*)gBootArgs, gEntryPoint);
+    exit_to_el1_image((void*)gBootArgs, gEntryPoint, (void*)((gBootArgs->topOfKernelData + 0x3fffULL) & ~0x3fffULL));
     screen_puts("didn't boot?!");
     while(1)
     {}

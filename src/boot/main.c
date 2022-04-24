@@ -25,7 +25,7 @@
  *
  */
 #include <pongo.h>
-extern _Noreturn void stage3_exit_to_el1_image(void* boot_args, void* boot_entry_point);
+extern _Noreturn void stage3_exit_to_el1_image(void *boot_args, void *boot_entry_point, void *trampoline);
 _Noreturn void main (void* boot_image, void* boot_args) {
     // hypv or kernel
     if (*(uint8_t*)(boot_args + 8 + 7)) {

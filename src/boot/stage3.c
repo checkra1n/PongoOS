@@ -27,7 +27,7 @@
 #include "libc_workarounds.h"
 #include <pongo.h>
 
-extern _Noreturn void jump_to_image(uint64_t image, uint64_t args);
+extern _Noreturn void jump_to_image(uint64_t image, uint64_t args, uint64_t tramp);
 extern _Noreturn void setup_el1(uint64_t, uint64_t, void * entryp);
 extern _Noreturn void main(void* boot_image, void* boot_args);
 
@@ -36,6 +36,8 @@ extern _Noreturn void main(void* boot_image, void* boot_args);
 void iorvbar_yeet(volatile void *boot_image) __asm__("iorvbar_yeet");
 void aes_keygen(volatile void *boot_image) __asm__("aes_keygen");
 void recfg_yoink(volatile void *boot_image) __asm__("recfg_yoink");
+
+extern uint8_t need_to_release_L3_SRAM;
 
 void patch_bootloader(void* boot_image)
 {
@@ -51,6 +53,28 @@ void patch_bootloader(void* boot_image)
     p[-1] = 0xb26107f2; // orr x18, xzr, 0x180000000
     p[0] = 0xd61f0240; // br x18
 
+    // Keep L3 SRAM around
+    for(volatile uint32_t *p = boot_image, *end = (volatile uint32_t*)((uintptr_t)boot_image + 0x7ff00); p < end; ++p)
+    {
+        if
+        (
+            (p[0] & 0xfffffc00) == 0xb9400000 && // ldr w9, [x8]
+            (p[1] & 0xfffffc00) == 0x121e7800 && // and w9, w9, 0xfffffffd
+            (p[2] & 0xfffffc00) == 0xb9000000 && // str w9, [x8]
+            (p[3] & 0xfffffc00) == 0xb9400000 && // ldr w9, [x8]
+            (p[4] & 0xfffffc00) == 0x32100000 && // orr w9, w9, 0x10000
+            (p[5] & 0xfffffc00) == 0xb9000000 && // str w9, [x8]
+            (p[6] & 0xfffffc00) == 0xb9401400 && // ldr w9, [x8, 0x14]
+            (p[7] & 0xfffffc00) == 0x32000000 && // orr w9, w9, 1
+            (p[8] & 0xfffffc00) == 0xb9001400    // str w9, [x8, 0x14]
+        )
+        {
+            need_to_release_L3_SRAM = 0x41;
+            p[0] = 0xd65f03c0; // ret
+            break;
+        }
+    }
+
     iorvbar_yeet(boot_image);
     aes_keygen(boot_image);
     // Ultra dirty hack: 16K support = Reconfig Engine
@@ -58,16 +82,13 @@ void patch_bootloader(void* boot_image)
     {
         recfg_yoink(boot_image);
     }
-
-    __asm__ volatile("dsb sy");
-    invalidate_icache();
 }
 
 /* BSS is cleaned on _start, so we cannot rely on it. */
 void* gboot_entry_point = (void*)0xddeeaaddbbeeeeff;
 void* gboot_args = (void*)0xddeeaaddbbeeeeff;
 
-_Noreturn void stage3_exit_to_el1_image(void* boot_args, void* boot_entry_point) {
+_Noreturn void stage3_exit_to_el1_image(void *boot_args, void *boot_entry_point, void *trampoline) {
     if (*(uint8_t*)(gboot_args + 8 + 7)) {
         // kernel
         gboot_args = boot_args;
@@ -78,7 +99,7 @@ _Noreturn void stage3_exit_to_el1_image(void* boot_args, void* boot_entry_point)
         *(void**)(gboot_args + 0x28) = boot_entry_point;
         __asm__ volatile("smc 0"); // elevate to EL3
     }
-    jump_to_image((uint64_t)gboot_entry_point, (uint64_t)gboot_args);
+    jump_to_image((uint64_t)gboot_entry_point, (uint64_t)gboot_args, (uint64_t)trampoline);
 }
 
 _Noreturn void trampoline_entry(void* boot_image, void* boot_args)
@@ -86,7 +107,7 @@ _Noreturn void trampoline_entry(void* boot_image, void* boot_args)
     if (!boot_args) {
         // bootloader
         patch_bootloader(boot_image);
-        jump_to_image((uint64_t)boot_image, (uint64_t)boot_args);
+        jump_to_image((uint64_t)boot_image, (uint64_t)boot_args, 0);
     } else {
         gboot_args = boot_args;
         gboot_entry_point = boot_image;

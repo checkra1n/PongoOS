@@ -367,7 +367,7 @@ extern struct pongo_module_info* pongo_module_create(uint32_t segmentCount);
 #define EXPORT_SYMBOL(x) {.name = "_"#x, .value = x}
 #define EXPORT_SYMBOL_P(x) {.name = "_"#x, .value = (void*)&x}
 extern void map_range(uint64_t va, uint64_t pa, uint64_t size, uint64_t sh, uint64_t attridx, bool overwrite);
-_Noreturn void pongo_entry(uint64_t* kernel_args, void* entryp, void (*exit_to_el1_image)(void* boot_args, void* boot_entry_point));
+_Noreturn void pongo_entry(uint64_t* kernel_args, void* entryp, void (*exit_to_el1_image)(void* boot_args, void* boot_entry_point, void *trampoline));
 int pongo_fiq_handler();
 extern void (*preboot_hook)();
 extern void (*sep_boot_hook)();
