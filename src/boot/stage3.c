@@ -54,19 +54,20 @@ void patch_bootloader(void* boot_image)
     p[0] = 0xd61f0240; // br x18
 
     // Keep L3 SRAM around
+    // /x 000040b900781e12000000b9000040b900001032000000b9001440b900000032001400b9:00fcffff00fcffff00fcffff00fcffff00fcffff00fcffff00fcffff00fcffff00fcffff
     for(volatile uint32_t *p = boot_image, *end = (volatile uint32_t*)((uintptr_t)boot_image + 0x7ff00); p < end; ++p)
     {
         if
         (
-            (p[0] & 0xfffffc00) == 0xb9400000 && // ldr w9, [x8]
-            (p[1] & 0xfffffc00) == 0x121e7800 && // and w9, w9, 0xfffffffd
-            (p[2] & 0xfffffc00) == 0xb9000000 && // str w9, [x8]
-            (p[3] & 0xfffffc00) == 0xb9400000 && // ldr w9, [x8]
-            (p[4] & 0xfffffc00) == 0x32100000 && // orr w9, w9, 0x10000
-            (p[5] & 0xfffffc00) == 0xb9000000 && // str w9, [x8]
-            (p[6] & 0xfffffc00) == 0xb9401400 && // ldr w9, [x8, 0x14]
-            (p[7] & 0xfffffc00) == 0x32000000 && // orr w9, w9, 1
-            (p[8] & 0xfffffc00) == 0xb9001400    // str w9, [x8, 0x14]
+            (p[0] & 0xfffffc00) == 0xb9400000 && // ldr wM, [xN]
+            (p[1] & 0xfffffc00) == 0x121e7800 && // and wM, wM, 0xfffffffd
+            (p[2] & 0xfffffc00) == 0xb9000000 && // str wM, [xN]
+            (p[3] & 0xfffffc00) == 0xb9400000 && // ldr wM, [xN]
+            (p[4] & 0xfffffc00) == 0x32100000 && // orr wM, wM, 0x10000
+            (p[5] & 0xfffffc00) == 0xb9000000 && // str wM, [xN]
+            (p[6] & 0xfffffc00) == 0xb9401400 && // ldr wM, [xN, 0x14]
+            (p[7] & 0xfffffc00) == 0x32000000 && // orr wM, wM, 1
+            (p[8] & 0xfffffc00) == 0xb9001400    // str wM, [xN, 0x14]
         )
         {
             need_to_release_L3_SRAM = 0x41;
