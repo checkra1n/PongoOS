@@ -44,10 +44,10 @@
 #define checkrain_option_demote             (1 << 1)
 #define checkrain_option_early_exit         (1 << 2)
 #define checkrain_option_quick_mode         (1 << 3)
+#define checkrain_option_pongo_shell        (1 << 4)
 
 // KPF options
 #define checkrain_option_verbose_boot       (1 << 0)
-#define checkrain_option_pongo_shell        (1 << 1) /* only a KPF option in autoboot mode */
 
 // Global options
 #define checkrain_option_safemode           (1 << 0)
