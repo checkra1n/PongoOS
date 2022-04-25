@@ -19,6 +19,7 @@
 // limitations under the License.
 //
 
+#include <stdio.h>
 #include <pongo.h>
 uint64_t gSynopsysBase;
 uint64_t gSynopsysOTGBase;
@@ -125,8 +126,8 @@ struct task usb_task = {.name = "usb"};
 
 static const char *string_descriptors[] = {
 	[iManufacturer] = "checkra1n team",
-	[iProduct]      = "pongoOS USB Device",
-	[iSerialNumber] = ("pongoOS / checkra1n "PONGO_VERSION),
+	[iProduct]      = "PongoOS USB Device",
+	[iSerialNumber] = "<uninitialized>",
 };
 
 static const uint32_t string_descriptor_count = sizeof(string_descriptors) / sizeof(string_descriptors[0]);
@@ -321,7 +322,8 @@ usb_write_commit() {
 // USB functions needed by this level.
 static void usb_set_address(uint8_t address);
 
-#define MAX_USB_DESCRIPTOR_LENGTH	63
+#define MAX_USB_DESCRIPTOR_LENGTH 127
+//#define MAX_USB_DESCRIPTOR_LENGTH 63
 
 static bool
 get_string_descriptor(uint8_t index) {
@@ -329,8 +331,8 @@ get_string_descriptor(uint8_t index) {
 		return false;
 	}
 	struct {
-		struct string_descriptor descriptor;		// 2 bytes
-		uint16_t utf16[MAX_USB_DESCRIPTOR_LENGTH];	// 126 bytes
+		struct string_descriptor descriptor;          // 2 bytes
+		uint16_t utf16[MAX_USB_DESCRIPTOR_LENGTH];    // 254 bytes
 	} sd;
 	uint16_t length;
 	if (index == 0) {
@@ -348,7 +350,7 @@ get_string_descriptor(uint8_t index) {
 	}
 	uint16_t size = sizeof(sd.descriptor) + length * sizeof(sd.utf16[0]);
 	sd.descriptor.bLength = size;
-	sd.descriptor.bDescriptorType = 3;	// String descriptor
+	sd.descriptor.bDescriptorType = 3; // String descriptor
 	ep0_begin_data_in_stage(&sd, size, NULL);
 	return true;
 }
@@ -358,15 +360,13 @@ ep0_get_descriptor_request(struct setup_packet *setup) {
 	uint8_t type  = (uint8_t) (setup->wValue >> 8);
 	uint8_t index = (uint8_t) (setup->wValue & 0xff);
 	switch (type) {
-		case 1:		// Device descriptor
-			ep0_begin_data_in_stage(&device_descriptor,
-					sizeof(device_descriptor), NULL);
+		case 1:   // Device descriptor
+			ep0_begin_data_in_stage(&device_descriptor, sizeof(device_descriptor), NULL);
 			return true;
-		case 2:		// Configuration descriptor
-			ep0_begin_data_in_stage(&configuration_descriptor,
-					sizeof(configuration_descriptor), NULL);
+		case 2:   // Configuration descriptor
+			ep0_begin_data_in_stage(&configuration_descriptor, sizeof(configuration_descriptor), NULL);
 			return true;
-		case 3:		// String descriptor
+		case 3:   // String descriptor
 			return get_string_descriptor(index);
 		default:
 			goto invalid;
@@ -538,6 +538,8 @@ struct endpoint_state {
     // For OUT non-Control endpoints, RECV_DATA to indicate that we are in an OUT transfer, and
     // 0 to indicate that there is no currently scheduled OUT transfer.
     uint32_t in_flight;
+    // Whether we're transferring the maximum size allowed by setup_packet.wLength. Relevant for ZLP.
+    uint8_t transfer_max : 1;
 };
 
 // The endpoints.
@@ -618,16 +620,14 @@ static void ep_in_send(struct endpoint_state *ep) {
         BUG(0x73656e642031);    // 'send 1'
     }
     if (ep->transferred >= ep->transfer_size && ep->transfer_size != TRANSFER_ZLP) {
-        USB_DEBUG(USB_DEBUG_XFER, "transfer_size %u, transferred %u",
-                ep->transfer_size, ep->transferred);
+        USB_DEBUG(USB_DEBUG_XFER, "transfer_size %u, transferred %u", ep->transfer_size, ep->transferred);
         BUG(0x73656e642032);    // 'send 2'
     }
     // Compute the offset into the DMA buffer, the size of the transfer, and the number of
     // packets.
     uint32_t dma_offset, hw_xfer_size, packet_count;
     ep_in_send_compute_xfer(ep, &dma_offset, &hw_xfer_size, &packet_count);
-        USB_DEBUG(USB_DEBUG_XFER, "EP%u IN xfer %u|%u|%u", ep->n,
-                dma_offset, hw_xfer_size, packet_count);
+    USB_DEBUG(USB_DEBUG_XFER, "EP%u IN xfer %u|%u|%u", ep->n, dma_offset, hw_xfer_size, packet_count);
     // New data is copied from the transfer_data buffer into the DMA buffer only once the DMA
     // buffer has been fully sent and is ready to be filled again.
     if (dma_offset == 0 && hw_xfer_size > 0) {
@@ -649,11 +649,11 @@ static void ep_in_send(struct endpoint_state *ep) {
         cache_clean_and_invalidate(ep->xfer_dma_data, cache_length);
     }
 
-	// Set the registers.
+    // Set the registers.
     reg_write(rDIEPDMA(ep->n), ep->xfer_dma_phys + dma_offset);
     reg_write(rDIEPTSIZ(ep->n), (packet_count << 19) | hw_xfer_size);
-	reg_or(rDIEPCTL(ep->n), 0x84000000);
-	// We now have data in flight.
+    reg_or(rDIEPCTL(ep->n), 0x84000000);
+    // We now have data in flight.
     ep->in_flight = hw_xfer_size;
 }
 
@@ -667,23 +667,23 @@ ep_in_send_done(struct endpoint_state *ep) {
     }
     USB_DEBUG(USB_DEBUG_XFER, "DIEPTSIZ(%u) = %x", ep->n, reg_read(rDIEPTSIZ(ep->n)));
     // Update the amount of data that has been transferred and the amount in flight.
-	ep->transferred += ep->in_flight;
-	ep->in_flight = 0;
+    ep->transferred += ep->in_flight;
+    ep->in_flight = 0;
     // If we were sending a ZLP, replace transfer_size.
     if (ep->transfer_size == TRANSFER_ZLP) {
         ep->transfer_size = 0;
     }
     // Check if we're done sending all the data.
-	if (ep->transferred == ep->transfer_size) {
+    if (ep->transferred == ep->transfer_size) {
         // Handle sending a ZLP after transferring a whole number of full packets.
         // Initially this was done by configuring DIEPTSIZ to include the ZLP in the
         // initial call to ep_in_send() (thus avoiding another call out to the USB stack),
         // but the hardware does not seem to handle this case.
-        bool need_zlp = (ep->transfer_size > 0 && ep->transfer_size % ep->max_packet_size == 0);
+        bool need_zlp = (!ep->transfer_max && ep->transfer_size > 0 && ep->transfer_size % ep->max_packet_size == 0);
         if (!need_zlp) {
             USB_DEBUG(USB_DEBUG_XFER, "EP%u IN xfer done", ep->n);
             return true;
-		}
+        }
         // Prepare to send a ZLP.
         ep->transferred = 0;
         ep->transfer_size = TRANSFER_ZLP;
@@ -699,6 +699,7 @@ ep_in_send_done(struct endpoint_state *ep) {
 static void
 ep_in_send_data(struct endpoint_state *ep, const void *data, uint32_t size) {
     if (ep->dir_in != 1 || ep->transfer_size != ep->transferred || ep->in_flight != 0) {
+        fiprintf(stderr, "ep->dir_in = %u\nep->transfer_size = 0x%x\nep->transferred = 0x%x\nep->in_flight = 0x%x\n", ep->dir_in, ep->transfer_size, ep->transferred, ep->in_flight);
         BUG(0x73656e642034);    // 'send 4'
     }
     // Reset the DMA buffer to default.
@@ -709,8 +710,8 @@ ep_in_send_data(struct endpoint_state *ep, const void *data, uint32_t size) {
     // be the xfer_dma_data buffer, in which case we're doing direct DMA.
     ep->transfer_data = (uint8_t *) data;
     ep->transfer_size = (size == 0 ? TRANSFER_ZLP : size);
-	ep->transferred = 0;
-	ep_in_send(ep);
+    ep->transferred = 0;
+    ep_in_send(ep);
 }
 
 // ---- Low-level transfer API for OUT endpoints --------------------------------------------------
@@ -922,7 +923,7 @@ ep_out_recv_data_common(struct endpoint_state *ep, void *data, uint32_t size) {
 static void
 ep_out_recv_data(struct endpoint_state *ep, void *data, uint32_t size) {
     if (ep->dir_in != 0 || ep->in_flight != 0 || data == NULL) {
-        BUG(0x73656e642034);    // 'recv 4'
+        BUG(0x726563762034);    // 'recv 4'
 	}
 
     // Reset the DMA buffer to default.
@@ -1248,6 +1249,7 @@ ep0_begin_data_in_stage(const void *data, uint32_t size, void (*callback)(void))
         BUG(0x64696e32626967);    // 'din2big'
     }
     memcpy(ep0_in.default_xfer_dma_data, data, size);
+    ep0_in.transfer_max = size == ep0.setup_packet.wLength ? 1 : 0;
     ep_in_send_data(&ep0_in, ep0_in.default_xfer_dma_data, size);
 }
 
@@ -1769,6 +1771,10 @@ void usb_bringup() {
 }
 
 void usb_init() {
+    char *srnm = NULL;
+    asprintf(&srnm, "CPID:%04X BDID:%02X ECID:%016llX SRTG:[%s]", socnum, dt_get_u32_prop("/device-tree/chosen", "board-id"), dt_get_u64_prop("/device-tree/chosen", "unique-chip-id"), "PongoOS-" PONGO_VERSION);
+    string_descriptors[iSerialNumber] = srnm;
+
     gSynopsysOTGBase = 0;
     uint32_t sz = 0;
     uint64_t *reg = dt_get_prop("otgphyctrl", "reg", &sz);
