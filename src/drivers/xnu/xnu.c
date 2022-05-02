@@ -436,14 +436,14 @@ static bool has_been_rebased(void) {
     //
     // 1. New-style kernels rebase themselves, so this is always false.
     // 2. Old-style kernels on a live device will always have been rebased.
-    // 3. Old-style kernels on kpf-test will not have been rebase, but we use a slide of 0x0 there
+    // 3. Old-style kernels on kpf-test will not have been rebased, but we use a slide of 0x0 there
     //    and the pointers are valid by themselves, so they can be treated as correctly rebased.
     //
     if(rebase_status == -1)
     {
         struct segment_command_64 *seg = macho_get_segment(xnu_header(), "__TEXT");
         struct section_64 *sec = seg ? macho_get_section(seg, "__thread_starts") : NULL;
-        rebase_status = sec->size == 0 ? 1 : 0;
+        rebase_status = (!sec || sec->size == 0) ? 1 : 0;
     }
 
     return rebase_status == 1;
