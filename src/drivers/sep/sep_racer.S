@@ -35,8 +35,6 @@ _sep_racer:
     stp x26, x27, [sp, #0x40]
     stp x28, x19, [sp, #0x50]
 
-    msr daifset, #0xf
-
     mov x20, x0
     mov x21, x1
     ldr x24, [x2] // fetch b0 null

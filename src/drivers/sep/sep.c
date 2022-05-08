@@ -833,9 +833,7 @@ void seprom_fwload_race() {
     msg.msg.opcode = 6;
     msg.msg.param = 0;
     msg.msg.data = vatophys((uint64_t)sep_image) >> 12ULL;
-    wdt_disable();
     do_sep_racer(image_victim, tz0_shc, (void*)b0, (void*)bs, replay_layout, range_size*2, replay_shc, (void*)shared_value, msg.val);
-    wdt_enable();
 
     if (sep_has_panicked) {
         fiprintf(stderr, "sep race failed: seprom panic\n");
