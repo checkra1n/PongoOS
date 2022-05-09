@@ -25,8 +25,8 @@
  *
  */
 
-#ifndef RECFG_SOC
-#define RECFG_SOC
+#ifndef RECFG_SOC_PRIVATE_H
+#define RECFG_SOC_PRIVATE_H
 
 #ifdef PONGO_PRIVATE
 

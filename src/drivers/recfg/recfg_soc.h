@@ -25,8 +25,8 @@
  *
  */
 
-#ifndef RECFG_SOC
-#define RECFG_SOC
+#ifndef RECFG_SOC_H
+#define RECFG_SOC_H
 
 void recfg_soc_sync(void);
 void recfg_soc_lock(void);
