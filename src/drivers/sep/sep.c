@@ -26,6 +26,7 @@
  */
 #include <pongo.h>
 #include <img4/img4.h>
+#include <fuse/fuse.h>
 #include <recfg/recfg_soc.h>
 
 #define IRQ_T8015_SEP_INBOX_NOT_EMPTY 0x79
@@ -341,6 +342,7 @@ static bool seprom_config_integrity_tree(bool sync) {
     return true;
 }
 void seprom_boot_tz0() {
+    fuse_lock();
     // This needs disable_interrupts after
     if(!seprom_config_integrity_tree(true)) return;
     disable_interrupts();
@@ -348,6 +350,7 @@ void seprom_boot_tz0() {
     event_wait_asserted(&sep_done_tz0_event);
 }
 void seprom_boot_tz0_async() {
+    fuse_lock();
     // This needs disable_interrupts first
     disable_interrupts();
     if(seprom_config_integrity_tree(false))

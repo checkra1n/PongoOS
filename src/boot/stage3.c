@@ -36,6 +36,7 @@ extern _Noreturn void main(void* boot_image, void* boot_args);
 void iorvbar_yeet(volatile void *boot_image) __asm__("iorvbar_yeet");
 void aes_keygen(volatile void *boot_image) __asm__("aes_keygen");
 void recfg_yoink(volatile void *boot_image) __asm__("recfg_yoink");
+void fuse_jump(volatile void *boot_image) __asm__("fuse_jump");
 
 extern uint8_t need_to_release_L3_SRAM;
 
@@ -83,6 +84,7 @@ void patch_bootloader(void* boot_image)
     {
         recfg_yoink(boot_image);
     }
+    fuse_jump(boot_image);
 }
 
 /* BSS is cleaned on _start, so we cannot rely on it. */

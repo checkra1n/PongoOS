@@ -426,3 +426,79 @@ Lul:
     ret
 
 #endif
+
+
+// void fuse_jump(volatile void *boot_image)
+
+/*
+We already coerce the ROM into leaving the fuse array unlocked and patch iBootStage1 to skip the check,
+but nonetheless both iBootStage1 and iBootStage2 very stubbornly lock the fuse array again.
+
++------------------------+
+| movk x8, 0x...         |
+| ldr w9, [x8]           |
+| orr w9, w9, 0x80000000 |
+| str w9, [x8]           |
+| {dsb sy | ret}         |
++------------------------+
+
+In r2:
+
+/x 080080f2090140b929010132090100b9c0035fd6:1f0080ffffffffffffffffffffffffffffffffff
+/x 080080f2090140b929010132090100b99f3f03d5:1f0080ffffffffffffffffffffffffffffffffff
+
+We search for the pattern, then seek backwards for a "cbz w0, ..." with positive offset. If we find none
+within a short range, we skip this match, otherwise we replace that instruction with an unconditional branch.
+
+*/
+
+sym fuse_jump
+    mov x2, x0 // instr
+    mov w3, 0xb9400000 // ldr w9, [x8]
+    movk w3, 0x0109
+    mov w4, 0x32010000 // orr w9, w9, 0x80000000
+    movk w4, 0x0129
+    mov w5, 0xb9000000 // str w9, [x8]
+    movk w5, 0x0109
+    mov w6, 0xd5030000 // dsb sy
+    movk w6, 0x3f9f
+    mov w7, 0xd65f0000 // ret
+    movk w7, 0x03c0
+    mov w8, 0xf2800000 // movk x8, ...
+    movk w8, 0x0008
+    mov w9, 0x34000000 // cbz w0, ... (forward)
+    // Search for pattern
+1:
+    ldp w10, w11, [x2, 0x4]!
+    cmp w10, w3
+    ccmp w11, w4, 0, eq
+    b.ne 1b
+    ldp w10, w11, [x2, 0x8]
+    cmp w11, w6
+    ccmp w11, w7, 4, ne
+    ccmp w10, w5, 0, eq
+    b.ne 1b
+    ldr w10, [x2, -0x4]
+    and w10, w10, 0xff80001f
+    cmp w10, w8
+    b.ne 1b
+
+    // Search for preceding "cbz w0"
+    sub x10, x2, 0x4
+    sub x11, x10, 0x18
+2:
+    ldr w12, [x10, -0x4]!
+    and w13, w12, 0xff80001f
+    cmp w13, w9
+    b.eq 3f
+    cmp x10, x11
+    b.hi 2b
+    b 1b
+
+    // Turn the branch unconditional
+3:
+    sbfx w12, w12, 5, 19
+    mov w8, 0x14000000 // b
+    bfi w8, w12, 0, 26
+    str w8, [x10]
+    ret
