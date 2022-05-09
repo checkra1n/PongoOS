@@ -451,6 +451,7 @@ static void FoundDevice(void *refCon, io_iterator_t it)
     next:;
         if(stuff->dev)
         {
+            (*stuff->dev)->USBDeviceClose(stuff->dev);
             (*stuff->dev)->Release(stuff->dev);
             stuff->dev = NULL;
         }
@@ -473,6 +474,7 @@ static void LostDevice(void *refCon, io_iterator_t it)
             stuff->regID = 0;
             (*stuff->handle)->USBInterfaceClose(stuff->handle);
             (*stuff->handle)->Release(stuff->handle);
+            (*stuff->dev)->USBDeviceClose(stuff->dev);
             (*stuff->dev)->Release(stuff->dev);
         }
     }
