@@ -1750,13 +1750,23 @@ void usb_bringup() {
     clock_gate(reg1, 1);
     clock_gate(reg2, 1);
     clock_gate(reg3, 1);
-    // t8011 is really just cursed...
-    if (socnum == 0x8011) {
-        *(volatile uint32_t*)(gSynopsysComplexBase + 0x00) = 1;
-        *(volatile uint32_t*)(gSynopsysComplexBase + 0x24) = 0x3000088;
-    } else {
-        *(volatile uint32_t*)(gSynopsysComplexBase + 0x1c) = 0x108;
-        *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
+    // A10X and A11 are cursed, but ofc not in the same way
+    switch(socnum)
+    {
+        case 0x8011:
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x00) = 1;
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x24) = 0x3000088;
+            break;
+
+        case 0x8015:
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x00) = 1;
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x48) = 0x3000088;
+            break;
+
+        default:
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x1c) = 0x108;
+            *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
+            break;
     }
     *(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = dt_get_u32_prop("otgphyctrl", "cfg0-device");
     *(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = dt_get_u32_prop("otgphyctrl", "cfg1-device");
