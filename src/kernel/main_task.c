@@ -26,7 +26,6 @@
  */
 #include <pongo.h>
 #include <aes/aes_private.h>
-#include <fuse/fuse_private.h>
 #include <recfg/recfg_soc_private.h>
 
 void shell_main();
@@ -75,9 +74,6 @@ void pongo_main_task() {
 
     // Relieve WDT of its duty
     wdt_disable();
-
-    // Fuses
-    fuse_init();
 
     // Recfg stuff
     recfg_soc_setup();

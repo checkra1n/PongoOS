@@ -25,6 +25,7 @@
  *
  */
 #include <pongo.h>
+#include <fuse/fuse_private.h>
 #include <recfg/recfg_soc.h>
 
 boot_args *gBootArgs;
@@ -116,6 +117,10 @@ out:
 
 */
 
+extern void _task_set_current(struct task* t);
+extern struct vm_space kernel_vm_space;
+extern void _task_switch_asserted(struct task* new);
+
 char soc_name[9] = {};
 uint32_t socnum = 0x0;
 void (*sep_boot_hook)(void);
@@ -155,14 +160,11 @@ __attribute__((noinline)) void pongo_entry_cached()
         }
     }
 
-    /*
-        Set up IRQ handling
-    */
+    // Do fuse init as early as possible
+    fuse_init();
 
+    // Set up IRQ handling
     pongo_reinstall_vbar();
-
-
-    extern void _task_set_current(struct task* t);
 
     task_alloc_fast_stacks(&sched_task);
 
@@ -172,17 +174,10 @@ __attribute__((noinline)) void pongo_entry_cached()
 
     vm_init();
 
-    /*
-        Draw logo and set up framebuffer
-    */
-
+    // Draw logo and set up framebuffer
     screen_init();
 
-    /*
-        Set up main task for scheduling
-    */
-
-    extern struct vm_space kernel_vm_space;
+    // Set up main task for scheduling
     task_current()->vm_space = &kernel_vm_space;
     task_current()->cpsr = 0x205;
     task_current()->ttbr0 = kernel_vm_space.ttbr0;
@@ -193,18 +188,11 @@ __attribute__((noinline)) void pongo_entry_cached()
     void pongo_main_task();
     task_register(&pongo_task, pongo_main_task);
 
-    /*
-        Set up FIQ timer
-    */
-
+    // Set up FIQ timer
     preemption_over = 0;
-
     enable_interrupts();
-
     timer_init();
     timer_rearm();
-
-    extern void _task_switch_asserted(struct task* new);
 
     char has_been_preempted = 0;
     while (!gBootFlag) {
@@ -288,7 +276,9 @@ __attribute__((noinline)) void pongo_entry_cached()
     Description: entry point in llktrw
 
 */
-_Noreturn void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t tramp, uint64_t original_image);
+extern void set_exception_stack_core0();
+extern void lowlevel_set_identity(void);
+extern _Noreturn void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t tramp, uint64_t original_image);
 extern uint64_t gPongoSlide;
 
 _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point, void *trampoline))
@@ -297,10 +287,8 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
     gEntryPoint = entryp;
     lowlevel_setup(gBootArgs->physBase & 0x7ffffffff, gBootArgs->memSize);
     rebase_pc(gPongoSlide);
-    extern void set_exception_stack_core0();
     set_exception_stack_core0();
     pongo_entry_cached();
-    extern void lowlevel_set_identity(void);
     lowlevel_set_identity();
     rebase_pc(-gPongoSlide);
     set_exception_stack_core0();
