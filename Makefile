@@ -72,14 +72,16 @@ ifdef EMBEDDED_LLVM_BINDIR
 #   EMBEDDED_LD             ?= $(EMBEDDED_LLVM_BINDIR)/ld64.lld
 endif
 
+CLANG                       ?= clang
+
 ifeq ($(HOST_OS),Darwin)
-    CC                      ?= clang
+    CC                      ?= $(CLANG)
     EMBEDDED_CC             ?= xcrun -sdk iphoneos clang
     STAT                    ?= stat -L -f %z
 else
 ifeq ($(HOST_OS),Linux)
-    CC                      ?= gcc
-    EMBEDDED_CC             ?= clang
+    CC                      ?= $(CLANG)
+    EMBEDDED_CC             ?= $(CLANG)
 #   EMBEDDED_LD             ?= lld
 ifndef EMBEDDED_LD
     EMBEDDED_LD             := $(shell which ld64)
