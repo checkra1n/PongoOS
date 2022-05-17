@@ -409,6 +409,7 @@ extern struct task* task_current();
 extern char preemption_should_skip_beat();
 extern void task_switch_irq(struct task* to_task);
 extern void task_exit_irq();
+extern void task_exit_irq_asserted();
 extern void task_switch(struct task* to_task);
 extern void task_link(struct task* to_task);
 extern void task_unlink(struct task* to_task);

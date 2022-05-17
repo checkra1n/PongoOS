@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2022 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <errno.h>
 #include <stdlib.h>
@@ -44,14 +44,14 @@ void task_assert_unlinked(struct task* task) {
     return;
 }
 
-void task_suspend_self() {
-    disable_interrupts();
-    task_unlink(task_current());
-    task_yield_asserted();
-}
 void task_suspend_self_asserted() {
     task_unlink(task_current());
     task_yield_asserted();
+}
+
+void task_suspend_self() {
+    disable_interrupts();
+    task_suspend_self_asserted();
 }
 
 volatile uint32_t task_timer_ctr;
@@ -329,7 +329,7 @@ void task_exit_asserted() {
         if (task_current()->flags & TASK_HAS_CRASHED) {
             panic("irq handler crashed!");
         } else {
-            panic("irq handler exited! please use task_irq_exit!");
+            panic("irq handler exited! please use task_exit_irq!");
         }
     }
     task_current()->flags |= TASK_HAS_EXITED;
@@ -375,10 +375,10 @@ void task_fault_stack(struct task* task) {
     if (!task->user_stack) {
         uint64_t addr = 0;
         if (vm_allocate(task->vm_space, &addr, 0x40000, VM_FLAGS_ANYWHERE) != KERN_SUCCESS) panic("task_register_unlinked: couldn't allocate stack");
-        
+
         vm_space_map_page_physical_prot(task->vm_space, addr, 0, 0); // place guard page
         vm_space_map_page_physical_prot(task->vm_space, addr+0x3c000, 0, 0); // place guard page
-        
+
         task->user_stack = addr;
         task->entry_stack = addr + 0x37800;
     }
@@ -391,19 +391,19 @@ void task_entry() {
     if (!task->entry_stack) {
         panic("task_entry: no stack");
     }
-    
+
     if (task->vm_space == &kernel_vm_space) {
         task->cpsr = 0x4; // EL1 SP0
-        
+
         void (*entry)() = (void*)task->entry;
         task_entry_j(entry, task->entry_stack, task_exit, task->cpsr);
     } else {
         task->cpsr = 0; // EL0
-        
+
         void (*entry)() = (void*)task->entry;
         task_entry_j(entry, task->entry_stack, 0, task->cpsr);
     }
-    
+
     panic("unreachable");
 }
 volatile uint32_t gPid = 1;
@@ -414,7 +414,7 @@ void* kernel_stack_allocate_new() {
     uint64_t stack_size = KERN_STACK_SIZE + 2 * PAGE_SIZE;
     uint64_t phys_backing = alloc_phys(KERN_STACK_SIZE);
     uint64_t vma_backing = linear_kvm_alloc(stack_size);
-    
+
     vm_space_map_page_physical_prot(&kernel_vm_space, vma_backing, 0, 0); // guard page
     for (uint64_t offset = 0; offset < stack_size - PAGE_SIZE * 2; offset += PAGE_SIZE) {
         vm_space_map_page_physical_prot(&kernel_vm_space, vma_backing + PAGE_SIZE + offset, phys_backing + offset, PROT_READ|PROT_WRITE|PROT_KERN_ONLY);
@@ -496,7 +496,7 @@ void task_register_unlinked(struct task* task, void (*entry)()) {
         task->proc = task_current()->proc;
         proc_reference(task->proc);
     }
-    
+
     task->refcount = TASK_REFCOUNT_GLOBAL;
     task_set_entry(task);
     task->entry = (uint64_t)entry;
@@ -559,12 +559,12 @@ struct task* task_create_extended(const char* name, void (*entry)(), int task_ty
         proc = (struct proc*) arg;
         arg = 0;
     }
-    
+
     task_type &= TASK_TYPE_MASK;
 
     struct task* task = malloc(sizeof(struct task));
     bzero((void*) task, sizeof(struct task));
-    
+
     proc_reference(proc);
     task->proc = proc;
     task_register_unlinked(task, entry);
@@ -580,7 +580,7 @@ struct task* task_create_extended(const char* name, void (*entry)(), int task_ty
         }
         task_spawn(task);
     }
-    
+
     if ((task_type & TASK_IRQ_HANDLER) && arg) { /* register as IRQ handler */
         disable_interrupts();
         register_irq_handler(arg, task);
@@ -637,24 +637,40 @@ void task_release(struct task* task) {
     }
 }
 
+void task_exit_irq_asserted()
+{
+    struct task *task = task_current();
+    if (!(task->flags & TASK_PREEMPT))
+        panic("task_exit_irq_asserted must only be invoked from preemptive tasks handlers");
+    if (!(task->flags & TASK_IRQ_HANDLER))
+        return task_yield_asserted();
+    if (!(task->flags & TASK_LINKED))
+        panic("task_exit_irq on unlinked preempt irq handler?");
+    task_unlink(task);
+    if (task->flags & TASK_MASK_NEXT_IRQ)
+        task->flags &= ~TASK_MASK_NEXT_IRQ;
+    else
+        unmask_interrupt(task->irq_type); // re-arm IRQ
+    if (dis_int_count != 1)
+        panic("irq handler yielded with interrupts held");
+    _task_switch_asserted(&sched_task);
+}
 
 void task_exit_irq()
 {
-    if (task_current()->flags & TASK_PREEMPT) {
+    struct task *task = task_current();
+    if (task->flags & TASK_PREEMPT) {
         disable_interrupts();
-        if (!(task_current()->flags & TASK_LINKED)) panic("task_exit_irq on unlinked preempt irq handler?");
-        task_unlink(task_current());
-        if (task_current()->flags & TASK_MASK_NEXT_IRQ) task_current()->flags &= ~TASK_MASK_NEXT_IRQ;
-        else unmask_interrupt(task_current()->irq_type); // re-arm IRQ
-        if (dis_int_count != 1) {
-            panic("irq handler yielded with interrupts held");
-        }
-        return _task_switch_asserted(&sched_task);
+        task_exit_irq_asserted();
+        return;
     }
-    if (!(task_current()->flags & TASK_IRQ_HANDLER))  return task_yield();
-    if (!task_current()->irq_ret) panic("task_exit_irq must be invoked from enabled irq context");
-    _task_switch(task_current()->irq_ret);
+    if (!(task->flags & TASK_IRQ_HANDLER))
+        return task_yield();
+    if (!task->irq_ret)
+        panic("task_exit_irq must be invoked from enabled irq context");
+    _task_switch(task->irq_ret);
 }
+
 extern uint64_t dis_int_count;
 void task_switch(struct task* new)
 {

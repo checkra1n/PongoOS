@@ -216,6 +216,9 @@ __attribute__((noinline)) void pongo_entry_cached()
         }
     }
 
+    // Release any potential sync USB listeners
+    event_fire(&command_handler_iter);
+
     timer_disable();
     usb_teardown();
     disable_interrupts();

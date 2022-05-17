@@ -1445,6 +1445,7 @@ usb_out_transfer_dma(uint8_t ep_addr, void *data, uint32_t dma, uint32_t size,
 // the last packet and an ack at the same time, and we now force it to take a retry. But I think
 // it's much simpler to use this API.
 
+static volatile bool usb_done = true;
 
 static void
 ep0_in_interrupt() {
@@ -1654,10 +1655,12 @@ ep0_out_interrupt() {
     if (doepint & 0x4) {
         BUG(0x616862206f7574); // 'ahb out'
     }
-    // We call ep_out_recv() after everything has been processed to ensure that in all cases
-    // we'll re-enable the endpoint. ep_out_recv() will only allow receiving OUT DATA if
-    // ep_out_recv_data() was called.
-    ep_out_recv(&ep0_out);
+    if (!usb_done) {
+        // We call ep_out_recv() after everything has been processed to ensure that in all cases
+        // we'll re-enable the endpoint. ep_out_recv() will only allow receiving OUT DATA if
+        // ep_out_recv_data() was called.
+        ep_out_recv(&ep0_out);
+    }
 }
 
 static void
@@ -1740,6 +1743,9 @@ usb_ep_interrupt() {
         ep2_out_interrupt();
     }
 }
+
+static void usb_reap();
+static struct event usb_done_ev;
 char usb_irq_mode;
 char usb_usbtask_handoff_mode;
 uint16_t usb_irq;
@@ -1773,9 +1779,9 @@ void usb_handler() {
 
 void usb_main_nonirq() {
     while (1) {
-        usb_handler();
         disable_interrupts();
-        if (usb_irq)
+        usb_handler();
+        if (usb_irq && !usb_done)
             unmask_interrupt(usb_irq);
         task_unlink(task_current());
         task_yield_asserted();
@@ -1785,19 +1791,25 @@ void usb_main_nonirq() {
 
 void usb_main() {
     while (1) {
+        disable_interrupts();
         if (usb_usbtask_handoff_mode && usb_irq_mode) {
-            if (usbtask_niq->flags & TASK_LINKED) panic("USB: spurious IRQ");
+            if (usbtask_niq->flags & TASK_LINKED)
+                panic("USB: spurious IRQ");
             task_link(usbtask_niq);
             task_current()->flags |= TASK_MASK_NEXT_IRQ;
         } else {
-            disable_interrupts();
             usb_handler();
-            enable_interrupts();
         }
-        if (usb_irq_mode)
-            task_exit_irq();
-        else
-            task_yield();
+        if (usb_done) {
+            usb_reap();
+            event_fire(&usb_done_ev);
+            task_suspend_self_asserted();
+        } else {
+            if (usb_irq_mode)
+                task_exit_irq_asserted();
+            else
+                task_yield_asserted();
+        }
     }
 }
 
@@ -1888,6 +1900,7 @@ void usb_init() {
     cache_clean_and_invalidate((void*)dma_page_v, 4 * DMA_BUFFER_SIZE);
 
     disable_interrupts();
+    usb_done = false;
     usb_irq_mode = 1;
     usb_usbtask_handoff_mode = 0;
     usb_bringup();
@@ -1940,8 +1953,26 @@ void usb_init() {
     enable_interrupts();
     command_register("synopsys", "prints a synopsysotg register dump", USB_DEBUG_PRINT_REGISTERS);
 }
-void usb_teardown() {
-    if (!gSynopsysOTGBase) return;
+
+static void usb_reap(void)
+{
+    if (usb_irq) {
+        mask_interrupt(usb_irq);
+        register_irq_handler(usb_irq, NULL);
+    }
     reg_write(rGAHBCFG, 0x2e);
     reg_or(rDCTL, 0x2);
+}
+
+void usb_teardown() {
+    if (!gSynopsysOTGBase)
+        return;
+    disable_interrupts();
+    usb_done = true;
+    if (usb_task.flags & TASK_LINKED) {
+        event_wait_asserted(&usb_done_ev);
+    } else {
+        usb_reap();
+        enable_interrupts();
+    }
 }
