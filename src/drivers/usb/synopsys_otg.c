@@ -19,6 +19,7 @@
 // limitations under the License.
 //
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <pongo.h>
 uint64_t gSynopsysBase;
@@ -149,6 +150,18 @@ struct device_descriptor device_descriptor = {
     .bNumConfigurations = 1,
 };
 
+struct device_qualifier_descriptor device_qualifier_descriptor = {
+    .bLength            = sizeof(struct device_qualifier_descriptor),
+    .bDescriptorType    = 6,
+    .bcdUSB             = 0x200,
+    .bDeviceClass       = 0,
+    .bDeviceSubClass    = 0,
+    .bDeviceProtocol    = 0,
+    .bMaxPacketSize0    = EP0_MAX_PACKET_SIZE,
+    .bNumConfigurations = 1,
+    .bReserved          = 0,
+};
+
 struct full_configuration_descriptor {
     struct configuration_descriptor configuration;
     struct interface_descriptor     interface;
@@ -156,11 +169,11 @@ struct full_configuration_descriptor {
     struct endpoint_descriptor      endpoint_02;
 } __attribute__((packed));
 
-struct full_configuration_descriptor configuration_descriptor = {
+struct full_configuration_descriptor fast_configuration_descriptor = {
     .configuration = {
-        .bLength                = sizeof(configuration_descriptor.configuration),
+        .bLength                = sizeof(fast_configuration_descriptor.configuration),
         .bDescriptorType        = 2,
-        .wTotalLength           = sizeof(configuration_descriptor),
+        .wTotalLength           = sizeof(fast_configuration_descriptor),
         .bNumInterfaces         = 1,
         .bConfigurationValue    = 1,
         .iConfiguration         = iProduct,
@@ -168,7 +181,7 @@ struct full_configuration_descriptor configuration_descriptor = {
         .bMaxPower              = 250,
     },
     .interface = {
-        .bLength                = sizeof(configuration_descriptor.interface),
+        .bLength                = sizeof(fast_configuration_descriptor.interface),
         .bDescriptorType        = 4,
         .bInterfaceNumber       = 0,
         .bAlternateSetting      = 0,
@@ -179,7 +192,7 @@ struct full_configuration_descriptor configuration_descriptor = {
         .iInterface             = 0,
     },
     .endpoint_81 = {
-        .bLength                = sizeof(configuration_descriptor.endpoint_81),
+        .bLength                = sizeof(fast_configuration_descriptor.endpoint_81),
         .bDescriptorType        = 5,
         .bEndpointAddress       = 0x81, // IN
         .bmAttributes           = 3,    // Interrupt
@@ -187,11 +200,51 @@ struct full_configuration_descriptor configuration_descriptor = {
         .bInterval              = 1,    // Poll every 125us
     },
     .endpoint_02 = {
-        .bLength                = sizeof(configuration_descriptor.endpoint_02),
+        .bLength                = sizeof(fast_configuration_descriptor.endpoint_02),
         .bDescriptorType        = 5,
         .bEndpointAddress       = 0x02, // OUT
         .bmAttributes           = 2,    // Bulk
         .wMaxPacketSize         = BULK_EP_MAX_PACKET_SIZE,
+        .bInterval              = 0,
+    },
+};
+
+struct full_configuration_descriptor slow_configuration_descriptor = {
+    .configuration = {
+        .bLength                = sizeof(slow_configuration_descriptor.configuration),
+        .bDescriptorType        = 2,
+        .wTotalLength           = sizeof(slow_configuration_descriptor),
+        .bNumInterfaces         = 1,
+        .bConfigurationValue    = 1,
+        .iConfiguration         = iProduct,
+        .bmAttributes           = 0x80,
+        .bMaxPower              = 250,
+    },
+    .interface = {
+        .bLength                = sizeof(slow_configuration_descriptor.interface),
+        .bDescriptorType        = 4,
+        .bInterfaceNumber       = 0,
+        .bAlternateSetting      = 0,
+        .bNumEndpoints          = 2,
+        .bInterfaceClass        = 0xfe,
+        .bInterfaceSubClass     = 0x13,
+        .bInterfaceProtocol     = 0x37,
+        .iInterface             = 0,
+    },
+    .endpoint_81 = {
+        .bLength                = sizeof(slow_configuration_descriptor.endpoint_81),
+        .bDescriptorType        = 5,
+        .bEndpointAddress       = 0x81, // IN
+        .bmAttributes           = 3,    // Interrupt
+        .wMaxPacketSize         = EP0_MAX_PACKET_SIZE, // Ghetto
+        .bInterval              = 1,    // Poll every 125us
+    },
+    .endpoint_02 = {
+        .bLength                = sizeof(slow_configuration_descriptor.endpoint_02),
+        .bDescriptorType        = 5,
+        .bEndpointAddress       = 0x02, // OUT
+        .bmAttributes           = 2,    // Bulk
+        .wMaxPacketSize         = EP0_MAX_PACKET_SIZE, // Ghetto
         .bInterval              = 0,
     },
 };
@@ -317,6 +370,7 @@ usb_write_commit() {
 // ---- The high-level USB API --------------------------------------------------------------------
 
 // USB functions needed by this level.
+static bool usb_is_high_speed(void);
 static void usb_set_address(uint8_t address);
 
 #define MAX_USB_DESCRIPTOR_LENGTH 127
@@ -352,6 +406,14 @@ get_string_descriptor(uint8_t index) {
     return true;
 }
 
+struct full_configuration_descriptor* get_configuration_descriptor(bool active)
+{
+    if(usb_is_high_speed() == active)
+        return &fast_configuration_descriptor;
+    else
+        return &slow_configuration_descriptor;
+}
+
 static bool
 ep0_get_descriptor_request(struct setup_packet *setup) {
     uint8_t type  = (uint8_t) (setup->wValue >> 8);
@@ -360,8 +422,13 @@ ep0_get_descriptor_request(struct setup_packet *setup) {
         case 1:   // Device descriptor
             ep0_begin_data_in_stage(&device_descriptor, sizeof(device_descriptor), NULL);
             return true;
-        case 2:   // Configuration descriptor
-            ep0_begin_data_in_stage(&configuration_descriptor, sizeof(configuration_descriptor), NULL);
+        case 2:;  // Configuration descriptor
+        case 7:;  // Other speed configuration descriptor
+            struct full_configuration_descriptor *desc = get_configuration_descriptor(type == 2);
+            ep0_begin_data_in_stage(desc, desc->configuration.wTotalLength, NULL);
+            return true;
+        case 6:   // Device qualifier descriptor
+            ep0_begin_data_in_stage(&device_qualifier_descriptor, sizeof(device_qualifier_descriptor), NULL);
             return true;
         case 3:   // String descriptor
             return get_string_descriptor(index);
@@ -380,10 +447,10 @@ ep0_standard_in_request(struct setup_packet *setup) {
         case 6:     // GET_DESCRIPTOR
             return ep0_get_descriptor_request(setup);
         case 8:     // GET_CONFIGURATION
-            ep0_begin_data_in_stage(&configuration_descriptor.configuration.bConfigurationValue, 1, NULL);
+            ep0_begin_data_in_stage(&get_configuration_descriptor(true)->configuration.bConfigurationValue, 1, NULL);
             return true;
         case 10:    // GET_INTERFACE
-            ep0_begin_data_in_stage(&configuration_descriptor.interface.bAlternateSetting, 1, NULL);
+            ep0_begin_data_in_stage(&get_configuration_descriptor(true)->interface.bAlternateSetting, 1, NULL);
             return true;
     }
     USB_DEBUG(USB_DEBUG_STANDARD, "Unhandled standard IN request %d", setup->bRequest);
@@ -1155,6 +1222,10 @@ ep_stall(struct endpoint_state *ep) {
     }
 }
 
+static bool
+usb_is_high_speed(void) {
+    return (reg_read(rDSTS) & 0x6) == 0;
+}
 __attribute__((used)) static void
 usb_set_address(uint8_t address) {
     USB_DEBUG(USB_DEBUG_FUNC, "Set address %u", address);
@@ -1188,12 +1259,6 @@ usb_reset() {
     reg_write(rDAINTMSK, 0);
     ep_out_activate(&ep0_out, 0, 0, EP0_MAX_PACKET_SIZE);
     ep_in_activate(&ep0_in, 0, 0, EP0_MAX_PACKET_SIZE, 0);
-    uint8_t ep_type = configuration_descriptor.endpoint_81.bmAttributes;
-    uint16_t ep_mps = configuration_descriptor.endpoint_81.wMaxPacketSize;
-    ep_in_activate(&ep1_in, 1, ep_type, ep_mps, 2);
-    ep_type = configuration_descriptor.endpoint_02.bmAttributes;
-    ep_mps = configuration_descriptor.endpoint_02.wMaxPacketSize;
-    ep_out_activate(&ep2_out, 2, ep_type, ep_mps);
     ep_out_recv(&ep0_out);
 }
 
@@ -1680,22 +1745,28 @@ char usb_usbtask_handoff_mode;
 uint16_t usb_irq;
 struct task* usbtask_niq;
 
+#define SUPPORTED_GINST 0xc3000
 void usb_handler() {
     uint32_t gintsts = 0;
     while (1) {
-        gintsts |= reg_read(rGINTSTS);
+        uint32_t val = reg_read(rGINTSTS);
+        reg_write(rGINTSTS, val & SUPPORTED_GINST);
+        gintsts |= val;
         if (gintsts & 0x1000) {
             usb_reset();
-            reg_write(rGINTSTS, 0x1000);
         }
-        if (gintsts & 0xC0000) {
+        if (gintsts & 0x2000) {
+            struct full_configuration_descriptor *desc = get_configuration_descriptor(true);
+            ep_in_activate(&ep1_in, 1, desc->endpoint_81.bmAttributes, desc->endpoint_81.wMaxPacketSize, 2);
+            ep_out_activate(&ep2_out, 2, desc->endpoint_02.bmAttributes, desc->endpoint_02.wMaxPacketSize);
+        }
+        if (gintsts & 0xc0000) {
             usb_ep_interrupt();
-            reg_write(rGINTSTS, 0xc0000);
         }
-        if (!(gintsts&0xc1000)) {
+        if (!(gintsts & SUPPORTED_GINST)) {
             break;
         } else {
-            gintsts &= ~0xc1000;
+            gintsts &= ~SUPPORTED_GINST;
         }
     }
 }

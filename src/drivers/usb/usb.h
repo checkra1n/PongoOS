@@ -69,6 +69,19 @@ struct device_descriptor {
     uint8_t  bNumConfigurations;
 } __attribute__((packed));
 
+struct device_qualifier_descriptor
+{
+    uint8_t bLength;
+    uint8_t bDescriptorType;
+    uint16_t bcdUSB;
+    uint8_t bDeviceClass;
+    uint8_t bDeviceSubClass;
+    uint8_t bDeviceProtocol;
+    uint8_t bMaxPacketSize0;
+    uint8_t bNumConfigurations;
+    uint8_t bReserved;
+} __attribute__((packed));
+
 struct configuration_descriptor {
     uint8_t  bLength;
     uint8_t  bDescriptorType;
@@ -110,13 +123,13 @@ struct string_descriptor {
 // ---- USB configuration -------------------------------------------------------------------------
 
 // The maximum packet size for EP 0 is 64 bytes.
-#define EP0_MAX_PACKET_SIZE	64
+#define EP0_MAX_PACKET_SIZE     64
 
 // The maximum packet size for Interrupt endpoints is 1024 bytes.
-#define INTR_EP_MAX_PACKET_SIZE    1024
+#define INTR_EP_MAX_PACKET_SIZE 1024
 
 // The maximum packet size for Bulk endpoints is 512 bytes.
-#define BULK_EP_MAX_PACKET_SIZE    512
+#define BULK_EP_MAX_PACKET_SIZE 512
 
 enum {
     /* 0 is reserved */
