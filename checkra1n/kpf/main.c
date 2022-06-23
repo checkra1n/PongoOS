@@ -305,32 +305,60 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
     uint32_t * const orig = opcode_stream;
     uint32_t lr1 = opcode_stream[0],
              lr2 = opcode_stream[2];
-    // step 2
-    // this makes sure that the register used in the first ldr;tbz is the same and the register in the second one is also the same
-    // it makes also sure that both lr offsets are the same
+    // Step 2
+    // Make sure that the registers used in tbz are the ones actually
+    // loaded by ldr, and that both ldr's use the same offset.
     if((lr1 & 0x1f) != (opcode_stream[1] & 0x1f) || (lr2 & 0x1f) != (opcode_stream[3] & 0x1f) || (lr1 & 0x3ffc00) != (lr2 & 0x3ffc00))
     {
         panic_at(orig, "kpf_conversion_callback: opcode check failed");
     }
     puts("KPF: Found task_conversion_eval");
 
-    // step 3
-    // this will then backwards search for this: if (caller == victim) {
-    // if the caller is the victim it will always return SUCCESS and so we patch that to always be true and then it will always return SUCCESS
-    // for that we first get both of the regs that are used in both of the ldrs (should point to caller and victim)
-    // then we look for a cmp where both of them are used
-    // this also does some basic flow analysis where it will detect moves that move caller and victim around
-    // and we have to check that it is followed by either a ccmp or a b.eq/b.ne, to make sure we got the right one in case there are multiple
+    // Step 3
+    // Search backwards for the check "caller == victim".
+    // If this is the case, then XNU always allows conversion, so we patch that to always be true.
+    // Since this function can be inlined in a lot of different places, our search needs to be quite resilient.
+    // Therefore, we start by noting which registers our ldr's above load, and keep track of which registers
+    // are moved to which other registers while going backwards, since the check will almost certainly use
+    // different registers. We also search for this instruction pattern:
+    //
+    // cmp xN, xM
+    // ccmp xR, xT, {0|4}, ne   -- (optional)
+    // ubfm ...                 -- (optional)
+    // adrp ...                 -- (optional)
+    // b.{eq|ne} ...
+    //
+    // Where either the cmp or ccmp registers must correspond to ours.
+    // We simply patch the first check to always succeed.
     uint32_t regs = (1 << ((lr1 >> 5) & 0x1f)) | (1 << ((lr2 >> 5) & 0x1f));
     for(size_t i = 0; i < 128; ++i) // arbitrary limit
     {
         uint32_t op = *--opcode_stream;
-        if((op & 0xffe0fc1f) == 0xeb00001f && (regs & (1 << ((op >> 5) & 0x1f))) != 0 && (regs & (1 << ((op >> 16) & 0x1f))) != 0) // cmp xN, xM
+        if((op & 0xffe0fc1f) == 0xeb00001f) // cmp xN, xM
         {
-            uint32_t next = opcode_stream[1];
-            if(
-                (next & 0xffe0fc10) == 0xfa401000 || // ccmp x*, x*, ?, ne
-                (next & 0xff00001e) == 0x54000000    // b.eq or b.ne
+            uint32_t n1 = opcode_stream[1],
+                     n2 = opcode_stream[2];
+            size_t idx = 2;
+            if((n2 & 0x7f800000) == 0x53000000) // ubfm
+            {
+                n2 = opcode_stream[++idx];
+            }
+            if((n2 & 0x9f000000) == 0x90000000) // adrp
+            {
+                n2 = opcode_stream[++idx];
+            }
+            if
+            (
+                // Simple case: just cmp + b.{eq|ne}
+                (((n1 & 0xff00001e) == 0x54000000) && ((regs & (1 << ((op >> 5) & 0x1f))) != 0 && (regs & (1 << ((op >> 16) & 0x1f))) != 0)) ||
+                // Complex case: cmp + ccmp + b.{eq|ne}
+                (
+                    (n1 & 0xffe0fc1b) == 0xfa401000 && (n2 & 0xff00001e) == 0x54000000 &&
+                    (
+                        ((regs & (1 << ((op >> 5) & 0x1f))) != 0 && (regs & (1 << ((op >> 16) & 0x1f))) != 0) ||
+                        ((regs & (1 << ((n1 >> 5) & 0x1f))) != 0 && (regs & (1 << ((n1 >> 16) & 0x1f))) != 0)
+                    )
+                )
             )
             {
                 *opcode_stream = 0xeb1f03ff; // cmp xzr, xzr
