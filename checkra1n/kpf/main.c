@@ -1287,7 +1287,7 @@ bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     *f_apfs_privcheck = 0xeb00001f; // cmp x0, x0
     return true;
 }
-void kpf_apfs_patches(xnu_pf_patchset_t* patchset) {
+void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
     // we also want to call it so we patch that check out
     // example from i7 13.3:
@@ -1319,29 +1319,32 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset) {
         0xff000000,
     };
     xnu_pf_maskmatch(patchset, "apfs_patch_mount", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_mount);
-    // the rename function will prevent us from renaming a snapshot that's on the rootfs, so we will just patch that check out
-    // example from i7 13.3
-    // 0xfffffff0068f3d58      e02f00f9       str x0, [sp, 0x58]
-    // 0xfffffff0068f3d5c      e01f00f9       str x0, [sp, 0x38]
-    // 0xfffffff0068f3d60      08c44039       ldrb w8, [x0, 0x31] ; [0x31:4]=
-    // 0xfffffff0068f3d64      68043037       tbnz w8, 6, 0xfffffff0068f3df0 <- patch this out
-    // Since iOS 15, the "str" can also be "stur", so we mask out one of the upper bits to catch both,
-    // and we apply a mask of 0x1d to the base register, to catch exactly x29 and sp.
-    // r2 cmd:
-    // /x a00300f8a00300f80000403900003037:a003c0fea003c0fe0000feff0000f8ff
-    uint64_t i_matches[] = {
-        0xf80003a0, // st(u)r x*, [x29/sp, *]
-        0xf80003a0, // st(u)r x*, [x29/sp, *]
-        0x39400000, // ldrb w*, [x*]
-        0x37300000, // tbnz w*, 6, *
-    };
-    uint64_t i_masks[] = {
-        0xfec003a0,
-        0xfec003a0,
-        0xfffe0000,
-        0xfff80000,
-    };
-    xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
+    if(have_union)
+    {
+        // the rename function will prevent us from renaming a snapshot that's on the rootfs, so we will just patch that check out
+        // example from i7 13.3
+        // 0xfffffff0068f3d58      e02f00f9       str x0, [sp, 0x58]
+        // 0xfffffff0068f3d5c      e01f00f9       str x0, [sp, 0x38]
+        // 0xfffffff0068f3d60      08c44039       ldrb w8, [x0, 0x31] ; [0x31:4]=
+        // 0xfffffff0068f3d64      68043037       tbnz w8, 6, 0xfffffff0068f3df0 <- patch this out
+        // Since iOS 15, the "str" can also be "stur", so we mask out one of the upper bits to catch both,
+        // and we apply a mask of 0x1d to the base register, to catch exactly x29 and sp.
+        // r2 cmd:
+        // /x a00300f8a00300f80000403900003037:a003c0fea003c0fe0000feff0000f8ff
+        uint64_t i_matches[] = {
+            0xf80003a0, // st(u)r x*, [x29/sp, *]
+            0xf80003a0, // st(u)r x*, [x29/sp, *]
+            0x39400000, // ldrb w*, [x*]
+            0x37300000, // tbnz w*, 6, *
+        };
+        uint64_t i_masks[] = {
+            0xfec003a0,
+            0xfec003a0,
+            0xfffe0000,
+            0xfff80000,
+        };
+        xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
+    }
 }
 uint32_t* amfi_ret;
 bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
@@ -1848,16 +1851,24 @@ void command_kpf() {
     xnu_pf_range_t* apfs_text_exec_range = xnu_pf_section(apfs_header, "__TEXT_EXEC", "__text");
     xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
 
+    const char kmap_port_string[] = "userspace has control access to a"; // iOS 14 had broken panic strings
+    const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, strlen(kmap_port_string));
+    const char rootvp_string[] = "rootvp not authenticated after mounting";
+    const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, strlen(rootvp_string));
     const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, strlen(livefs_string)) : NULL;
     if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, strlen(livefs_string));
 
 #if DEV_BUILD
+    // 14.0 beta 2 onwards
+    if((kmap_port_string_match != NULL) != (kernelVersion.xnuMajor > 7090)) panic("convert_to_port panic doesn't match expected XNU version");
+    // 15.0 beta 1 onwards
+    if((rootvp_string_match != NULL) != (kernelVersion.darwinMajor >= 21)) panic("rootvp_auth panic doesn't match expected Darwin version");
     // 15.0 beta 1 onwards, but only iOS/iPadOS
     if((livefs_string_match != NULL) != (kernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
 #endif
 
-    kpf_apfs_patches(apfs_patchset);
+    kpf_apfs_patches(apfs_patchset, rootvp_string_match == NULL);
     if(livefs_string_match)
     {
         kpf_root_livefs_patch(apfs_patchset);
@@ -1934,18 +1945,6 @@ void command_kpf() {
         xnu_pf_apply(plk_data_const_range, xnu_plk_data_const_patchset);
         xnu_pf_patchset_destroy(xnu_plk_data_const_patchset);
     }
-
-    const char kmap_port_string[] = "userspace has control access to a"; // iOS 14 had broken panic strings
-    const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, strlen(kmap_port_string));
-    const char rootvp_string[] = "rootvp not authenticated after mounting";
-    const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, strlen(rootvp_string));
-
-#if DEV_BUILD
-    // 14.0 beta 2 onwards
-    if((kmap_port_string_match != NULL) != (kernelVersion.xnuMajor > 7090)) panic("convert_to_port panic doesn't match expected XNU version");
-    // 15.0 beta 1 onwards
-    if((rootvp_string_match != NULL) != (kernelVersion.darwinMajor >= 21)) panic("rootvp_auth panic doesn't match expected Darwin version");
-#endif
 
     kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_amfi_patch(xnu_text_exec_patchset);
