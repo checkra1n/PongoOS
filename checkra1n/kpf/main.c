@@ -1864,22 +1864,29 @@ bool shared_region_root_dir_callback(struct xnu_pf_patch *patch, uint32_t *opcod
     uint32_t *ldr1 = find_next_insn(cmp + 2, 120, 0xf9406c00, 0xfffffc00); // ldr xN, [xM, 0xd8]
     if(!ldr1 || ((*ldr1 >> 5) & 0x1f) == 0x1f) // no stack loads
     {
-        panic("shared_region_root_dir: Failed to find ldr1");
+        panic_at(cmp, "shared_region_root_dir: Failed to find ldr1");
     }
     uint32_t *ldr2 = find_next_insn(ldr1 + 1, 2, 0xf9406c00, 0xfffffc00); // ldr xN, [xM, 0xd8]
     if(!ldr2 || ((*ldr2 >> 5) & 0x1f) == 0x1f) // no stack loads
     {
-        panic("shared_region_root_dir: Failed to find ldr2");
+        panic_at(ldr1, "shared_region_root_dir: Failed to find ldr2");
     }
+    size_t idx = 2;
     uint32_t reg1 = (*ldr1 & 0x1f),
-             reg2 = (*ldr2 & 0x1f);
-    if(ldr2[1] != (0xeb00001f | (reg1 << 16) | (reg2 << 5)) && ldr2[1] != (0xeb00001f | (reg1 << 5) | (reg2 << 16)))
+             reg2 = (*ldr2 & 0x1f),
+             cmp2 = ldr2[1],
+             bcnd = ldr2[idx];
+    if(cmp2 != (0xeb00001f | (reg1 << 16) | (reg2 << 5)) && cmp2 != (0xeb00001f | (reg1 << 5) | (reg2 << 16)))
     {
-        panic("shared_region_root_dir: Bad cmp");
+        panic_at(ldr2 + 1, "shared_region_root_dir: Bad cmp");
     }
-    if((ldr2[2] & 0xff00001e) != 0x54000000) // Mask out lowest bit to catch both b.eq and b.ne
+    if((bcnd & 0xbfc003f0) == 0xb94003f0) // ldr x{16-31}, [sp, ...]
     {
-        panic("shared_region_root_dir: Bad b.cond");
+        bcnd = ldr2[++idx];
+    }
+    if((bcnd & 0xff00001e) != 0x54000000) // Mask out lowest bit to catch both b.eq and b.ne
+    {
+        panic_at(ldr2 + idx, "shared_region_root_dir: Bad b.cond");
     }
     ldr2[1] = 0xeb00001f; // cmp x0, x0
     found_shared_region_root_dir = true;
