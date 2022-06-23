@@ -1237,16 +1237,75 @@ void kpf_find_shellcode_funcs(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     xnu_pf_maskmatch(xnu_text_exec_patchset, "ret0_gadget", iiii_matches, iiii_masks, sizeof(iiii_masks)/sizeof(uint64_t), true, (void*)ret0_gadget_callback);
 }
 
-uint64_t traps_mask[] = { 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0, 0, 0xffffffffffffffff };
-uint64_t traps_match[] = { 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000004, 0, 0, 0x0000000000000005 };
-bool mach_traps_callback(struct xnu_pf_patch* patch, uint64_t* mach_traps) {
+static bool found_mach_traps = false;
+uint64_t traps_mask[] =
+{
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0x0000000000000000, 0xffffffffffffffff,
+};
+uint64_t traps_match[] =
+{
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000, 0x0000000000000000,
+    0x0000000000000004, 0, 0x0000000000000000, 0x0000000000000005,
+};
+uint64_t traps_mask_alt[] =
+{
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0xffffffffffffffff,
+    0xffffffffffffffff, 0, 0x0000000000000000,
+};
+uint64_t traps_match_alt[] =
+{
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000000, 0, 0x0000000000000000,
+    0x0000000000000504, 0, 0x0000000000000000,
+};
+bool mach_traps_common(uint64_t tfp)
+{
+    if(found_mach_traps)
+    {
+        panic("mach_traps found twice!");
+    }
     puts("KPF: Found mach traps");
+    found_mach_traps = true;
 
     // for the task for pid routine we only need to patch the first branch that checks if the pid == 0
     // we just replace it with a nop
     // see vm_unix.c in xnu
-    uint64_t tfp = xnu_rebase_va(mach_traps[45 * 4 + 1]);
-
     uint32_t* tfp0check = find_next_insn((uint32_t*)xnu_va_to_ptr(tfp), 0x20, 0x34000000, 0xff000000);
     if(!tfp0check)
     {
@@ -1257,10 +1316,17 @@ bool mach_traps_callback(struct xnu_pf_patch* patch, uint64_t* mach_traps) {
     tfp0check[0] = NOP;
     puts("KPF: Found tfp0");
 
-    xnu_pf_disable_patch(patch);
-
     return true;
 }
+bool mach_traps_callback(struct xnu_pf_patch *patch, uint64_t *mach_traps)
+{
+    return mach_traps_common(xnu_rebase_va(mach_traps[45 * 4 + 1]));
+}
+bool mach_traps_alt_callback(struct xnu_pf_patch *patch, uint64_t *mach_traps)
+{
+    return mach_traps_common(xnu_rebase_va(mach_traps[45 * 3 + 1]));
+}
+
 bool has_found_sbops = 0;
 uint64_t* sbops;
 bool sb_ops_callback(struct xnu_pf_patch* patch, uint64_t* sbops_stream) {
@@ -1948,11 +2014,16 @@ void command_kpf() {
     uint64_t tick_1;
 
     has_found_sbops = false;
-    xnu_pf_maskmatch(xnu_data_const_patchset, "mach_traps",traps_match, traps_mask, sizeof(traps_match)/sizeof(uint64_t), true, (void*)mach_traps_callback);
+    xnu_pf_maskmatch(xnu_data_const_patchset, "mach_traps", traps_match, traps_mask, sizeof(traps_match)/sizeof(uint64_t), false, (void*)mach_traps_callback);
+    xnu_pf_maskmatch(xnu_data_const_patchset, "mach_traps_alt", traps_match_alt, traps_mask_alt, sizeof(traps_match_alt)/sizeof(uint64_t), false, (void*)mach_traps_alt_callback);
     xnu_pf_ptr_to_data(xnu_data_const_patchset, xnu_slide_value(hdr), text_cstring_range, "Seatbelt sandbox policy", strlen("Seatbelt sandbox policy")+1, false, (void*)sb_ops_callback);
     xnu_pf_emit(xnu_data_const_patchset);
     xnu_pf_apply(data_const_range, xnu_data_const_patchset);
     xnu_pf_patchset_destroy(xnu_data_const_patchset);
+    if(!found_mach_traps)
+    {
+        panic("Missing patch: mach_traps");
+    }
     //bool is_unified = true;
 
     if (!has_found_sbops) {
