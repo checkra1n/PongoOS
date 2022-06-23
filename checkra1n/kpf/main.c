@@ -35,7 +35,7 @@
 
 uint32_t offsetof_p_flags, *dyld_hook;
 
-#if DEV_BUILD
+#ifdef DEV_BUILD
     #define DEVLOG(x, ...) do { \
         printf(x "\n", ##__VA_ARGS__); \
     } while (0)
@@ -147,7 +147,7 @@ uint32_t* follow_call(uint32_t* from) {
     return target;
 }
 
-#if DEV_BUILD
+#ifdef DEV_BUILD
 struct {
     int darwinMajor;
     int darwinMinor;
@@ -425,7 +425,7 @@ bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_t *opco
     bool have_zone_require = (patchpoint[0] & 0xfffffe1f) == 0x52800000 &&  // movz w0, {0-15}
                              (patchpoint[1] & 0xffffe0ff) == 0x52800001 &&  // movz w1, {0x0-0x100 with granularity 8}
                              (patchpoint[2] & 0xfc000000) == 0x94000000;    // bl zone_require
-#if DEV_BUILD
+#ifdef DEV_BUILD
     // 15.0 beta 2 onwards
     if(have_zone_require != (kernelVersion.xnuMajor > 7938)) panic("zone_require in convert_port_to_map doesn't match expected XNU version");
 #endif
@@ -686,7 +686,7 @@ bool kpf_mac_dounmount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_str
 
     puts("KPF: Found dounmount");
     opcode_stream[0] = NOP;
-#if !DEV_BUILD
+#ifndef DEV_BUILD
     // Only disable in non-dev build on match so that when testing we ensure that the algorithm matches only a single place
     xnu_pf_disable_patch(patch);
 #endif
@@ -1839,7 +1839,7 @@ void command_kpf() {
     struct mach_header_64* hdr = xnu_header();
     xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
 
-#if DEV_BUILD
+#ifdef DEV_BUILD
     xnu_pf_range_t* text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
     kpf_kernel_version_init(text_const_range);
 #endif
@@ -1859,7 +1859,7 @@ void command_kpf() {
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, strlen(livefs_string)) : NULL;
     if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, strlen(livefs_string));
 
-#if DEV_BUILD
+#ifdef DEV_BUILD
     // 14.0 beta 2 onwards
     if((kmap_port_string_match != NULL) != (kernelVersion.xnuMajor > 7090)) panic("convert_to_port panic doesn't match expected XNU version");
     // 15.0 beta 1 onwards
@@ -2098,7 +2098,7 @@ void command_kpf() {
         }
         nvram_patchpoint[0] = 0x14000000 | (((uint64_t)nvram_off >> 2) & 0x3ffffff);
     }
-#if !DEV_BUILD
+#ifndef DEV_BUILD
     // Treat this patch as optional in release
     else if(!nvram_inline_patch)
     {

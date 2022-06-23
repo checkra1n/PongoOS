@@ -14,7 +14,7 @@ RA1N                    := $(ROOT)/checkra1n/kpf
 
 CHECKRA1N_C             := main.c $(RA1N)/main.c $(RA1N)/shellcode.S $(SRC)/drivers/xnu/xnu.c $(SRC)/drivers/xnu/xnu.S
 CHECKRA1N_LDFLAGS       := -Wl,-fatal_warnings -Wl,-dead_strip
-CHECKRA1N_FLAGS         := -std=gnu17 -Wall -Wunused-label -Werror -O3 -flto -I$(INC) -I$(SRC)/kernel -I$(SRC)/drivers -DCHECKRA1N_VERSION='' -Diprintf=printf -Dpanic=realpanic -DOVERRIDE_CACHEABLE_VIEW=0x800000000ULL -DDEV_BUILD=1 $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) $(CFLAGS)
+CHECKRA1N_FLAGS         := -std=gnu17 -Wall -Wstrict-prototypes -O3 -flto -I$(INC) -I$(SRC)/kernel -I$(SRC)/drivers -DCHECKRA1N_VERSION='' -Diprintf=printf -Dpanic=realpanic -DOVERRIDE_CACHEABLE_VIEW=0x800000000ULL -DDEV_BUILD $(CHECKRA1N_LDFLAGS) $(KPF_CFLAGS) $(CFLAGS)
 
 ifeq ($(HOST_OS),Darwin)
 	IOS_CC              ?= xcrun -sdk iphoneos clang -arch arm64
