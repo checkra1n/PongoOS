@@ -1329,7 +1329,6 @@ bool mach_traps_common(uint64_t tfp)
         panic("mach_traps found twice!");
     }
     puts("KPF: Found mach traps");
-    found_mach_traps = true;
 
     // for the task for pid routine we only need to patch the first branch that checks if the pid == 0
     // we just replace it with a nop
@@ -1343,6 +1342,7 @@ bool mach_traps_common(uint64_t tfp)
 
     tfp0check[0] = NOP;
     puts("KPF: Found tfp0");
+    found_mach_traps = true;
 
     return true;
 }
