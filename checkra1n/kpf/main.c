@@ -1346,8 +1346,12 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
     }
 }
-uint32_t* amfi_ret;
+static uint32_t* amfi_ret;
 bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    if(amfi_ret)
+    {
+        panic("kpf_amfi_execve_tail: found twice!");
+    }
     amfi_ret = find_next_insn(opcode_stream, 0x80, RET, 0xFFFFFFFF);
     if (!amfi_ret)
     {
@@ -1355,7 +1359,6 @@ bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
         return false;
     }
     puts("KPF: Found AMFI execve hook");
-    xnu_pf_disable_patch(patch);
     return true;
 }
 bool kpf_amfi_sha1(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
@@ -1459,16 +1462,32 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
     // 0xfffffff005f340dc      80000034       cbz w0, 0xfffffff005f340ec
     // 0xfffffff005f340e0      09408452       movz w9, 0x2200
     // 0xfffffff005f340e4      0801092a       orr w8, w8, w9
-    // to find this with r2 run:
-    // /x 00000034094084520801092a:000000FFFFFFFFFFFFFFFFFFFFFFFFFF
+    //
+    // On iOS 15.4, the control flow changed somewhat:
+    // 0xfffffff005b76918      3d280094       bl sym.stub._cs_system_require_lv
+    // 0xfffffff005b7691c      080340b9       ldr w8, [x24]
+    // 0xfffffff005b76920      60000034       cbz w0, 0xfffffff005b7692c
+    // 0xfffffff005b76924      09408452       mov w9, 0x2200
+    // 0xfffffff005b76928      03000014       b 0xfffffff005b76934
+    // 0xfffffff005b7692c      88002037       tbnz w8, 4, 0xfffffff005b7693c
+    // 0xfffffff005b76930      09408052       mov w9, 0x200
+    // 0xfffffff005b76934      0801092a       orr w8, w8, w9
+    //
+    // So now all that we look for is:
+    // ldr w8, [x{16-31}]
+    // cbz w0, {forward}
+    // mov w9, 0x2200
+    //
+    // To find this with r2, run:
+    // /x 080240b90000003409408452:1ffeffff1f0080ffffffffff
     uint64_t matches[] = {
-        0x34000000, // cbz w*
+        0xb9400208, // ldr w8, [x{16-31}]
+        0x34000000, // cbz w0, {forward}
         0x52844009, // movz w9, 0x2200
-        0x2a090108  // orr w8, w8, w9
     };
     uint64_t masks[] = {
-        0xff000000,
-        0xffffffff,
+        0xfffffe1f,
+        0xff80001f,
         0xffffffff,
     };
     xnu_pf_maskmatch(patchset, "amfi_execve_tail", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_amfi_execve_tail);
