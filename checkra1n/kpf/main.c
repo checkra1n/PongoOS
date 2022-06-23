@@ -204,68 +204,6 @@ bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     return true;
 }
 
-bool kpf_amfi_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    // possibly AMFI patch
-    // this is here to patch out the trustcache checks so that AMFI thinks that everything is in trustcache
-    // there are two different versions of the trustcache function either it's just a leaf that's branched to or it's a function with a real prolog
-    // the first protion of this function here will try to detect the prolog and if it fails has_frame will be false
-    // if that's the case it will just make it return null
-    // otherwise it has to respect the epilog so it will search for all the movs that move into x0 and then turn them into a movz x0, 1
-    char has_frame = 0;
-    for(int x = 0; x < 128; x++)
-    {
-        uint32_t opcde = opcode_stream[-x];
-        if (opcde == RET || opcde == 0xd65f0fff /*retab*/ || (opcde & 0xFF000000) == 0x94000000 /*bl*/|| (opcde & 0xFF000000) == 0x14000000/*b*/) {
-            break;
-        }
-        if ((opcde & 0xffff0000) == 0xa9430000/*ldp???*/) {
-            has_frame = 1;
-            break;
-        }
-        else if((opcde & 0xff0003e0) == 0xa90003e0 /*stp x*,x*, [sp,*]!*/)
-        {
-            has_frame = 1;
-            break;
-        }
-    }
-    if(!has_frame)
-    {
-        puts("KPF: Found AMFI (Leaf)");
-        opcode_stream[0] = 0xd2800020;
-        opcode_stream[1] = RET;
-    }
-    else
-    {
-        bool found_something = false;
-        uint32_t* retpoint = find_next_insn(&opcode_stream[0], 0x180, RET, 0xffffffff);
-        if (retpoint == NULL)
-        {
-            DEVLOG("kpf_amfi_callback: failed to find retpoint");
-            return false;
-        }
-        uint32_t *patchpoint = find_prev_insn(retpoint, 0x40, 0xAA0003E0, 0xffe0ffff);
-        // __TEXT_EXEC:__text:FFFFFFF007CDDFDC E0 03 13 AA                 MOV             X0, X19
-        if(patchpoint != NULL)
-        {
-            patchpoint[0] = 0xd2800020;
-            found_something = true;
-        }
-        patchpoint = find_prev_insn(retpoint, 0x40, 0x52800000, 0xffffffff);
-        // __TEXT_EXEC:__text:FFFFFFF007CEC260 00 00 80 52                 MOV             W0, #0
-        if(patchpoint != NULL)
-        {
-            patchpoint[0] = 0xd2800020;
-            found_something = true;
-        }
-        if(!found_something)
-        {
-            DEVLOG("kpf_amfi_callback: failed to find anything");
-            return false;
-        }
-        puts("KPF: Found AMFI (Routine)");
-    }
-    return true;
-}
 bool kpf_has_done_mac_mount;
 bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     puts("KPF: Found mac_mount");
@@ -651,32 +589,95 @@ void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_dyld_callback);
 }
 
-void kpf_amfi_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
-    // This patch leads to AMFI believing that everything is in trustcache
-    // this is done by searching for the sequence below (example from an iPhone 7, 13.3):
-    // 0xfffffff0072382b0      29610091       add x9, x9, 0x18
+bool kpf_trustcache_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    // possibly AMFI patch
+    // this is here to patch out the trustcache checks so that AMFI thinks that everything is in trustcache
+    // there are two different versions of the trustcache function either it's just a leaf that's branched to or it's a function with a real prolog
+    // the first protion of this function here will try to detect the prolog and if it fails has_frame will be false
+    // if that's the case it will just make it return null
+    // otherwise it has to respect the epilog so it will search for all the movs that move into x0 and then turn them into a movz x0, 1
+    char has_frame = 0;
+    for(int x = 0; x < 128; x++)
+    {
+        uint32_t opcde = opcode_stream[-x];
+        if (opcde == RET || opcde == 0xd65f0fff /*retab*/ || (opcde & 0xFF000000) == 0x94000000 /*bl*/|| (opcde & 0xFF000000) == 0x14000000/*b*/) {
+            break;
+        }
+        if ((opcde & 0xffff0000) == 0xa9430000/*ldp???*/) {
+            has_frame = 1;
+            break;
+        }
+        else if((opcde & 0xff0003e0) == 0xa90003e0 /*stp x*,x*, [sp,*]!*/)
+        {
+            has_frame = 1;
+            break;
+        }
+    }
+    if(!has_frame)
+    {
+        puts("KPF: Found AMFI (Leaf)");
+        opcode_stream[0] = 0xd2800020;
+        opcode_stream[1] = RET;
+    }
+    else
+    {
+        bool found_something = false;
+        uint32_t* retpoint = find_next_insn(&opcode_stream[0], 0x180, RET, 0xffffffff);
+        if (retpoint == NULL)
+        {
+            DEVLOG("kpf_trustcache_callback: failed to find retpoint");
+            return false;
+        }
+        uint32_t *patchpoint = find_prev_insn(retpoint, 0x40, 0xAA0003E0, 0xffe0ffff);
+        // __TEXT_EXEC:__text:FFFFFFF007CDDFDC E0 03 13 AA                 MOV             X0, X19
+        if(patchpoint != NULL)
+        {
+            patchpoint[0] = 0xd2800020;
+            found_something = true;
+        }
+        patchpoint = find_prev_insn(retpoint, 0x40, 0x52800000, 0xffffffff);
+        // __TEXT_EXEC:__text:FFFFFFF007CEC260 00 00 80 52                 MOV             W0, #0
+        if(patchpoint != NULL)
+        {
+            patchpoint[0] = 0xd2800020;
+            found_something = true;
+        }
+        if(!found_something)
+        {
+            DEVLOG("kpf_trustcache_callback: failed to find anything");
+            return false;
+        }
+        puts("KPF: Found AMFI (Routine)");
+    }
+    return true;
+}
+
+void kpf_trustcache_patch(xnu_pf_patchset_t *xnu_text_exec_patchset) {
+    // This patch leads to AMFI believing that everything is in trustcache.
+    // This is done by searching for the sequence below (example from an iPhone 7, 13.3):
+    //
     // 0xfffffff0072382b4      ca028052       movz w10, 0x16
     // 0xfffffff0072382b8      0bfd41d3       lsr x11, x8, 1
     // 0xfffffff0072382bc      6c250a9b       madd x12, x11, x10, x9
-    // then the callback checks if this is just a leaf instead of a full routinue
-    // if it's a leave it will just replace the above with a movz x0,1;ret
-    // if it isn't a leaf it searches for all the places where a return happens and patches them to return true
-    // To find the patch in r2 use:
-    // /x 0000009100028052000000d30000009b:000000FF00FFFFFF000000FF000000FF
+    //
+    // The callback checks if this is just a leaf instead of a full routinue.
+    // If it's a leaf, it will just replace the above with a movz x0,1;ret.
+    // Ff it isn't a leaf, it searches for all the places where a return happens and patches them to return true.
+    // To find the patch in r2, use:
+    // /x c002805200fc41d30000009b:e0ffffff00fcffff0080e0ff
     uint64_t matches[] = {
-        0x91000000, // add x*
-        0x52800200, // mov w*, 0x16
-        0xd3000000, // lsr *
-        0x9b000000  // madd *
+        0x528002c0, // movz wN, 0x16
+        0xd341fc00, // lsr xN, xM, 1
+        0x9b000000, // madd ...
     };
     uint64_t masks[] = {
-        0xFF000000,
-        0xFFFFFF00,
-        0xFF000000,
-        0xFF000000
+        0xffffffe0,
+        0xfffffc00,
+        0xffe08000,
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "amfi_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_amfi_callback);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "trustcache_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_trustcache_callback);
 }
+
 void kpf_mac_mount_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // This patch makes sure that we can remount the rootfs and that we can UNION mount
     // we first search for a pretty unique instruction movz/orr w9, 0x1ffe
@@ -2135,7 +2136,7 @@ void command_kpf() {
     }
 
     kpf_dyld_patch(xnu_text_exec_patchset);
-    kpf_amfi_patch(xnu_text_exec_patchset);
+    kpf_trustcache_patch(xnu_text_exec_patchset);
     kpf_conversion_patch(xnu_text_exec_patchset);
     kpf_mac_mount_patch(xnu_text_exec_patchset);
     kpf_mac_dounmount_patch_0(xnu_text_exec_patchset);
