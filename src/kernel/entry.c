@@ -163,6 +163,12 @@ __attribute__((noinline)) void pongo_entry_cached()
     // Do fuse init as early as possible
     fuse_init();
 
+    // Setup serial pinmux
+    serial_pinmux_init();
+
+    // Enable serial TX
+    serial_early_init();
+
     // Set up IRQ handling
     pongo_reinstall_vbar();
 
@@ -170,8 +176,8 @@ __attribute__((noinline)) void pongo_entry_cached()
 
     task_link(&sched_task);
     _task_set_current(&sched_task);
-    // Setup VM
 
+    // Setup VM
     vm_init();
 
     // Draw logo and set up framebuffer
