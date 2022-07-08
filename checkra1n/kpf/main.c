@@ -409,11 +409,6 @@ bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_t *opco
      return kpf_convert_port_to_map_common(opcode_stream + 7);
 }
 
-bool kpf_convert_port_to_map_alt_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    return kpf_convert_port_to_map_common(opcode_stream + 10);
-}
-
 void kpf_convert_port_to_map_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // This patch is required because in some iOS 14.0 beta, Apple started cracking down on tfp0 usage.
     // In particular, convert_port_to_map_with_flavor will be called when a `vm_map_t` is required for
@@ -497,48 +492,39 @@ void kpf_convert_port_to_map_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     masks[5] = 0xff000000;
     xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map_variant", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback);
 
-    // 15.5 has some new ideas:
+    // iOS 15.5 changes the adrp+ldr to an adrp+add:
     //
-    // 0xfffffff00727aedc      09814039       ldrb w9, [x8, 0x20]
-    // 0xfffffff00727aee0      4a088052       mov w10, 0x42
-    // 0xfffffff00727aee4      5f01296a       bics wzr, w10, w9
-    // 0xfffffff00727aee8      01feff54       b.ne 0xfffffff00727aea8
-    // 0xfffffff00727aeec      130140f9       ldr x19, [x8]
-    // 0xfffffff00727aef0      602240f9       ldr x0, [x19, 0x40]
-    // 0xfffffff00727aef4      c00000b4       cbz x0, 0xfffffff00727af0c
-    // 0xfffffff00727aef8      c82f00b0       adrp x8, 0xfffffff007873000
-    // 0xfffffff00727aefc      08e12a91       add x8, x8, 0xab8
-    // 0xfffffff00727af00      1f0008eb       cmp x0, x8
-    // 0xfffffff00727af04      e0040054       b.eq 0xfffffff00727afa0
+    // 0xfffffff0071d11b0      08504039       ldrb w8, [x0, 0x14]
+    // 0xfffffff0071d11b4      c8fdff34       cbz w8, 0xfffffff0071d116c
+    // 0xfffffff0071d11b8      141440f9       ldr x20, [x0, 0x28]
+    // 0xfffffff0071d11bc      882240f9       ldr x8, [x20, 0x40]
+    // 0xfffffff0071d11c0      293500d0       adrp x9, 0xfffffff007877000
+    // 0xfffffff0071d11c4      29e12a91       add x9, x9, 0xab8
+    // 0xfffffff0071d11c8      1f0109eb       cmp x8, x9
+    // 0xfffffff0071d11cc      c0000054       b.eq 0xfffffff0071d11e4
     //
-    // /x 00004039400880521f00206a01000054000040f9002040f9000000b400000090000000911f0000eb00000054:0000c0ffe0ffffff1ffce0ff1f0000ff00c0ffff00f8ffff000000ff0000009f0000c0ff1ffce0ff1e0000ff
-    uint64_t matches_alt[] = {
+    // /x 0000403900000034000040f9002040f900000090000000911f0000eb00000054:0000c0ff000000ff00c0ffff00f8ffff0000009f0000c0ff1ffce0ff1e0000ff
+    uint64_t matches_variant[] = {
         0x39400000, // ldrb wN, [xM, ...]
-        0x52800840, // mov wN, 0x42
-        0x6a20001f, // bics wzr, wN, wM
-        0x54000001, // b.ne
+        0x34000000, // cbz
         0xf9400000, // ldr xN, [xM, {0x0-0x78}]
         0xf9402000, // ldr xN, [xM, {0x40|0x48}]
-        0xb4000000, // cbz
         0x90000000, // adrp
         0x91000000, // add
         0xeb00001f, // cmp
         0x54000000, // b.ne / b.eq
     };
-    uint64_t masks_alt[] = {
+    uint64_t masks_variant[] = {
         0xffc00000,
-        0xffffffe0,
-        0xffe0fc1f,
-        0xff00001f,
+        0xff000000,
         0xffffc000,
         0xfffff800,
-        0xff000000,
         0x9f000000,
         0xffc00000,
         0xffe0fc1f,
         0xff00001e,
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map_alt", matches_alt, masks_alt, sizeof(matches_alt)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_alt_callback);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map_alt_variant", matches_variant, masks_variant, sizeof(matches_variant)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback);
 }
 
 void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
