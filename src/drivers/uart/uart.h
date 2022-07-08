@@ -28,6 +28,8 @@ void serial_init();
 void serial_early_init();
 void serial_pinmux_init();
 void serial_putc(char c);
+void serial_write(const char *s);
+void serial_puts(const char *s);
 void serial_disable_rx();
 void serial_enable_rx();
 void uart_flush();

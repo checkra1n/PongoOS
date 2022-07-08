@@ -166,3 +166,13 @@ void serial_putc(char c) {
     rUTXH0 = (unsigned)(c);
     return;
 }
+void serial_write(const char* str)
+{
+    while (*str)
+        serial_putc(*str++);
+}
+void serial_puts(const char* str)
+{
+    serial_write(str);
+    serial_putc('\n');
+}
