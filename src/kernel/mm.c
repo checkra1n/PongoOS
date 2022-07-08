@@ -28,10 +28,6 @@
 #include <stdlib.h>
 #include <pongo.h>
 
-// XXX: We're back to this since we moved Pongo to SRAM.
-//      Ideally we'd get rid of this and alloc from the start/end of available DRAM.
-#define MAGIC_BASE 0x818000000
-
 #define MAX_WANT_PAGES_IN_FREELIST 512
 void* free_list;
 bool is_16k_v = false;
@@ -275,7 +271,6 @@ void map_full_ram(uint64_t phys_off, uint64_t phys_size) {
     // Round up to make sure the framebuffer is in range
     uint64_t pgsz = 1ULL << (tt_bits + 3);
     phys_size = (phys_size + pgsz - 1) & ~(pgsz - 1);
-    ttb_alloc = ttb_alloc_early;
 
     map_range_noflush_rw(kCacheableView + phys_off, 0x800000000 + phys_off, phys_size, 3, 1, true);
     map_range_noflush_rw(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 2, 0, true);
@@ -284,7 +279,6 @@ void map_full_ram(uint64_t phys_off, uint64_t phys_size) {
     g_phys_off = phys_off;
     flush_tlb();
 }
-uint64_t early_heap_base;
 uint64_t gPongoSlide;
 void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
 {
@@ -310,7 +304,7 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     volatile extern uint64_t __text_end[] __asm__("segment$start$__DATA");
     volatile uint64_t pongo_text_size = ((uint64_t) __text_end) - pongo_base;
 
-    ttb_alloc_base = MAGIC_BASE - 0x4000;
+    ttb_alloc_base = (gBootArgs->physBase + gBootArgs->memSize) & ~(pgsz-1);
 
     ttbr0 = ttb_alloc();
     ttbr1 = ttb_alloc();
@@ -322,9 +316,6 @@ void lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     map_range_noflush_rwx(0x800000000ULL + phys_off, 0x800000000 + phys_off, phys_size, 2, 0, false);
     // TLB flush is done by enable_mmu_el1
 
-    if (!early_heap_base) {
-        early_heap_base = MAGIC_BASE - 0x800000000 + kCacheableView;
-    }
     map_range_noflush_rx(0x100000000ULL, pongo_base, pongo_text_size, 3, 1, false);
     map_range_noflush_rw(0x100000000ULL + pongo_text_size, pongo_base + pongo_text_size, (pongo_size - pongo_text_size + 0x3fff) & ~0x3fff, 3, 1, false);
     gPongoSlide = 0x100000000ULL - pongo_base;
@@ -588,8 +579,6 @@ void vm_init() {
     task_current()->vm_space = &kernel_vm_space;
     kernel_vm_space.vm_space_table = alloc_contig((VM_SPACE_SIZE / PAGE_SIZE) / 8);
     bzero(kernel_vm_space.vm_space_table, (VM_SPACE_SIZE / PAGE_SIZE) / 8);
-    extern volatile uint64_t* (*ttb_alloc)(void);
-    ttb_alloc =  (void*)ttbpage_alloc;
 }
 struct vm_space* vm_create(struct vm_space* parent) {
     struct vm_space* space = malloc(sizeof(struct vm_space));
@@ -621,11 +610,6 @@ struct vm_space* vm_reference(struct vm_space* vmspace) {
 #define PAGE_REFBITS 0xffffff
 
 uint32_t* ppage_list;
-
-uint64_t alloc_static_base = 0;
-uint64_t alloc_static_current = 0;
-uint64_t alloc_static_end = 0;
-uint64_t topkd = 0;
 uint64_t ppages = 0;
 uint64_t free_pages = 0;
 uint64_t wired_pages = 0;
@@ -701,7 +685,7 @@ void mark_phys_wired(uint64_t pa, uint64_t size) {
 uint64_t ppage_alloc() {
     uint64_t rv = 0;
     disable_interrupts();
-    if (!alloc_static_base) {
+    if (!ppage_list) {
         void alloc_init(void);
         alloc_init();
     }
@@ -728,7 +712,7 @@ void phys_page_was_freed(uint64_t pa) {
     }
     pa_v[0] = pa_head; // new->next = head
     pa_v[1] = 0; // new->prev == null
-    pa_head = pa; // head = n ew
+    pa_head = pa; // head = new
     free_pages ++;
     enable_interrupts();
 }
@@ -796,53 +780,57 @@ void phys_dereference(uint64_t pa, uint64_t size) {
 }
 
 void alloc_init() {
-    if (alloc_static_base) return;
+    if (ppage_list) {
+        return;
+    }
 
     uint64_t memory_size = gBootArgs->memSize;
     ppages = memory_size >> 14;
 
-    uint64_t early_heap = early_heap_base;
+    ttb_alloc = ttbpage_alloc;
+    uint64_t early_heap = ttb_alloc_base - 0x800000000 + kCacheableView;
 
+    early_heap = (early_heap - 4 * ppages) & ~0x3fffULL;
     ppage_list = (uint32_t*)early_heap;
-    early_heap += 4 * ppages;
-    early_heap = ((early_heap + 0x3fff) & (~0x3fff));
-    for (uint64_t i=0; i < ppages; i++) {
+    for (uint64_t i = 0; i < ppages; i++) {
         wired_pages++;
         ppage_list[i] = PAGE_WIRED; // wire all pages, carve out later.
     }
 
-    alloc_static_current = alloc_static_base = (kCacheableView - 0x800000000 + gBootArgs->topOfKernelData) & (~0x3fff);
-    alloc_static_end = MAGIC_BASE - 0x800000000 + kCacheableView - 0x20000;
-    uint64_t alloc_static_hardcap = alloc_static_base + (1024 * 1024 * 64);
-    if (alloc_static_end > alloc_static_hardcap) {
-        phys_force_free(vatophys_static((void*)alloc_static_hardcap), alloc_static_end - alloc_static_hardcap);
-        alloc_static_end = alloc_static_hardcap;
-    }
-
-    uint64_t alloc_heap_base = (((uint64_t)early_heap) + 0x7fff) & (~0x3fff);
-    uint64_t alloc_heap_end = (((uint64_t)(phystokv(gBootArgs->physBase) + gBootArgs->memSize)) + 0x3fff) & (~0x3fff) - 1024*1024;
+    uint64_t alloc_heap_base = ((gBootArgs->topOfKernelData - 0x800000000 + kCacheableView) + 0x3fffULL) & ~0x3fffULL;
+    uint64_t alloc_heap_end = early_heap;
 
     phys_force_free(vatophys_static((void*)alloc_heap_base), alloc_heap_end - alloc_heap_base);
 }
 void* alloc_static(uint32_t size) { // memory returned by this will be added to the xnu static region, thus will persist after xnu boot
-    if (!alloc_static_base) {
+    if (!ppage_list) {
         alloc_init();
     }
-    void* rv = (void*)alloc_static_current;
-    alloc_static_current += (size + 0x3fff) & (~0x3fff);
-    if (alloc_static_current > alloc_static_end) panic("ran out of static region");
-    gBootArgs->topOfKernelData += (size + 0x3fff) & (~0x3fff);
-    return rv;
+
+    size = (size + 0x3fffULL) & ~0x3fffULL;
+    disable_interrupts();
+    uint64_t base = (gBootArgs->topOfKernelData + 0x3fffULL) & ~0x3fffULL;
+    uint32_t idx = (base - gBootArgs->physBase) >> 14;
+    for (uint32_t i = 0; i < (size >> 14); ++i) {
+        if (ppage_list[idx + i] != PAGE_FREE) {
+            panic("alloc_static: ran out of static region");
+        }
+        ppage_list[idx + i] = PAGE_WIRED;
+        wired_pages++;
+    }
+    gBootArgs->topOfKernelData = base + size;
+    enable_interrupts();
+
+    return (void*)(base - 0x800000000 + kCacheableView);
 }
 uint64_t alloc_phys(uint32_t size) {
-    if (!alloc_static_base) {
+    if (!ppage_list) {
         alloc_init();
     }
     size = (size + 0x3fff) & ~0x3fff;
     uint32_t npages = size / 0x4000;
     uint32_t found_pages = 0;
 
-    bool found = false;
     uint64_t rv = 0;
     disable_interrupts();
 
@@ -852,23 +840,16 @@ uint64_t alloc_phys(uint32_t size) {
         enable_interrupts();
         return rv;
     }
-    for (uint64_t i=0; i < ppages; i++) {
-        if (ppage_list[i] == PAGE_FREE) {
-            if (!found_pages) {
-                rv = (i << 14ULL) + gBootArgs->physBase;
-            }
-            found_pages ++;
-        } else {
+    for (uint32_t i = 0; i < ppages; ++i) {
+        uint64_t idx = ppages - i;
+        if (ppage_list[idx] != PAGE_FREE) {
             found_pages = 0;
-        }
-        if (found_pages == npages) {
-            // found
-            found = true;
+        } else if(++found_pages == npages) {
+            rv = gBootArgs->physBase + (idx << 14);
             break;
         }
     }
-    if (!found) panic("alloc_phys: OOM");
-    if (!rv) panic("alloc_phys: returning NULL?? (size 0x%x, npages 0x%x, found_pages 0x%x)", size, npages, found_pages);
+    if (!rv) panic("alloc_phys: OOM");
     phys_unlink_contiguous(rv, size);
     phys_reference(rv, size);
     enable_interrupts();
