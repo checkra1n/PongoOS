@@ -59,6 +59,7 @@ void pongo_boot_hook(const char *cmd, char *args) {
     task_yield();
 }
 
+#if 0
 /*
 
     Name: pongo_copy_xnu
@@ -85,10 +86,12 @@ void pongo_copy_xnu(const char *cmd, char *args) {
     }
 
     memcpy((void*)gImagePhys, loader_xfer_recv_data, loader_xfer_recv_count);
+    loader_xfer_recv_count = 0;
     /* Note that we only do the copying over part here, you are expected to have to modify gEntryPoint
      * TODO: parse Mach-O header and set gEntryPoint value
      */
 }
+#endif
 
 /*
 
@@ -1304,7 +1307,7 @@ void xnu_boot(void) {
 void xnu_init(void) {
     command_register("dt", "parses loaded devicetree", log_dtree);
     command_register("xargs", "prints or sets xnu boot-args", pongo_boot_xargs);
-    command_register("loadx", "loads xnu", pongo_copy_xnu);
+    //command_register("loadx", "loads xnu", pongo_copy_xnu);
     command_register("bootx", "boots xnu (patched, if such a module is loaded)", pongo_boot_hook);
     command_register("bootux", "boots unpatched xnu", pongo_boot_hard);
     command_register("bootargs", "prints xnu bootargs struct", log_bootargs);
