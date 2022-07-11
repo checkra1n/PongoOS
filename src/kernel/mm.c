@@ -840,7 +840,7 @@ uint64_t alloc_phys(uint32_t size) {
         enable_interrupts();
         return rv;
     }
-    for (uint32_t i = 0; i < ppages; ++i) {
+    for (uint32_t i = 1; i <= ppages; ++i) {
         uint64_t idx = ppages - i;
         if (ppage_list[idx] != PAGE_FREE) {
             found_pages = 0;
