@@ -898,6 +898,7 @@ ep_out_recv(struct endpoint_state *ep) {
             dma_offset, hw_xfer_size, packet_count);
     // Also invalidate the cache for the DMA buffer before the DMA begins to avoid cached
     // writes overwriting DMA'd data.
+#if 0
     uint32_t cache_length = hw_xfer_size;
     if (hw_xfer_size > 0) {
         // In buffered DMA mode, invalidate the part of the cache we'll be receiving into.
@@ -911,7 +912,8 @@ ep_out_recv(struct endpoint_state *ep) {
         }
     }
     if (!cache_length) cache_length = ep->max_packet_size;
-    cache_invalidate(ep->xfer_dma_data + dma_offset, cache_length);
+#endif
+    cache_invalidate(ep->xfer_dma_data + dma_offset, hw_xfer_size);
     // Set the registers.
     reg_write(rDOEPDMA(ep->n), ep->xfer_dma_phys + dma_offset);
     reg_write(rDOEPTSIZ(ep->n), (packet_count << 19) | hw_xfer_size);
