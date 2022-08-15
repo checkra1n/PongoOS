@@ -1992,6 +1992,9 @@ checkrain_option_t gkpf_flags, checkra1n_flags;
 int gkpf_didrun = 0;
 int gkpf_spin_on_fail = 1;
 
+void *overlay_buf;
+uint32_t overlay_size;
+
 void command_kpf() {
 
     if (gkpf_didrun)
@@ -2314,6 +2317,7 @@ void command_kpf() {
     tick_1 = get_ticks();
     printf("KPF: Applied patchset in %llu ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
 }
+
 void kpf_flags(const char* cmd, char* args) {
     if (args[0] != 0) {
         uint32_t nflags = strtoul(args, NULL, 16);
@@ -2327,6 +2331,30 @@ void kpf_flags(const char* cmd, char* args) {
     } else {
         printf("kpf_flags: 0x%08x 0x%08x\n", gkpf_flags, checkra1n_flags);
     }
+}
+
+void overlay_cmd(const char* cmd, char* args) {
+    if (gkpf_didrun) {
+        iprintf("KPF ran already, overlay cannot be set anymore\n");
+        return;
+    }
+    if (!loader_xfer_recv_count) {
+        iprintf("please upload an overlay before issuing this command\n");
+        return;
+    }
+#if 0
+    if (loader_xfer_recv_count > 0xffff000) {
+        panic("overlay exceeds max size of 0xffff000 bytes");
+    }
+#endif
+    if (overlay_buf)
+        free(overlay_buf);
+    overlay_buf = malloc(loader_xfer_recv_count);
+    if (!overlay_buf)
+        panic("couldn't reserve heap for overlay");
+    overlay_size = loader_xfer_recv_count;
+    memcpy(overlay_buf, loader_xfer_recv_data, overlay_size);
+    loader_xfer_recv_count = 0;
 }
 
 void module_entry() {
@@ -2356,6 +2384,7 @@ void module_entry() {
     preboot_hook = command_kpf;
     command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
+    command_register("overlay", "loads an overlay disk image", overlay_cmd);
 }
 char* module_name = "checkra1n-kpf2-12.0,14.5";
 
