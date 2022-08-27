@@ -95,7 +95,7 @@ ifdef EMBEDDED_LD
 endif
 
 # General options
-EMBEDDED_LD_FLAGS           ?= -nostdlib -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
+EMBEDDED_LD_FLAGS           ?= -nostdlib -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
 EMBEDDED_CC_FLAGS           ?= --target=arm64-apple-ios12.0 -std=gnu17 -Wall -Wstrict-prototypes -flto -ffreestanding -U__nonnull -nostdlibinc -DTARGET_OS_OSX=0 -DTARGET_OS_MACCATALYST=0 -D_GNU_SOURCE -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
 
 ifdef DEV_BUILD
