@@ -163,6 +163,9 @@ __attribute__((noinline)) void pongo_entry_cached()
     // Do fuse init as early as possible
     fuse_init();
 
+    // Setup GPIO Base
+    gpio_early_init();
+
     // Setup serial pinmux
     serial_pinmux_init();
 
