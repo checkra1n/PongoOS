@@ -194,12 +194,71 @@ _sandbox_shellcode_end:
 
 .globl _nvram_shc
 .globl _nvram_shc_end
-
 .align 2
 _nvram_shc:
-// We get here from a patched ret.
-// Just check for kOFVariablePermKernelOnly (0x3) and turn it into kOFVariablePermRootOnly (0x0).
-cmp w0, 0x3
-csel w0, wzr, w0, eq
-ret
+    // We get here from a patched ret.
+    // Just check for kOFVariablePermKernelOnly (0x3) and turn it into kOFVariablePermRootOnly (0x0).
+    cmp w0, 0x3
+    csel w0, wzr, w0, eq
+    ret
 _nvram_shc_end:
+
+
+
+.globl _kdi_shc
+.globl _kdi_shc_orig
+.globl _kdi_shc_get
+.globl _kdi_shc_addr
+.globl _kdi_shc_size
+.globl _kdi_shc_new
+.globl _kdi_shc_set
+.globl _kdi_shc_end
+.align 2
+_kdi_shc:
+    stp x29, x30, [sp, -0x10]!
+_kdi_shc_orig:
+    bl . // bl OSMetaClassBase::safeMetaCast
+    cbz x0, L_kdi_shc_ret
+    stp x19, x20, [sp, -0x10]!
+    mov x19, x0
+    ldr x8, [x0]
+_kdi_shc_get:
+    ldr x8, [x8] // OSDictionary::getObject
+    adr x1, L_kdi_shc_str
+    blr x8
+    cbz x0, L_kdi_shc_out
+_kdi_shc_addr:
+    movz x0, 0x0000, lsl 48
+    movk x0, 0x0000, lsl 32
+    movk x0, 0x0000, lsl 16
+    movk x0, 0x0000
+_kdi_shc_size:
+    movz w1, 0x0000, lsl 16
+    movk w1, 0x0000
+    mov w2, 3
+_kdi_shc_new:
+    bl . // IOMemoryDescriptor::withAddress
+    mov x20, x0
+    ldr x8, [x19]
+_kdi_shc_set:
+    ldr x8, [x8] // OSDictionary::setObject
+    mov x2, x0
+    adr x1, L_kdi_shc_ramfile
+    mov x0, x19
+    blr x8
+    ldr x8, [x20]
+    ldr x8, [x8, 0x28] // OSObject::release
+    mov x0, x20
+    blr x8
+L_kdi_shc_out:
+    mov x0, x19
+    ldp x19, x20, [sp], 0x10
+L_kdi_shc_ret:
+    ldp x29, x30, [sp], 0x10
+    ret
+L_kdi_shc_str:
+    .asciz "checkra1n-overlay"
+L_kdi_shc_ramfile:
+    .asciz "ramfile-memory-descriptor"
+.align 2
+_kdi_shc_end:

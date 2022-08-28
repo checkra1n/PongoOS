@@ -126,6 +126,11 @@ int64_t sxt64(int64_t value, uint8_t bits) {
     return value;
 }
 
+int64_t adrp_off(uint32_t adrp)
+{
+    return sxt64((((((uint64_t)adrp >> 5) & 0x7ffffULL) << 2) | (((uint64_t)adrp >> 29) & 0x3ULL)) << 12, 33);
+}
+
 uint32_t* follow_call(uint32_t* from) {
     if ((*from&0x7C000000) != 0x14000000) {
         DEVLOG("follow_call 0x%llx is not B or BL", xnu_ptr_to_va(from));
@@ -138,7 +143,7 @@ uint32_t* follow_call(uint32_t* from) {
         target[2] == 0xd61f0200                   // br x16
     ) {
         // Stub - read pointer
-        int64_t pageoff = sxt64((((((uint64_t)target[0] >> 5) & 0x7ffffULL) << 2) | (((uint64_t)target[0] >> 29) & 0x3ULL)) << 12, 33);
+        int64_t pageoff = adrp_off(target[0]);
         uint64_t page = ((uint64_t)target&(~0xfffULL)) + pageoff;
         uint64_t ptr = *(uint64_t*)(page + ((((uint64_t)target[1] >> 10) & 0xfffULL) << 3));
         target = xnu_va_to_ptr(kext_rebase_va(ptr));
@@ -146,6 +151,11 @@ uint32_t* follow_call(uint32_t* from) {
     DEVLOG("followed call from 0x%llx to 0x%llx", xnu_ptr_to_va(from), xnu_ptr_to_va(target));
     return target;
 }
+
+// Imports from shellcode.S
+extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], dyld_hook_shellcode[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
+extern uint32_t nvram_shc[], nvram_shc_end[];
+extern uint32_t kdi_shc[], kdi_shc_orig[], kdi_shc_get[], kdi_shc_addr[], kdi_shc_size[], kdi_shc_new[], kdi_shc_set[], kdi_shc_end[];
 
 #ifdef DEV_BUILD
 struct {
@@ -834,9 +844,7 @@ bool kpf_find_shellcode_area_callback(struct xnu_pf_patch* patch, uint32_t* opco
 }
 void kpf_find_shellcode_area(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // find a place inside of the executable region that has no opcodes in it (just zeros/padding)
-    extern uint32_t sandbox_shellcode, sandbox_shellcode_end;
-    extern uint32_t nvram_shc[], nvram_shc_end[];
-    uint32_t count = (&sandbox_shellcode_end - &sandbox_shellcode) + (nvram_shc_end - nvram_shc);
+    uint32_t count = (sandbox_shellcode_end - sandbox_shellcode) + (nvram_shc_end - nvram_shc) + (kdi_shc_end - kdi_shc);
     uint64_t matches[count];
     uint64_t masks[count];
     for (int i=0; i<count; i++) {
@@ -1810,6 +1818,100 @@ void kpf_md0_patches(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "md0_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_md0_callback);
 }
 
+static uint64_t IOMemoryDescriptor_withAddress = 0;
+
+bool kpf_iomemdesc_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    if(IOMemoryDescriptor_withAddress)
+    {
+        panic("Ambiguous callsites to IOMemoryDescriptor::withAddress");
+    }
+    uint32_t *bl = opcode_stream + 2;
+    IOMemoryDescriptor_withAddress = xnu_ptr_to_va(bl) + (sxt32(*bl, 26) << 2);
+    return true;
+}
+
+void kpf_find_iomemdesc(xnu_pf_patchset_t *patchset)
+{
+    uint64_t matches[] =
+    {
+        0x52800601, // mov w1, 0x30
+        0x52800062, // mov w2, 3
+        0x14000000, // b IOMemoryDescriptor::withAddress
+    };
+    uint64_t masks[] =
+    {
+        0xffffffff,
+        0xffffffff,
+        0xfc000000,
+    };
+    xnu_pf_maskmatch(patchset, "iomemdesc", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_iomemdesc_callback);
+
+    matches[0] = 0x321c07e1; // orr w1, wzr, 0x30
+    matches[1] = 0x320007e2; // orr w2, wzr, 3
+    xnu_pf_maskmatch(patchset, "iomemdesc_alt", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_iomemdesc_callback);
+}
+
+static uint32_t *kdi_patchpoint = NULL;
+static uint16_t OSDictionary_getObject_idx = 0, OSDictionary_setObject_idx = 0;
+
+bool kpf_kdi_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    uint64_t page = ((uint64_t)(opcode_stream + 1) & ~0xfffULL) + adrp_off(opcode_stream[1]);
+    uint32_t off = (opcode_stream[2] >> 10) & 0xfff;
+    const char *str = (const char*)(page + off);
+
+    if(strcmp(str, "image-secrets") == 0)
+    {
+        if(!OSDictionary_getObject_idx) // first match
+        {
+            OSDictionary_getObject_idx = (opcode_stream[0] >> 10) & 0xfff;
+        }
+        else // second match
+        {
+            uint32_t *blr = find_next_insn(opcode_stream + 3, 5, 0xd63f0100, 0xffffffff); // blr x8
+            if(!blr)
+            {
+                return false;
+            }
+            uint32_t *bl = find_next_insn(blr + 1, 8, 0x94000000, 0xfc000000); // bl
+            if(!bl || (bl[1] & 0xff00001f) != 0xb5000000) // cbnz x0
+            {
+                return false;
+            }
+            kdi_patchpoint = bl;
+        }
+    }
+    else if(strcmp(str, "netboot-image") == 0)
+    {
+        OSDictionary_setObject_idx = (opcode_stream[0] >> 10) & 0xfff;
+    }
+    else
+    {
+        return false;
+    }
+
+    // Return true once all found
+    return kdi_patchpoint != NULL && OSDictionary_getObject_idx != 0 && OSDictionary_setObject_idx != 0;
+}
+
+void kpf_kdi_kext_patches(xnu_pf_patchset_t *patchset)
+{
+    uint64_t matches[] =
+    {
+        0xf9400108, // ldr x8, [x8, 0x...]
+        0x90000001, // adrp x1, 0x...
+        0x91000021, // add x1, x1, 0x...
+    };
+    uint64_t masks[] =
+    {
+        0xffc003ff,
+        0x9f00001f,
+        0xffc003ff,
+    };
+    xnu_pf_maskmatch(patchset, "kdi", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_kdi_callback);
+}
+
 bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     // cmp xN, xM - wrong match
     if((opcode_stream[2] & 0xffe0ffe0) == 0xeb000300)
@@ -2067,6 +2169,25 @@ void command_kpf() {
     xnu_pf_apply(sandbox_text_exec_range, sandbox_patchset);
     xnu_pf_patchset_destroy(sandbox_patchset);
 
+    // Do this unconditionally on DEV_BUILD
+#ifdef DEV_BUILD
+    bool do_ramfile = true;
+#else
+    bool do_ramfile = overlay_size > 0;
+#endif
+    if(do_ramfile)
+    {
+        struct mach_header_64 *kdi_header = xnu_pf_get_kext_header(hdr, "com.apple.driver.DiskImages");
+        xnu_pf_range_t *kdi_text_exec_range = xnu_pf_section(kdi_header, "__TEXT_EXEC", "__text");
+        xnu_pf_patchset_t *kdi_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
+        kpf_kdi_kext_patches(kdi_patchset);
+        xnu_pf_emit(kdi_patchset);
+        xnu_pf_apply(kdi_text_exec_range, kdi_patchset);
+        xnu_pf_patchset_destroy(kdi_patchset);
+
+        kpf_find_iomemdesc(xnu_text_exec_patchset);
+    }
+
     // TODO
     //struct mach_header_64* accessory_header = xnu_pf_get_kext_header(hdr, "com.apple.iokit.IOAccessoryManager");
 
@@ -2167,6 +2288,7 @@ void command_kpf() {
     if (!vfs_context_current) panic("missing patch: vfs_context_current");
     if (kmap_port_string_match && !found_convert_port_to_map) panic("missing patch: convert_port_to_map");
     if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
+    if (do_ramfile && !IOMemoryDescriptor_withAddress) panic("Missing patch: iomemdesc");
 
     uint32_t delta = (&shellcode_area[1]) - amfi_ret;
     delta &= 0x03ffffff;
@@ -2223,14 +2345,13 @@ void command_kpf() {
 
     update_execve = kext_rebase_va(update_execve);
 
-    extern uint32_t sandbox_shellcode, sandbox_shellcode_end, sandbox_shellcode_setuid_patch, sandbox_shellcode_ptrs, dyld_hook_shellcode;
-    uint32_t* shellcode_from = &sandbox_shellcode;
-    uint32_t* shellcode_end = &sandbox_shellcode_end;
+    uint32_t* shellcode_from = sandbox_shellcode;
+    uint32_t* shellcode_end = sandbox_shellcode_end;
     uint32_t* shellcode_to = shellcode_area;
     // Identify where the LDR/STR insns that will need to be patched will be
-    uint32_t* repatch_sandbox_shellcode_setuid_patch = &sandbox_shellcode_setuid_patch - shellcode_from + shellcode_to;
-    uint64_t* repatch_sandbox_shellcode_ptrs = (uint64_t*)(&sandbox_shellcode_ptrs - shellcode_from + shellcode_to);
-    dyld_hook = &dyld_hook_shellcode - shellcode_from + shellcode_to;
+    uint32_t* repatch_sandbox_shellcode_setuid_patch = sandbox_shellcode_setuid_patch - shellcode_from + shellcode_to;
+    uint64_t* repatch_sandbox_shellcode_ptrs = (uint64_t*)(sandbox_shellcode_ptrs - shellcode_from + shellcode_to);
+    dyld_hook = dyld_hook_shellcode - shellcode_from + shellcode_to;
 
     while(shellcode_from < shellcode_end)
     {
@@ -2268,7 +2389,6 @@ void command_kpf() {
         {
             panic("nvram_unlock jump too far: 0x%llx", nvram_off);
         }
-        extern uint32_t nvram_shc[], nvram_shc_end[];
         shellcode_from = nvram_shc;
         shellcode_end = nvram_shc_end;
         while(shellcode_from < shellcode_end)
@@ -2291,7 +2411,46 @@ void command_kpf() {
         iprintf("allocated static region for overlay: %p, sz: %x\n", ov_static_buf, overlay_size);
         memcpy(ov_static_buf, overlay_buf, overlay_size);
 
+        uint64_t overlay_addr = xnu_ptr_to_va(ov_static_buf);
+        uint32_t *shellcode_block = shellcode_to;
+        uint64_t shellcode_addr = xnu_ptr_to_va(shellcode_block);
+        uint64_t patchpoint_addr = xnu_ptr_to_va(kdi_patchpoint);
+        uint64_t orig_func = patchpoint_addr + (sxt32(*kdi_patchpoint, 26) << 2);
 
+        size_t orig_idx = kdi_shc_orig - kdi_shc;
+        size_t get_idx  = kdi_shc_get  - kdi_shc;
+        size_t set_idx  = kdi_shc_set  - kdi_shc;
+        size_t new_idx  = kdi_shc_new  - kdi_shc;
+        size_t addr_idx = kdi_shc_addr - kdi_shc;
+        size_t size_idx = kdi_shc_size - kdi_shc;
+
+        int64_t orig_off  = orig_func - (shellcode_addr + (orig_idx << 2));
+        int64_t new_off   = IOMemoryDescriptor_withAddress - (shellcode_addr + (new_idx << 2));
+        int64_t patch_off = shellcode_addr - patchpoint_addr;
+        if(orig_off > 0x7fffffcLL || orig_off < -0x8000000LL || new_off > 0x7fffffcLL || new_off < -0x8000000LL || patch_off > 0x7fffffcLL || patch_off < -0x8000000LL)
+        {
+            panic("kdi_patch jump too far: 0x%llx/0x%llx/0x%llx", orig_off, new_off, patch_off);
+        }
+
+        shellcode_from = kdi_shc;
+        shellcode_end = kdi_shc_end;
+        while(shellcode_from < shellcode_end)
+        {
+            *shellcode_to++ = *shellcode_from++;
+        }
+
+        shellcode_block[orig_idx] |= (orig_off >> 2) & 0x03ffffff;
+        shellcode_block[get_idx]  |= OSDictionary_getObject_idx << 10;
+        shellcode_block[set_idx]  |= OSDictionary_setObject_idx << 10;
+        shellcode_block[new_idx]  |= (new_off >> 2) & 0x03ffffff;
+        shellcode_block[addr_idx + 0] |= ((overlay_addr >> 48) & 0xffff) << 5;
+        shellcode_block[addr_idx + 1] |= ((overlay_addr >> 32) & 0xffff) << 5;
+        shellcode_block[addr_idx + 2] |= ((overlay_addr >> 16) & 0xffff) << 5;
+        shellcode_block[addr_idx + 3] |= ((overlay_addr >>  0) & 0xffff) << 5;
+        shellcode_block[size_idx + 0] |= ((overlay_size >> 16) & 0xffff) << 5;
+        shellcode_block[size_idx + 1] |= ((overlay_size >>  0) & 0xffff) << 5;
+
+        *kdi_patchpoint = 0x94000000 | ((patch_off >> 2) & 0x03ffffff);
 
         free(overlay_buf);
         overlay_buf = NULL;
@@ -2356,11 +2515,6 @@ void overlay_cmd(const char* cmd, char* args) {
         iprintf("please upload an overlay before issuing this command\n");
         return;
     }
-#if 0
-    if (loader_xfer_recv_count > 0xffff000) {
-        panic("overlay exceeds max size of 0xffff000 bytes");
-    }
-#endif
     if (overlay_buf)
         free(overlay_buf);
     overlay_buf = malloc(loader_xfer_recv_count);
