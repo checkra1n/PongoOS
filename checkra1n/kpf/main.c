@@ -2285,6 +2285,19 @@ void command_kpf() {
     }
 #endif
 
+    if(overlay_size)
+    {
+        void *ov_static_buf = alloc_static(overlay_size);
+        iprintf("allocated static region for overlay: %p, sz: %x\n", ov_static_buf, overlay_size);
+        memcpy(ov_static_buf, overlay_buf, overlay_size);
+
+
+
+        free(overlay_buf);
+        overlay_buf = NULL;
+        overlay_size = 0;
+    }
+
     if(!rootvp_string_match) // Only use underlying fs on union mounts
     {
         char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
