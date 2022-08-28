@@ -835,7 +835,8 @@ bool kpf_find_shellcode_area_callback(struct xnu_pf_patch* patch, uint32_t* opco
 void kpf_find_shellcode_area(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // find a place inside of the executable region that has no opcodes in it (just zeros/padding)
     extern uint32_t sandbox_shellcode, sandbox_shellcode_end;
-    uint32_t count = &sandbox_shellcode_end - &sandbox_shellcode;
+    extern uint32_t nvram_shc[], nvram_shc_end[];
+    uint32_t count = (&sandbox_shellcode_end - &sandbox_shellcode) + (nvram_shc_end - nvram_shc);
     uint64_t matches[count];
     uint64_t masks[count];
     for (int i=0; i<count; i++) {
