@@ -836,7 +836,7 @@ void kpf_find_shellcode_area(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // find a place inside of the executable region that has no opcodes in it (just zeros/padding)
     extern uint32_t sandbox_shellcode, sandbox_shellcode_end;
     extern uint32_t nvram_shc[], nvram_shc_end[];
-    uint32_t count = (&sandbox_shellcode_end - &sandbox_shellcode) + (nvram_shc_end - nvram_shc);
+    uint32_t count = (&sandbox_shellcode_end - &sandbox_shellcode) + (nvram_shc_end - nvram_shc) + 11;
     uint64_t matches[count];
     uint64_t masks[count];
     for (int i=0; i<count; i++) {
@@ -1314,6 +1314,106 @@ void kpf_find_shellcode_funcs(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xffffffff
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "ret0_gadget", iiii_matches, iiii_masks, sizeof(iiii_masks)/sizeof(uint64_t), true, (void*)ret0_gadget_callback);
+}
+
+static uint32_t *mdevadd_call;
+static uint32_t *mdevadd_start, *mdevadd_end;
+
+bool mdevadd_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    if(mdevadd_call || mdevadd_start)
+    {
+        panic("mdevadd: found twice!");
+    }
+    mdevadd_call = opcode_stream + 2;
+    return true;
+}
+
+bool mdevadd_inline_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    if(mdevadd_call || mdevadd_start)
+    {
+        panic("mdevadd: found twice!");
+    }
+
+    uint32_t *bl = find_prev_insn(opcode_stream - 1, 4, 0x94000000, 0xfc000000);
+    if(!bl)
+    {
+        panic("mdevadd: failed to find phystokv");
+    }
+    uint32_t *blr = find_prev_insn(bl - 1, 4, 0xd63f0000, 0xfffffc1f);
+    if(!blr)
+    {
+        panic("mdevadd: failed to find blr");
+    }
+    uint32_t *cbz = find_prev_insn(blr - 1, 4, 0xb4000000, 0xff80001f); // cbz x0, [forward]
+    if(!cbz)
+    {
+        panic("mdevadd: failed to find cbz");
+    }
+    uint32_t *end = cbz + sxt32(*cbz >> 5, 19); // uint32 takes care of << 2
+    uint32_t insn = *(end - 1);
+    // Make sure end is not PC-relative
+    if(
+        (insn & 0x1f000000) == 0x10000000 || // adr[p]
+        (insn & 0x7c000000) == 0x14000000 || // b[l]
+        (insn & 0xbf000000) == 0x18000000 || // ldr
+        (insn & 0xff000000) == 0x98000000 || // ldrsw
+        (insn & 0xff000010) == 0x54000000 || // b.cond
+        (insn & 0x7c000000) == 0x34000000    // cb[n]z/tb[n]z
+    )
+    {
+        panic("mdevadd: pc-relative instr");
+    }
+
+    mdevadd_start = blr + 1;
+    mdevadd_end = end - 1;
+    return true;
+}
+
+void kpf_find_mdevadd(xnu_pf_patchset_t *xnu_text_exec_patchset)
+{
+    // The call to mdevadd is very distinctive:
+    //
+    // 00008012       mov w0, -1
+    // 03008052       mov w3, 0
+    // f2a5e997       bl sym._mdevadd
+    //
+    // /x 000080120300805200000094:ffffffffffffffff000000fc
+    uint64_t matches[] =
+    {
+        0x12800000, // mov w0, -1
+        0x52800003, // mov w3, 0
+        0x94000000, // bl
+    };
+    uint64_t masks[] =
+    {
+        0xffffffff,
+        0xffffffff,
+        0xfc000000,
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "mdevadd", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)mdevadd_callback);
+
+    // On some kernels, this call is inlined, but it's still easily findable:
+    //
+    // 14fc4cd3       lsr x20, x0, 0xc
+    // 680640f9       ldr x8, [x19, 8]
+    // 08fd4cd3       lsr x8, x8, 0xc
+    //
+    // /x 14fc4cd3680640f908fd4cd3:f0ffffff10feffff10feffff
+    uint64_t inlined_matches[] =
+    {
+        0xd34cfc10, // lsr x{16-31}, x0, 0xc
+        0xf9400600, // ldr x{0-15}, [x{16-31}, 8]
+        0xd34cfc00, // lsr x{0-15}, x{0-15}, 0xc
+    };
+    uint64_t inlined_masks[] =
+    {
+        0xfffffff0,
+        0xfffffe10,
+        0xfffffe10,
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "mdevadd_inline", inlined_matches, inlined_masks, sizeof(inlined_matches)/sizeof(uint64_t), false, (void*)mdevadd_inline_callback);
 }
 
 static bool found_mach_traps = false;
@@ -2146,6 +2246,16 @@ void command_kpf() {
         // Signal to ramdisk that we can't have union mounts
         checkra1n_flags |= checkrain_option_bind_mount;
     }
+    // Do this unconditionally on DEV_BUILD
+#ifdef DEV_BUILD
+    bool do_mdevadd = true;
+#else
+    bool do_mdevadd = overlay_size > 0;
+#endif
+    if(do_mdevadd)
+    {
+        kpf_find_mdevadd(xnu_text_exec_patchset);
+    }
 
     xnu_pf_emit(xnu_text_exec_patchset);
     xnu_pf_apply(text_exec_range, xnu_text_exec_patchset);
@@ -2167,6 +2277,7 @@ void command_kpf() {
     if (!vfs_context_current) panic("missing patch: vfs_context_current");
     if (kmap_port_string_match && !found_convert_port_to_map) panic("missing patch: convert_port_to_map");
     if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
+    if (do_mdevadd && !mdevadd_call && !mdevadd_start) panic("Missing patch: mdevadd");
 
     uint32_t delta = (&shellcode_area[1]) - amfi_ret;
     delta &= 0x03ffffff;
@@ -2291,7 +2402,80 @@ void command_kpf() {
         iprintf("allocated static region for overlay: %p, sz: %x\n", ov_static_buf, overlay_size);
         memcpy(ov_static_buf, overlay_buf, overlay_size);
 
+        if(mdevadd_call)
+        {
+            uint64_t overlay_addr = xnu_ptr_to_va(ov_static_buf);
 
+            uint64_t patchpoint = xnu_ptr_to_va(mdevadd_call);
+            uint64_t jumppoint = xnu_ptr_to_va(shellcode_to);
+            int64_t jumpoff = jumppoint - patchpoint;
+            if(jumpoff > 0x7fffffcLL || jumpoff < -0x8000000LL)
+            {
+                panic("mdevadd jump too far: 0x%llx", jumpoff);
+            }
+            uint64_t mdevadd_addr = patchpoint + sxt64((*mdevadd_call & 0x3ffffff) << 2, 28);
+            uint64_t callpoint = xnu_ptr_to_va(shellcode_to + 8);
+            int64_t calloff1 = mdevadd_addr - jumppoint,
+                    calloff2 = mdevadd_addr - callpoint;
+            if(calloff1 > 0x7fffffcLL || calloff1 < -0x8000000LL || calloff2 > 0x7fffffcLL || calloff2 < -0x8000000LL)
+            {
+                panic("mdevadd call too far: 0x%llx/0x%llx", calloff1, calloff2);
+            }
+            int64_t retoff = patchpoint - callpoint; // technically both +4, but they cancel out
+            if(retoff > 0x7fffffcLL || retoff < -0x8000000LL)
+            {
+                panic("mdevadd ret too far: 0x%llx", retoff);
+            }
+
+            *shellcode_to++ = 0x94000000 | ((calloff1 >> 2) & 0x3ffffff);           // bl mdevadd
+            *shellcode_to++ = 0x12800000;                                           // mov w0, -1
+            *shellcode_to++ = 0xd2e00001 | (((overlay_addr >> 60) & 0xffff) << 5);  // movz x1, (addr >> 12), lsl 48
+            *shellcode_to++ = 0xf2c00001 | (((overlay_addr >> 44) & 0xffff) << 5);  // movk x1, (addr >> 12), lsl 32
+            *shellcode_to++ = 0xf2a00001 | (((overlay_addr >> 28) & 0xffff) << 5);  // movk x1, (addr >> 12), lsl 16
+            *shellcode_to++ = 0xf2800001 | (((overlay_addr >> 12) & 0xffff) << 5);  // movk x1, (addr >> 12)
+            *shellcode_to++ = 0xd2800002 | (((overlay_size + 0xfff) >> 12) << 5);   // movz x2, (size >> 12)
+            *shellcode_to++ = 0x52800003;                                           // mov w3, 0
+            *shellcode_to++ = 0x94000000 | ((calloff2 >> 2) & 0x3ffffff);           // bl mdevadd
+            *shellcode_to++ = 0x14000000 | ((retoff >> 2) & 0x3ffffff);             // b [back]
+            *mdevadd_call = 0x14000000 | ((jumpoff >> 2) & 0x3ffffff);
+        }
+        else
+        {
+            uint64_t overlay_addr = vatophys_static(ov_static_buf);
+
+            uint64_t start_addr = xnu_ptr_to_va(mdevadd_start);
+            uint64_t end_addr = xnu_ptr_to_va(mdevadd_end);
+            uint64_t jumppoint = xnu_ptr_to_va(shellcode_to);
+            int64_t jumpoff = jumppoint - end_addr;
+            if(jumpoff > 0x7fffffcLL || jumpoff < -0x8000000LL)
+            {
+                panic("mdevadd jump too far: 0x%llx", jumpoff);
+            }
+            int64_t startoff = start_addr - (jumppoint + 16);
+            if(startoff > 0x7fffffcLL || startoff < -0x8000000LL)
+            {
+                panic("mdevadd start too far: 0x%llx", startoff);
+            }
+            int64_t endoff = end_addr + 4 - (jumppoint + 24);
+            if(endoff > 0x7fffffcLL || endoff < -0x8000000LL)
+            {
+                panic("mdevadd start too far: 0x%llx", endoff);
+            }
+
+            *shellcode_to++ = *mdevadd_end;                                 // stash instr
+            *shellcode_to++ = 0xb6e0009d;                                   // tbz x29, 60, .+16
+            *shellcode_to++ = 0x9243fbbd;                                   // and x29, x29, 0xefffffffffffffff
+            *shellcode_to++ = 0x10000080;                                   // adr x0, .+16
+            *shellcode_to++ = 0x14000000 | ((startoff >> 2) & 0x3ffffff);   // b [start]
+            *shellcode_to++ = 0xb24403bd;                                   // orr x29, x29, 0x1000000000000000
+            *shellcode_to++ = 0x14000000 | ((endoff >> 2) & 0x3ffffff);     // b [end+4]
+            *mdevadd_end = 0x14000000 | ((jumpoff >> 2) & 0x3ffffff);;
+
+            *shellcode_to++ = overlay_addr & 0xffffffff;
+            *shellcode_to++ = (overlay_addr >> 32) & 0xffffffff;
+            *shellcode_to++ = overlay_size;
+            *shellcode_to++ = 0;
+        }
 
         free(overlay_buf);
         overlay_buf = NULL;
@@ -2356,11 +2540,9 @@ void overlay_cmd(const char* cmd, char* args) {
         iprintf("please upload an overlay before issuing this command\n");
         return;
     }
-#if 0
     if (loader_xfer_recv_count > 0xffff000) {
         panic("overlay exceeds max size of 0xffff000 bytes");
     }
-#endif
     if (overlay_buf)
         free(overlay_buf);
     overlay_buf = malloc(loader_xfer_recv_count);
