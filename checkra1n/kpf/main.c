@@ -1555,7 +1555,8 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     uint32_t *rep = opcode_stream;
     for(size_t i = 0; i < 25; ++i)
     {
-        if((rep[0] == 0x321c03e2 /* orr w2, wzr, 0x10 */ || rep[0] == 0x52800202 /* movz w2, 0x10 */))
+        uint32_t op = *rep;
+        if(op == 0x321c03e2 /* orr w2, wzr, 0x10 */ || op == 0x52800202 /* movz w2, 0x10 */)
         {
             foundit = true;
             puts("KPF: Found AMFI mac_syscall");
@@ -1565,7 +1566,7 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     }
     if(!foundit)
     {
-        panic_at(rep, "Failed to find w2 in mac_syscall");
+        panic_at(opcode_stream, "Failed to find w2 in mac_syscall");
     }
     uint32_t *copyin = find_next_insn(rep + 1, 2, 0x94000000, 0xfc000000); // bl
     if(!copyin)
@@ -1575,7 +1576,7 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     uint32_t *bl = find_next_insn(copyin + 1, 10, 0x94000000, 0xfc000000);
     if(!bl)
     {
-        panic_at(rep, "Failed to find check_dyld_policy_internal in mac_syscall");
+        panic_at(copyin, "Failed to find check_dyld_policy_internal in mac_syscall");
     }
     uint32_t *check_dyld_policy_internal = follow_call(bl);
     if(!check_dyld_policy_internal)
@@ -1586,24 +1587,59 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     uint32_t *ref = find_next_insn(check_dyld_policy_internal, 10, 0x94000000, 0xfc000000);
     if((ref[1] & 0xff00001f) != 0x34000000)
     {
-        panic_at(check_dyld_policy_internal, "CBZ missing after call to proc_issetuid");
+        panic_at(ref, "CBZ missing after call to proc_issetuid");
     }
     // Save offset of p_flags
     kpf_find_offset_p_flags(follow_call(ref));
     // Follow CBZ
     ref++;
     ref += sxt32(*ref >> 5, 19); // uint32 takes care of << 2
-    uint32_t *proc_has_get_task_allow = find_next_insn(ref, 5, 0x94000000, 0xfc000000);
-    if(!proc_has_get_task_allow)
+    // Check for new developer_mode_state()
+    bool dev_mode = (ref[0] & 0xfc000000) == 0x94000000;
+#ifdef DEV_BUILD
+    // 16.0 beta and up
+    if(dev_mode != (kernelVersion.darwinMajor >= 22)) panic_at(ref, "Presence of developer_mode_state doesn't match expected Darwin version");
+#endif
+    if(dev_mode)
     {
-        panic_at(ref, "Failed to find proc_has_get_task_allow in check_dyld_policy_internal");
+        if((ref[1] & 0xff00001f) != 0x34000000)
+        {
+            panic_at(ref, "CBZ missing after call to developer_mode_state");
+        }
+        ref[0] = 0x52800020; // mov w0, 1
+        ref += 2;
     }
-    if((proc_has_get_task_allow[1] != 0x7100001f /* cmp w0, 0 */) && ((proc_has_get_task_allow[1] & 0xfff8001f) != 0x36000000 /* tbz w0, 0, ... */))
+    // This can be either proc_has_get_task_allow() or proc_has_entitlement()
+    bool entitlement = (ref[0] & 0x9f00001f) == 0x90000001 && (ref[1] & 0xffc003ff) == 0x91000021;
+#ifdef DEV_BUILD
+    // iOS 13 and below
+    if(entitlement != (kernelVersion.darwinMajor <= 19)) panic_at(ref, "Call to proc_has_entitlement doesn't match expected Darwin version");
+#endif
+    if(entitlement) // adrp+add to x1
     {
-        panic_at(check_dyld_policy_internal, "CMP/TBZ missing after call to proc_has_get_task_allow");
+        // This is proc_has_entitlement(), so make sure it's the right entitlement
+        uint64_t page = ((uint64_t)ref & ~0xfffULL) + adrp_off(ref[0]);
+        uint32_t off = (ref[1] >> 10) & 0xfff;
+        const char *str = (const char*)(page + off);
+        if(strcmp(str, "get-task-allow") != 0)
+        {
+            panic_at(ref, "Wrong entitlement passed to proc_has_entitlement");
+        }
+        ref += 2;
     }
-    proc_has_get_task_allow[0] = 0x52800020; // MOV W0, #1
+    // Move from high reg, bl, and either tbz, 0 or cmp, 0
+    uint32_t op = ref[2];
+    if((ref[0] & 0xfff003ff) != 0xaa1003e0 || (ref[1] & 0xfc000000) != 0x94000000 || ((op & 0xfff8001f) != 0x36000000 && op != 0x7100001f))
+    {
+        panic_at(check_dyld_policy_internal, "CMP/TBZ missing after call to %s", entitlement ? "proc_has_entitlement" : "proc_has_get_task_allow");
+    }
+    ref[1] = 0x52800020; // mov w0, 1
     return true;
+}
+bool kpf_amfi_mac_syscall_low(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    // Unlike the other matches, the case we want is *not* the fallthrough one here.
+    // So we need to follow the b.eq for 0x5a here.
+    return kpf_amfi_mac_syscall(patch, opcode_stream + 3 + sxt32(opcode_stream[3] >> 5, 19)); // uint32 takes care of << 2
 }
 void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
     // this patch helps us find the return of the amfi function so that we can jump into shellcode from there and modify the cs flags
@@ -1694,16 +1730,18 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
     // 0xfffffff005f365f0      e2031d32       orr w2, wzr, 8 <- then this
     // 0xfffffff005f365f4      c9020094       bl sym.stub._copyout_1
     // to find this in r2 run:
-    // /x 3f6c0171000000003f680171:FFFFFFFF00000000FFFFFFFF
+    // /x 3f6c0171000000543f68017101000054:ffffffff1f0000ffffffffff1f0000ff
     uint64_t ii_matches[] = {
-        0x71016C3F, // cmp w1, 0x5b
-        0,
-        0x7101683F  // cmp w1, 0x5a
+        0x71016c3f, // cmp w1, 0x5b
+        0x54000000, // b.eq
+        0x7101683f, // cmp w1, 0x5a
+        0x54000001, // b.ne
     };
     uint64_t ii_masks[] = {
         0xffffffff,
-        0,
+        0xff00001f,
         0xffffffff,
+        0xff00001f,
     };
     xnu_pf_maskmatch(patchset, "amfi_mac_syscall", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_mac_syscall);
 
@@ -1757,6 +1795,35 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
         0xffffffe0,
     };
     xnu_pf_maskmatch(patchset, "amfi_mac_syscall_alt", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_mac_syscall);
+
+    // tvOS/audioOS 16 and bridgeOS 7 apparently got some cases removed, so their codegen looks different again.
+    //
+    // 0xfffffff008b0ad48      3f780171       cmp w1, 0x5e
+    // 0xfffffff008b0ad4c      cc030054       b.gt 0xfffffff008b0adc4
+    // 0xfffffff008b0ad50      3f680171       cmp w1, 0x5a
+    // 0xfffffff008b0ad54      40060054       b.eq 0xfffffff008b0ae1c
+    // 0xfffffff008b0ad58      3f6c0171       cmp w1, 0x5b
+    // 0xfffffff008b0ad5c      210e0054       b.ne 0xfffffff008b0af20
+    //
+    // r2:
+    // /x 3f7801710c0000543f680171000000543f6c017101000054:ffffffff1f0000ffffffffff1f0000ffffffffff1f0000ff
+    uint64_t iiii_matches[] = {
+        0x7101783f, // cmp w1, 0x5e
+        0x5400000c, // b.gt
+        0x7101683f, // cmp w1, 0x5a
+        0x54000000, // b.eq
+        0x71016c3f, // cmp w1, 0x5b
+        0x54000001, // b.ne
+    };
+    uint64_t iiii_masks[] = {
+        0xffffffff,
+        0xff00001f,
+        0xffffffff,
+        0xff00001f,
+        0xffffffff,
+        0xff00001f,
+    };
+    xnu_pf_maskmatch(patchset, "amfi_mac_syscall_low", iiii_matches, iiii_masks, sizeof(iiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_mac_syscall_low);
 }
 
 void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
