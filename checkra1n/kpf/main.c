@@ -131,12 +131,15 @@ int64_t adrp_off(uint32_t adrp)
     return sxt64((((((uint64_t)adrp >> 5) & 0x7ffffULL) << 2) | (((uint64_t)adrp >> 29) & 0x3ULL)) << 12, 33);
 }
 
-uint32_t* follow_call(uint32_t* from) {
-    if ((*from&0x7C000000) != 0x14000000) {
+uint32_t* follow_call(uint32_t *from)
+{
+    uint32_t op = *from;
+    if((op & 0x7c000000) != 0x14000000)
+    {
         DEVLOG("follow_call 0x%llx is not B or BL", xnu_ptr_to_va(from));
         return NULL;
     }
-    uint32_t *target = from + sxt32(*from, 26);
+    uint32_t *target = from + sxt32(op, 26);
     if(
         (target[0] & 0x9f00001f) == 0x90000010 && // adrp x16, ...
         (target[1] & 0xffc003ff) == 0xf9400210 && // ldr x16, [x16, ...]
@@ -585,93 +588,56 @@ void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_dyld_callback);
 }
 
-bool kpf_trustcache_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    // possibly AMFI patch
-    // this is here to patch out the trustcache checks so that AMFI thinks that everything is in trustcache
-    // there are two different versions of the trustcache function either it's just a leaf that's branched to or it's a function with a real prolog
-    // the first protion of this function here will try to detect the prolog and if it fails has_frame will be false
-    // if that's the case it will just make it return null
-    // otherwise it has to respect the epilog so it will search for all the movs that move into x0 and then turn them into a movz x0, 1
-    char has_frame = 0;
-    for(int x = 0; x < 128; x++)
+static bool found_trustcache = false;
+bool kpf_trustcache_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    if(found_trustcache)
     {
-        uint32_t opcde = opcode_stream[-x];
-        if (opcde == RET || opcde == 0xd65f0fff /*retab*/ || (opcde & 0xFF000000) == 0x94000000 /*bl*/|| (opcde & 0xFF000000) == 0x14000000/*b*/) {
-            break;
-        }
-        if ((opcde & 0xffff0000) == 0xa9430000/*ldp???*/) {
-            has_frame = 1;
-            break;
-        }
-        else if((opcde & 0xff0003e0) == 0xa90003e0 /*stp x*,x*, [sp,*]!*/)
-        {
-            has_frame = 1;
-            break;
-        }
+        panic("Found more then one trustcache call");
     }
-    if(!has_frame)
+    found_trustcache = true;
+
+    uint32_t *bl = opcode_stream - 1;
+    if((*bl & 0xffff03f0) == 0xaa0003f0) // mov x{16-31}, x0
     {
-        puts("KPF: Found AMFI (Leaf)");
-        opcode_stream[0] = 0xd2800020;
-        opcode_stream[1] = RET;
+        --bl;
     }
-    else
+    if((*bl & 0xfc000000) != 0x94000000) // bl
     {
-        bool found_something = false;
-        uint32_t* retpoint = find_next_insn(&opcode_stream[0], 0x180, RET, 0xffffffff);
-        if (retpoint == NULL)
-        {
-            DEVLOG("kpf_trustcache_callback: failed to find retpoint");
-            return false;
-        }
-        uint32_t *patchpoint = find_prev_insn(retpoint, 0x40, 0xAA0003E0, 0xffe0ffff);
-        // __TEXT_EXEC:__text:FFFFFFF007CDDFDC E0 03 13 AA                 MOV             X0, X19
-        if(patchpoint != NULL)
-        {
-            patchpoint[0] = 0xd2800020;
-            found_something = true;
-        }
-        patchpoint = find_prev_insn(retpoint, 0x40, 0x52800000, 0xffffffff);
-        // __TEXT_EXEC:__text:FFFFFFF007CEC260 00 00 80 52                 MOV             W0, #0
-        if(patchpoint != NULL)
-        {
-            patchpoint[0] = 0xd2800020;
-            found_something = true;
-        }
-        if(!found_something)
-        {
-            DEVLOG("kpf_trustcache_callback: failed to find anything");
-            return false;
-        }
-        puts("KPF: Found AMFI (Routine)");
+        panic_at(bl, "Trustcache patch: missing bl");
     }
+
+    // Follow the call
+    uint32_t *lookup_in_static_trust_cache = follow_call(bl);
+    // Skip any redirects
+    while((*lookup_in_static_trust_cache & 0xfc000000) == 0x14000000)
+    {
+        lookup_in_static_trust_cache = follow_call(lookup_in_static_trust_cache);
+    }
+    // We legit, trust me bro.
+    lookup_in_static_trust_cache[0] = 0xd2800020; // movz x0, 1
+    lookup_in_static_trust_cache[1] = RET;
     return true;
 }
 
-void kpf_trustcache_patch(xnu_pf_patchset_t *xnu_text_exec_patchset) {
+void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
+{
     // This patch leads to AMFI believing that everything is in trustcache.
-    // This is done by searching for the sequence below (example from an iPhone 7, 13.3):
+    // This is done by searching for the sequence below:
     //
-    // 0xfffffff0072382b4      ca028052       movz w10, 0x16
-    // 0xfffffff0072382b8      0bfd41d3       lsr x11, x8, 1
-    // 0xfffffff0072382bc      6c250a9b       madd x12, x11, x10, x9
+    // 0xfffffff0057c3f30      92440094       bl pmap_lookup_in_static_trust_cache
+    // 0xfffffff0057c3f34      28208052       mov w8, 0x101
+    // 0xfffffff0057c3f38      1f01206a       bics wzr, w8, w0
     //
-    // The callback checks if this is just a leaf instead of a full routinue.
-    // If it's a leaf, it will just replace the above with a movz x0,1;ret.
-    // Ff it isn't a leaf, it searches for all the places where a return happens and patches them to return true.
-    // To find the patch in r2, use:
-    // /x c002805200fc41d30000009b:e0ffffff00fcffff0080e0ff
+    // When searching with r2, just make sure to set bounds to AMFI __TEXT_EXEC.
+    // /x 28208052
     uint64_t matches[] = {
-        0x528002c0, // movz wN, 0x16
-        0xd341fc00, // lsr xN, xM, 1
-        0x9b000000, // madd ...
+        0x52802028, // mov w8, 0x101
     };
     uint64_t masks[] = {
-        0xffffffe0,
-        0xfffffc00,
-        0xffe08000,
+        0xffffffff,
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "trustcache_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_trustcache_callback);
+    xnu_pf_maskmatch(patchset, "trustcache_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_trustcache_callback);
 }
 
 void kpf_mac_mount_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
@@ -2121,7 +2087,7 @@ void kpf_shared_region_root_dir_patch(xnu_pf_patchset_t* patchset) {
     uint64_t matches[] = {
         0xaa1003e0, // mov x0, x{16-31}
         0x94000000, // bl IOLockLock
-        0xF9400210, // ldr x{16-31}, [x{16-31}, .*]
+        0xf9400210, // ldr x{16-31}, [x{16-31}, .*]
         0xaa1003e0, // mov x0, x{16-31}
         0x94000000, // bl IOLockUnlock
         0xb4000010, // cbz x{16-31}, ...
@@ -2195,12 +2161,14 @@ void command_kpf() {
     xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
 
     const char kmap_port_string[] = "userspace has control access to a"; // iOS 14 had broken panic strings
-    const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, strlen(kmap_port_string));
+    const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, sizeof(kmap_port_string) - 1);
     const char rootvp_string[] = "rootvp not authenticated after mounting";
-    const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, strlen(rootvp_string));
+    const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
+    const char cryptex_string[] = "/private/preboot/Cryptexes";
+    const char *cryptex_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, cryptex_string, sizeof(cryptex_string));
     const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
-    const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, strlen(livefs_string)) : NULL;
-    if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, strlen(livefs_string));
+    const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
+    if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1);
 
 #ifdef DEV_BUILD
     // 14.0 beta 2 onwards
@@ -2209,6 +2177,8 @@ void command_kpf() {
     if((rootvp_string_match != NULL) != (kernelVersion.darwinMajor >= 21)) panic("rootvp_auth panic doesn't match expected Darwin version");
     // 15.0 beta 1 onwards, but only iOS/iPadOS
     if((livefs_string_match != NULL) != (kernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
+    // 16.0 beta 1 onwards
+    if((cryptex_string_match != NULL) != (kernelVersion.darwinMajor >= 22)) panic("Cryptex presence doesn't match expected Darwin version");
 #endif
 
     kpf_apfs_patches(apfs_patchset, rootvp_string_match == NULL);
@@ -2224,6 +2194,7 @@ void command_kpf() {
     struct mach_header_64* amfi_header = xnu_pf_get_kext_header(hdr, "com.apple.driver.AppleMobileFileIntegrity");
     xnu_pf_range_t* amfi_text_exec_range = xnu_pf_section(amfi_header, "__TEXT_EXEC", "__text");
     kpf_amfi_kext_patches(amfi_patchset);
+    kpf_trustcache_patch(amfi_patchset);
     xnu_pf_emit(amfi_patchset);
     xnu_pf_apply(amfi_text_exec_range, amfi_patchset);
     xnu_pf_patchset_destroy(amfi_patchset);
@@ -2314,7 +2285,6 @@ void command_kpf() {
     }
 
     kpf_dyld_patch(xnu_text_exec_patchset);
-    kpf_trustcache_patch(xnu_text_exec_patchset);
     kpf_conversion_patch(xnu_text_exec_patchset);
     kpf_mac_mount_patch(xnu_text_exec_patchset);
     kpf_mac_dounmount_patch_0(xnu_text_exec_patchset);
@@ -2330,7 +2300,10 @@ void command_kpf() {
     if(rootvp_string_match) // Union mounts no longer work
     {
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
-        kpf_shared_region_root_dir_patch(xnu_text_exec_patchset);
+        if(!cryptex_string_match)
+        {
+            kpf_shared_region_root_dir_patch(xnu_text_exec_patchset);
+        }
         // Signal to ramdisk that we can't have union mounts
         checkra1n_flags |= checkrain_option_bind_mount;
     }
@@ -2339,6 +2312,7 @@ void command_kpf() {
     xnu_pf_apply(text_exec_range, xnu_text_exec_patchset);
     xnu_pf_patchset_destroy(xnu_text_exec_patchset);
 
+    if (!found_trustcache) panic("Missing patch: trustcache");
     if (!found_amfi_mac_syscall) panic("no amfi_mac_syscall");
     if (!dounmount_found) panic("no dounmount");
     if (!repatch_ldr_x19_vnode_pathoff) panic("no repatch_ldr_x19_vnode_pathoff");
