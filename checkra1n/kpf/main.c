@@ -637,7 +637,7 @@ void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
     uint64_t masks[] = {
         0xffffffff,
     };
-    xnu_pf_maskmatch(patchset, "trustcache_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_trustcache_callback);
+    xnu_pf_maskmatch(patchset, "trustcache", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_trustcache_callback);
 }
 
 void kpf_mac_mount_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
@@ -2312,7 +2312,6 @@ void command_kpf() {
     xnu_pf_apply(text_exec_range, xnu_text_exec_patchset);
     xnu_pf_patchset_destroy(xnu_text_exec_patchset);
 
-    if (!found_trustcache) panic("Missing patch: trustcache");
     if (!found_amfi_mac_syscall) panic("no amfi_mac_syscall");
     if (!dounmount_found) panic("no dounmount");
     if (!repatch_ldr_x19_vnode_pathoff) panic("no repatch_ldr_x19_vnode_pathoff");
