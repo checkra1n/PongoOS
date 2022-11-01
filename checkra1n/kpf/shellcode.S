@@ -262,3 +262,82 @@ L_kdi_shc_ramfile:
     .asciz "ramfile-memory-descriptor"
 .align 2
 _kdi_shc_end:
+
+
+
+.globl _fsctl_shc
+.globl _fsctl_shc_vnode_open
+.globl _fsctl_shc_stolen_slowpath
+.globl _fsctl_shc_orig_bl
+.globl _fsctl_shc_vnode_close
+.globl _fsctl_shc_stolen_fastpath
+.globl _fsctl_shc_orig_b
+.globl _fsctl_shc_end
+.align 2
+_fsctl_shc:
+    movz w9, 0xc104, lsl 16
+    movk w9, 0x4a50
+    cmp w2, w9
+    b.ne _fsctl_shc_stolen_fastpath
+    ldr x9, [x1] // vnode
+    ldr x9, [x9, 0xd8] // v_mount [XXX: offsetfinder?]
+    add x9, x9, 0x4e4 // f_mntfromname [XXX: offsetfinder?]
+    ldur x10, [x9]
+    ldr x11, L_fsctl_shc_dev
+    cmp x10, x11
+    b.ne _fsctl_shc_stolen_fastpath
+    ldrb w10, [x9, 8] // f_mntfromname byte 8
+    cbnz w10, _fsctl_shc_stolen_fastpath
+    // Slow path
+    sub sp, sp, 0x40
+    stp x19, x20, [sp, 0x10]
+    stp x21, x22, [sp, 0x20]
+    stp x29, x30, [sp, 0x30]
+    mov x19, x0
+    mov x20, x3
+    mov x21, x4
+    mov x22, x5
+    str xzr, [sp]
+    adr x0, L_fsctl_shc_mnt
+    mov w1, 0x1 // FREAD
+    mov w2, 0x0
+    mov w3, 0x0
+    mov x4, sp
+    // x5 is already in place
+_fsctl_shc_vnode_open:
+    bl . // vnode_open
+    cbnz w0, L_fsctl_shc_err
+    mov x0, x19
+    mov x1, sp
+    movz w2, 0xc104, lsl 16
+    movk w2, 0x4a50
+    mov x3, x20
+    mov x4, x21
+    mov x5, x22
+_fsctl_shc_stolen_slowpath:
+    brk 0x41 // stolen instruction
+_fsctl_shc_orig_bl:
+    bl . // invoke orig
+    mov x19, x0
+    ldr x0, [sp]
+    mov w1, 0x1 // FREAD
+    mov x2, x22
+_fsctl_shc_vnode_close:
+    bl . // vnode_close
+    mov x0, x19
+L_fsctl_shc_err:
+    ldp x19, x20, [sp, 0x10]
+    ldp x21, x22, [sp, 0x20]
+    ldp x29, x30, [sp, 0x30]
+    add sp, sp, 0x40
+    ret
+_fsctl_shc_stolen_fastpath:
+    brk 0x41 // stolen instruction
+_fsctl_shc_orig_b:
+    b . // invoke orig
+L_fsctl_shc_dev:
+    .ascii "/dev/md0"
+L_fsctl_shc_mnt:
+    .asciz "/fs/orig"
+.align 2
+_fsctl_shc_end:
