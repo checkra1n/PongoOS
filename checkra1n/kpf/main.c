@@ -2693,6 +2693,12 @@ void command_kpf() {
         free(overlay_buf);
         overlay_buf = NULL;
         overlay_size = 0;
+
+        checkra1n_flags |= checkrain_option_overlay;
+    }
+    else
+    {
+        checkra1n_flags &= ~checkrain_option_overlay;
     }
 
     if(!rootvp_string_match) // Only use underlying fs on union mounts
@@ -2729,19 +2735,28 @@ void command_kpf() {
     printf("KPF: Applied patchset in %llu ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
 }
 
-void kpf_flags(const char* cmd, char* args) {
-    if (args[0] != 0) {
-        uint32_t nflags = strtoul(args, NULL, 16);
-        printf("setting kpf_flags to 0x%08x\n", nflags);
-        gkpf_flags = nflags;
-        if (args[1] != 0) {
-            nflags = strtoul(args, NULL, 16);
-            printf("setting checkra1n_flags to 0x%08x\n", nflags);
-        }
-        checkra1n_flags = nflags;
-    } else {
-        printf("kpf_flags: 0x%08x 0x%08x\n", gkpf_flags, checkra1n_flags);
+void set_flags(char *args, uint32_t *flags, const char *name)
+{
+    if(args[0] != '\0')
+    {
+        uint32_t val = strtoul(args, NULL, 16);
+        printf("Setting %s to 0x%08x\n", name, val);
+        *flags = val;
     }
+    else
+    {
+        printf("%s: 0x%08x\n", name, *flags);
+    }
+}
+
+void checkra1n_flags_cmd(const char *cmd, char *args)
+{
+    set_flags(args, &gkpf_flags, "kpf_flags");
+}
+
+void kpf_flags_cmd(const char *cmd, char *args)
+{
+    set_flags(args, &checkra1n_flags, "checkra1n_flags");
 }
 
 void overlay_cmd(const char* cmd, char* args) {
@@ -2788,7 +2803,8 @@ void module_entry() {
     puts("#==================");
 
     preboot_hook = command_kpf;
-    command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags);
+    command_register("checkra1n_flags", "set flags for checkra1n userland", checkra1n_flags_cmd);
+    command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags_cmd);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
     command_register("overlay", "loads an overlay disk image", overlay_cmd);
 }
