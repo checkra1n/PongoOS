@@ -120,6 +120,9 @@ L_jump_to_image_release_L2_wait:
     tbnz x2, 63, L_jump_to_image_release_L2_wait
 
 L_jump_to_image_epilogue:
+    msr spsel, 1
+    and sp, xzr, 1
+    msr sp_el0, xzr
     mov x1, 0
     mov x2, 0
     mov x3, 0
