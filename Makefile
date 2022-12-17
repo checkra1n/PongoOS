@@ -51,6 +51,14 @@ ifndef HOST_OS
     endif
 endif
 
+# Submodules
+ifndef IGNORE_SUBMODULE_HEAD
+UNSYNCED_SUBMODULES           := $(shell git ls-tree HEAD | awk '$$2 == "commit"' | while read -r; do line="$$(cut -d ' ' -f 3 <<<"$$REPLY")"; commit="$$(cut -f 1 <<<"$$line")"; module="$$(cut -f 2 <<<"$$line")"; if ! git --git-dir "$$module/.git" --work-tree "$$module" merge-base --is-ancestor "$$commit" HEAD; then printf '%s, ' "$$module"; fi; done | sed -E 's/, $$//')
+ifneq ($(UNSYNCED_SUBMODULES),)
+    $(error The following submodules are out of date: $(UNSYNCED_SUBMODULES). Either run "git submodule update" or set IGNORE_SUBMODULE_HEAD)
+endif
+endif
+
 # Toolchain
 ifdef LLVM_CONFIG
     EMBEDDED_LLVM_CONFIG    ?= $(LLVM_CONFIG)
