@@ -52,8 +52,9 @@ ifndef HOST_OS
 endif
 
 # Submodules
+# NOTE: Do not use &> or <<< here. Systems with annoying default shells will throw a fit if you do.
 ifndef IGNORE_SUBMODULE_HEAD
-UNSYNCED_SUBMODULES           := $(shell git ls-tree HEAD | awk '$$2 == "commit"' | while read -r; do line="$$(cut -d ' ' -f 3 <<<"$$REPLY")"; commit="$$(cut -f 1 <<<"$$line")"; module="$$(cut -f 2 <<<"$$line")"; if ! git --git-dir "$$module/.git" --work-tree "$$module" merge-base --is-ancestor "$$commit" HEAD; then printf '%s, ' "$$module"; fi; done | sed -E 's/, $$//')
+UNSYNCED_SUBMODULES           := $(shell git ls-tree HEAD | awk '$$2 == "commit"' | while read -r REPLY; do line="$$(echo "$$REPLY" | cut -d ' ' -f 3)"; commit="$$(echo "$$line" | cut -f 1)"; module="$$(echo "$$line" | cut -f 2)"; if ! git --git-dir "$$module/.git" --work-tree "$$module" merge-base --is-ancestor "$$commit" HEAD; then printf '%s, ' "$$module"; fi; done | sed -E 's/, $$//')
 ifneq ($(UNSYNCED_SUBMODULES),)
     $(error The following submodules are out of date: $(UNSYNCED_SUBMODULES). Either run "git submodule update" or set IGNORE_SUBMODULE_HEAD)
 endif
