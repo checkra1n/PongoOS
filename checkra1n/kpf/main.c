@@ -375,7 +375,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xffc00000,
         0xfef80000, // match both tbz or tbnz
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_conversion_callback);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_conversion_callback);
 }
 
 bool found_convert_port_to_map = false;
