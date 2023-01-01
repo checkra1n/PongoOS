@@ -32,8 +32,6 @@
 #include <stdint.h>
 
 #define MAX_BOOTARGS_LEN 256
-#define DEFAULT_BOOTARGS "rootdev=md0"
-#define DEFAULT_TVOS_BOOTARGS DEFAULT_BOOTARGS " AppleEmbeddedUSBArbitrator-force-usbdevice=1"
 
 #define checkrain_option_none               0x00000000
 #define checkrain_option_all                0x7fffffff
@@ -45,6 +43,7 @@
 #define checkrain_option_early_exit         (1 << 2)
 #define checkrain_option_quick_mode         (1 << 3)
 #define checkrain_option_pongo_shell        (1 << 4)
+#define checkrain_option_pongo_full         (1 << 5)
 
 // KPF options
 #define checkrain_option_verbose_boot       (1 << 0)
