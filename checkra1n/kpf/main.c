@@ -878,8 +878,13 @@ bool kpf_mac_vm_map_protect_callback(struct xnu_pf_patch* patch, uint32_t* opcod
     uint32_t* first_ldr = find_next_insn(&opcode_stream[0], 0x400, 0x37480000, 0xFFFF0000);
     if(!first_ldr)
     {
-        DEVLOG("kpf_mac_vm_map_protect_callback: failed to find ldr");
-        return false;
+         first_ldr = find_next_insn(&opcode_stream[0], 0x400, 0x36480000, 0xFFFF0000);
+         if (!first_ldr) {
+             DEVLOG("kpf_mac_vm_map_protect_callback: failed to find ldr");
+             return false;
+         } else {
+             first_ldr++;
+         }
     }
     first_ldr++;
     uint32_t delta = first_ldr - (&opcode_stream[2]);
