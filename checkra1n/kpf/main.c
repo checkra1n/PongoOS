@@ -1658,6 +1658,12 @@ bool kpf_amfi_mac_syscall_low(struct xnu_pf_patch *patch, uint32_t *opcode_strea
     // So we need to follow the b.eq for 0x5a here.
     return kpf_amfi_mac_syscall(patch, opcode_stream + 3 + sxt32(opcode_stream[3] >> 5, 19)); // uint32 takes care of << 2
 }
+bool kpf_amfi_force_dev_mode(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    opcode_stream[1] = 0x14000000 + ((opcode_stream[1] & 0x03ffffff) >> 5);
+
+    puts("KPF: found force_developer_mode");
+    return true;
+}
 void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
     // this patch helps us find the return of the amfi function so that we can jump into shellcode from there and modify the cs flags
     // to do that we search for the sequence below also as an example from i7 13.3:
@@ -1841,6 +1847,19 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
         0xff00001f,
     };
     xnu_pf_maskmatch(patchset, "amfi_mac_syscall_low", iiii_matches, iiii_masks, sizeof(iiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_mac_syscall_low);
+
+    // /x 081d40390800003408008052:ffffffff0f00fffffff1ffff
+    uint64_t iiiii_matches[] = {
+        0x39401d08,
+        0x34000008,
+        0x52800008
+    };
+    uint64_t iiiii_masks[] = {
+        0xffffffff,
+        0xffff000f,
+        0xfffff0ff
+    };
+    xnu_pf_maskmatch(patchset, "force_dev_mode", iiiii_matches, iiiii_masks, sizeof(iiiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_force_dev_mode);
 }
 
 void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
