@@ -2386,17 +2386,17 @@ void kpf_launchd_patch(xnu_pf_patchset_t* patchset) {
     };
     
     uint64_t masks[] = {
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
     };
     
     xnu_pf_maskmatch(patchset, "launchd", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)kpf_launchd_callback);
