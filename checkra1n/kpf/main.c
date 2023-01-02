@@ -2493,7 +2493,7 @@ void command_kpf() {
 
     if(livefs_string_match)
     {
-        if (!cryptex_string_match) kpf_root_livefs_patch(apfs_patchset);
+        kpf_root_livefs_patch(apfs_patchset);
         kpf_allow_mount_patch(apfs_patchset);
     }
 
