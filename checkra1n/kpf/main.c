@@ -1728,7 +1728,7 @@ bool kpf_amfi_mac_syscall_low(struct xnu_pf_patch *patch, uint32_t *opcode_strea
     return kpf_amfi_mac_syscall(patch, opcode_stream + 3 + sxt32(opcode_stream[3] >> 5, 19)); // uint32 takes care of << 2
 }
 bool kpf_amfi_force_dev_mode(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    opcode_stream[1] = 0x14000000 + ((opcode_stream[1] & 0x03ffffff) >> 5);
+    opcode_stream[1] = 0x14000000 | (sxt32(opcode_stream[1] >> 5, 19) & 0x03ffffff);
 
     puts("KPF: found force_developer_mode");
     return true;
