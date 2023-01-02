@@ -2399,7 +2399,7 @@ void kpf_launchd_patch(xnu_pf_patchset_t* patchset) {
         0xff,
     };
     
-    xnu_pf_maskmatch(patchset, "launchd", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)kpf_launchd_callback);
+    xnu_pf_maskmatch(patchset, "launchd", matches, masks, sizeof(masks)/sizeof(uint8_t), true, (void*)kpf_launchd_callback);
 }
 
 checkrain_option_t gkpf_flags, checkra1n_flags;
