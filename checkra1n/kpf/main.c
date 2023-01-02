@@ -2385,6 +2385,47 @@ void kpf_allow_mount_patch(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "allow_update_mount", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)allow_update_mount_callback);
 }
 
+bool kpf_launchd_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    opcode_stream[1] = "j";
+    
+    puts("KPF: found launchd");
+    return true;
+}
+
+void kpf_launchd_patch(xnu_pf_patchset_t* patchset) {
+    uint64_t matches[] = {
+        "/",
+        "s",
+        "b",
+        "i",
+        "n",
+        "/",
+        "l",
+        "a",
+        "u",
+        "n",
+        "c",
+        "h",
+        "d"
+    };
+    
+    uint64_t masks[] = {
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+    };
+    
+    xnu_pf_maskmatch(patchset, "launchd", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)kpf_launchd_callback);
+}
+
 checkrain_option_t gkpf_flags, checkra1n_flags;
 
 int gkpf_didrun = 0;
