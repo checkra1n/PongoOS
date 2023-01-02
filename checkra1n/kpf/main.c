@@ -1728,7 +1728,7 @@ bool kpf_amfi_mac_syscall_low(struct xnu_pf_patch *patch, uint32_t *opcode_strea
     return kpf_amfi_mac_syscall(patch, opcode_stream + 3 + sxt32(opcode_stream[3] >> 5, 19)); // uint32 takes care of << 2
 }
 bool kpf_amfi_force_dev_mode(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    //opcode_stream[1] = 0x14000000 | (sxt32(opcode_stream[1] >> 5, 19) & 0x03ffffff);
+    opcode_stream[1] = 0x14000000 | (sxt32(opcode_stream[1] >> 5, 19) & 0x03ffffff);
 
     puts("KPF: found force_developer_mode");
     return true;
@@ -2345,6 +2345,46 @@ void kpf_root_livefs_patch(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "root_livefs", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)root_livefs_callback);
 }
 
+bool allow_update_mount_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    puts("KPF: Found allow_update_mount");
+#ifdef DEV_BUILD
+    printf("opstream 0x%016llx\n", xnu_ptr_to_va(opcode_stream));
+#endif
+    opcode_stream[0] = NOP;
+    return true;
+}
+
+void kpf_allow_mount_patch(xnu_pf_patchset_t* patchset) {
+    /*
+     fffffff008dbde8c         mov        x0, x19
+     fffffff008dbde90         bl         sub_fffffff007d386d8
+     fffffff008dbde94         tbnz       w0, 0xe, sub_fffffff008dbc6b0+6584   <- jump to "Updating mount to read/write mode is not allowed" -> NOP
+     fffffff008dbde98         ldr        w8, [sp, #0x90]
+     fffffff008dbde9c         and        w8, w8, #0xfffffffe
+     fffffff008dbdea0         str        w8, [sp, #0x90]
+     fffffff008dbdea4         add        x0, x22, #0x460
+     fffffff008dbdea8         add        x1, sp, #0x230
+     fffffff008dbdeac         add        x3, sp, #0x7c
+     fffffff008dbdeb0         mov        w2, #0x80
+     fffffff008dbdeb4         bl         sub_fffffff008dc5984
+     */
+    
+    
+    uint64_t matches[] = {
+        0x37700000, // tbnz  w0, 0xe,
+        0xb80000e8, // ldr   w8, [sp, #*]
+        0x121f7908, // and   w8, w8, #0xfffffffe
+    };
+    
+    uint64_t masks[] = {
+        0xfff8001f,
+        0xf88008ff,
+        0xffffffff,
+    };
+    
+    xnu_pf_maskmatch(patchset, "allow_update_mount", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)allow_update_mount_callback);
+}
+
 checkrain_option_t gkpf_flags, checkra1n_flags;
 
 int gkpf_didrun = 0;
@@ -2412,7 +2452,8 @@ void command_kpf() {
 
     if(livefs_string_match)
     {
-        kpf_root_livefs_patch(apfs_patchset);
+        if (!cryptex_string_match) kpf_root_livefs_patch(apfs_patchset);
+        kpf_allow_mount_patch(apfs_patchset);
     }
 
     xnu_pf_emit(apfs_patchset);
