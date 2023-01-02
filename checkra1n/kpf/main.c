@@ -2361,47 +2361,6 @@ void kpf_allow_mount_patch(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "allow_update_mount", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)allow_update_mount_callback);
 }
 
-bool kpf_launchd_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    opcode_stream[1] = "j";
-    
-    puts("KPF: found launchd");
-    return true;
-}
-
-void kpf_launchd_patch(xnu_pf_patchset_t* patchset) {
-    uint8_t matches[] = {
-        "/",
-        "s",
-        "b",
-        "i",
-        "n",
-        "/",
-        "l",
-        "a",
-        "u",
-        "n",
-        "c",
-        "h",
-        "d"
-    };
-    
-    uint8_t masks[] = {
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-    };
-    
-    xnu_pf_maskmatch(patchset, "launchd", matches, masks, sizeof(masks)/sizeof(uint8_t), true, (void*)kpf_launchd_callback);
-}
-
 checkrain_option_t gkpf_flags, checkra1n_flags;
 
 int gkpf_didrun = 0;
@@ -2428,7 +2387,10 @@ void command_kpf() {
     xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
     xnu_pf_patchset_t* text_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     
-    kpf_launchd_patch(text_patchset);
+    char *launchdString = (char *) memmem((unsigned char *) text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *) "/sbin/launchd", strlen("/sbin/launchd"));
+    if (!launchdString) panic("no launchd string?");
+    strncpy(launchdString, "/jbin/launchd", sizeof("/sbin/launchd"));
+    printf("KPF: changed launchd string to %s\n", launchdString);
     
     xnu_pf_emit(text_patchset);
     xnu_pf_apply(text_cstring_range, text_patchset);
@@ -2936,12 +2898,13 @@ void module_entry() {
     puts("#");
     puts("# Proudly written in nano");
     puts("# (c) 2019-2022 Kim Jong Cracks");
+    puts("# Modified by Ploosh");
     puts("#");
     puts("# This software is not for sale");
     puts("# If you purchased this, please");
     puts("# report the seller.");
     puts("#");
-    puts("# Get it for free at https://checkra.in");
+    puts("# Get it for free at https://github.com/Ploosho/PongoOS");
     puts("#");
     puts("#====  Made by  ===");
     puts("# argp, axi0mx, danyl931, jaywalker, kirb, littlelailo, nitoTV");
@@ -2957,7 +2920,7 @@ void module_entry() {
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
     command_register("overlay", "loads an overlay disk image", overlay_cmd);
 }
-char* module_name = "checkra1n-kpf2-12.0,14.5";
+char* module_name = "checkra1n-kpf2-12.0,16.3-ploosh";
 
 struct pongo_exports exported_symbols[] = {
     {.name = 0, .value = 0}
