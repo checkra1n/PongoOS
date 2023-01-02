@@ -2369,7 +2369,7 @@ bool kpf_launchd_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
 }
 
 void kpf_launchd_patch(xnu_pf_patchset_t* patchset) {
-    uint64_t matches[] = {
+    uint8_t matches[] = {
         "/",
         "s",
         "b",
@@ -2385,7 +2385,7 @@ void kpf_launchd_patch(xnu_pf_patchset_t* patchset) {
         "d"
     };
     
-    uint64_t masks[] = {
+    uint8_t masks[] = {
         0xff,
         0xff,
         0xff,
