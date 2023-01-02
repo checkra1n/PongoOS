@@ -40,7 +40,7 @@ jobs:
           git reset --hard origin/$(git branch --show-current)
           git submodule update --recursive --remote
       - name: Compile
-        run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make build/checkra1n-kpf-pongo
+        run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' DEV_BUILD=1 make build/checkra1n-kpf-pongo
       - name: Upload KPF
         uses: actions/upload-artifact@v2
         with:

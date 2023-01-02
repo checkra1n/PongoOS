@@ -1468,6 +1468,23 @@ bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     
     puts("KPF: Found root authentication required");
 }
+bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    uint32_t* tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
+    
+    if (!tbnz) {
+        panic("kpf_apfs_seal_broken: failed to find tbnz");
+    }
+    
+    *tbnz = RET;
+    
+    puts("KPF: Found root seal broken");
+}
+bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    opcode_stream[0] = 0x52800000; /* mov w0, 0 */
+    puts("KPF: found apfs_vfsop_mount");
+    return true;
+}
 
 void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
@@ -1538,7 +1555,35 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         0xff0003ff,
         0xffff000f
     };
-    xnu_pf_maskmatch(patchset, "apfs_auth_required", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
+    xnu_pf_maskmatch(patchset, "apfs_auth_required", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
+    
+    uint64_t iii_matches[] = {
+        0xb0ff8580,
+        0x910d0000
+    };
+    uint64_t iii_masks[] = {
+        0xffffffff,
+        0xff0f00ff
+    };
+    xnu_pf_maskmatch(patchset, "apfs_seal_broken", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
+    
+    uint64_t remount_matches2[] = {
+        0x37700000, // tbnz w0, 0xe, *
+        0xb94003a0, // ldr x*, [x29/sp, *]
+        0x121f7800, // and w*, w*, 0xfffffffe
+        0xb90003a0, // str x*, [x29/sp, *]
+    };
+
+    uint64_t remount_masks2[] = {
+        0xfff8001f,
+        0xfffe03a0,
+        0xfffffc00,
+        0xffc003a0,
+    };
+
+    xnu_pf_maskmatch(patchset, "apfs_vfsop_mount", remount_matches2, remount_masks2,
+                     sizeof(remount_masks2) / sizeof(uint64_t), true,
+                     (void *)kpf_apfs_vfsop_mount);
 }
 static uint32_t* amfi_ret;
 bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
