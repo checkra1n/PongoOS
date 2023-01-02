@@ -1479,12 +1479,6 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     
     puts("KPF: Found root seal broken");
 }
-bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    opcode_stream[0] = 0x52800000; /* mov w0, 0 */
-    puts("KPF: found apfs_vfsop_mount");
-    return true;
-}
 
 void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
@@ -1566,24 +1560,6 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         0xff0f00ff
     };
     xnu_pf_maskmatch(patchset, "apfs_seal_broken", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
-    
-    uint64_t remount_matches2[] = {
-        0x37700000, // tbnz w0, 0xe, *
-        0xb94003a0, // ldr x*, [x29/sp, *]
-        0x121f7800, // and w*, w*, 0xfffffffe
-        0xb90003a0, // str x*, [x29/sp, *]
-    };
-
-    uint64_t remount_masks2[] = {
-        0xfff8001f,
-        0xfffe03a0,
-        0xfffffc00,
-        0xffc003a0,
-    };
-
-    xnu_pf_maskmatch(patchset, "apfs_vfsop_mount", remount_matches2, remount_masks2,
-                     sizeof(remount_masks2) / sizeof(uint64_t), true,
-                     (void *)kpf_apfs_vfsop_mount);
 }
 static uint32_t* amfi_ret;
 bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
@@ -2450,6 +2426,13 @@ void command_kpf() {
 
     struct mach_header_64* hdr = xnu_header();
     xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
+    xnu_pf_patchset_t* text_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
+    
+    kpf_launchd_patch(text_patchset);
+    
+    xnu_pf_emit(text_patchset);
+    xnu_pf_apply(text_cstring_range, text_patchset);
+    xnu_pf_patchset_destroy(text_patchset);
 
 #ifdef DEV_BUILD
     xnu_pf_range_t* text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
