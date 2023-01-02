@@ -1462,6 +1462,13 @@ bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     *f_apfs_privcheck = 0xeb00001f; // cmp x0, x0
     return true;
 }
+bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    opcode_stream[0] = 0xd2800000;
+    opcode_stream[1] = RET;
+    
+    puts("KPF: Found root authentication required");
+}
+
 void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
     // we also want to call it so we patch that check out
@@ -1520,6 +1527,18 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         };
         xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
     }
+    
+    uint64_t ii_matches[] = {
+        0x90ff8200,
+        0x910002d6,
+        0x52800008
+    };
+    uint64_t ii_masks[] = {
+        0xffffff00,
+        0xff0003ff,
+        0xffff000f
+    };
+    xnu_pf_maskmatch(patchset, "apfs_auth_required", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
 }
 static uint32_t* amfi_ret;
 bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
