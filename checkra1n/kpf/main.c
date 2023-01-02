@@ -2751,12 +2751,12 @@ void set_flags(char *args, uint32_t *flags, const char *name)
 
 void checkra1n_flags_cmd(const char *cmd, char *args)
 {
-    set_flags(args, &gkpf_flags, "kpf_flags");
+    set_flags(args, &checkra1n_flags, "checkra1n_flags");
 }
 
 void kpf_flags_cmd(const char *cmd, char *args)
 {
-    set_flags(args, &checkra1n_flags, "checkra1n_flags");
+    set_flags(args, &gkpf_flags, "kpf_flags");
 }
 
 void overlay_cmd(const char* cmd, char* args) {
