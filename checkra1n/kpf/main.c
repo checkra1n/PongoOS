@@ -1474,7 +1474,7 @@ bool kpf_apfs_personalized_hash(struct xnu_pf_patch* patch, uint32_t* opcode_str
     
     uint32_t branch_success = 0x14000000 | (sxt32(cbz_success[0] >> 5, 19) & 0x03ffffff);
     
-    uint32_t* cbz_fail = find_prev_insn(cbz_success, 0x10, 0x34000000, 0xff000000);
+    uint32_t* cbz_fail = find_prev_insn(cbz_success, 0x10, 0xb4000000, 0xff000000);
     
     if (!cbz_fail) {
         puts("kpf_apfs_personalized_hash: failed to find fail cbz");
@@ -1485,7 +1485,7 @@ bool kpf_apfs_personalized_hash(struct xnu_pf_patch* patch, uint32_t* opcode_str
     
     uint32_t array_pos = addr_fail - cbz_fail[0];
     
-    DEVLOG("array pos is %d, success is %lux, fail is %lux, target is %lux", array_pos, cbz_success[0], cbz_fail[0], addr_fail);
+    DEVLOG("array pos is %d, success is 0x%lx, fail is 0x%lx, target is 0x%lx", array_pos, cbz_success[0], cbz_fail[0], addr_fail);
     
     cbz_fail[array_pos] = branch_success;
     
