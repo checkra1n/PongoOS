@@ -518,7 +518,7 @@ static void recfg_cmd(const char* cmd, char *args)
         {
             if(strcmp(args, command_table[i].name) == 0)
             {
-                command_table[i].cb(args, arguments);
+                command_table[i].cb(cmd, arguments);
                 return;
             }
         }

@@ -24,6 +24,7 @@
  * SOFTWARE.
  *
  */
+#include <stdbool.h>
 #include <stdlib.h>
 #include <pongo.h>
 struct task* command_task;
@@ -34,6 +35,7 @@ struct command {
     const char* name;
     const char* desc;
     void (*cb)(const char* cmd, char* args);
+    bool hidden;
 } commands[64];
 static lock command_lock;
 
@@ -53,18 +55,20 @@ void command_unregister(const char* name) {
             commands[i].name = 0;
             commands[i].desc = 0;
             commands[i].cb = 0;
+            commands[i].hidden = false;
         }
     }
     qsort(commands, 64, sizeof(struct command), &cmp_cmd);
     lock_release(&command_lock);
 }
-void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args)) {
+void _command_register_internal(const char* name, const char* desc, void (*cb)(const char* cmd, char* args), bool hidden) {
     lock_take(&command_lock);
     for (int i=0; i<64; i++) {
         if (!commands[i].name || strcmp(commands[i].name, name) == 0) {
             commands[i].name = name;
             commands[i].desc = desc;
             commands[i].cb = cb;
+            commands[i].hidden = hidden;
             qsort(commands, 64, sizeof(struct command), &cmp_cmd);
             lock_release(&command_lock);
             return;
@@ -72,6 +76,9 @@ void command_register(const char* name, const char* desc, void (*cb)(const char*
     }
     lock_release(&command_lock);
     panic("too many commands");
+}
+void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args)) {
+    _command_register_internal(name, desc, cb, false);
 }
 
 char* command_tokenize(char* str, uint32_t strbufsz) {
@@ -164,7 +171,7 @@ void command_main() {
 void help(const char * cmd, char* arg) {
     lock_take(&command_lock);
     for (int i=0; i<64; i++) {
-        if (commands[i].name) {
+        if (commands[i].name && !commands[i].hidden) {
             iprintf("%16s | %s\n", commands[i].name, commands[i].desc ? commands[i].desc : "no description");
         }
     }

@@ -495,6 +495,7 @@ extern void lowlevel_cleanup(void);
 extern void lowlevel_setup(uint64_t phys_off, uint64_t phys_size);
 extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
 extern uint64_t linear_kvm_alloc(uint32_t size);
+extern void _command_register_internal(const char* name, const char* desc, void (*cb)(const char* cmd, char* args), bool hidden);
 static inline _Bool is_16k(void)
 {
     return ((get_mmfr0() >> 20) & 0xf) == 0x1;
