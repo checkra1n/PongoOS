@@ -1485,7 +1485,7 @@ bool kpf_apfs_personalized_hash(struct xnu_pf_patch* patch, uint32_t* opcode_str
     
     uint32_t array_pos = addr_fail - *cbz_fail;
     
-    DEVLOG("array pos is %d, success is %lux, fail is %lux, target is %lux", array_pos, cbz_success[0], cbz_fail[0], addr_fail[0]);
+    DEVLOG("array pos is %d, success is %lux, fail is %lux, target is %lux", array_pos, cbz_success[0], cbz_fail[0], addr_fail);
     
     cbz_fail[array_pos] = branch_success;
     
