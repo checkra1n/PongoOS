@@ -1463,8 +1463,8 @@ bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     return true;
 }
 bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    opcode_stream[0] = 0xd2800000;
-    opcode_stream[1] = RET;
+    opcode_stream[-50] = 0xd2800000;
+    opcode_stream[-49] = RET;
     
     puts("KPF: Found root authentication required");
 }
