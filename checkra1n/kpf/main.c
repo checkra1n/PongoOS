@@ -1481,11 +1481,11 @@ bool kpf_apfs_personalized_hash(struct xnu_pf_patch* patch, uint32_t* opcode_str
         return false;
     }
     
-    uint32_t addr_fail = xnu_ptr_to_va(cbz_fail) + (sxt32(cbz_fail[0] >> 5, 19) << 2);
+    uint64_t addr_fail = xnu_ptr_to_va(cbz_fail) + (sxt32(cbz_fail[0] >> 5, 19) << 2);
     
-    uint32_t array_pos = (sxt32(cbz_fail[0] >> 5, 19) << 2);
+    uint32_t array_pos = (sxt32(cbz_fail[0] >> 5, 19) << 2) / 4;
     
-    DEVLOG("array pos is %d, addrs: success is 0x%lx, fail is 0x%lx, target is 0x%lx", array_pos, xnu_ptr_to_va(cbz_success), xnu_ptr_to_va(cbz_success), addr_fail);
+    DEVLOG("array pos is %d, addrs: success is 0x%lx, fail is 0x%lx, target is 0x%llx", array_pos, xnu_ptr_to_va(cbz_success), xnu_ptr_to_va(cbz_fail), addr_fail);
     
     cbz_fail[array_pos] = branch_success;
     
