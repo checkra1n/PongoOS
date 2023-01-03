@@ -326,6 +326,13 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
     }
     panic_at(orig, "kpf_conversion_callback: failed to find cmp");
 }
+
+bool kpf_conversion_callback2(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    opcode_stream[4] = 0xeb1f03ff;
+    
+    puts("KPF: Found task_conversion_eval");
+}
+
 void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // this patch is here to allow the usage of the extracted tfp0 port from userland (see https://bazad.github.io/2018/10/bypassing-platform-binary-task-threads/#the-platform-binary-mitigation)
     // the task_conversion_eval function is often inlinded tho and because of that we need to find it across the kernel
@@ -376,6 +383,23 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xfef80000, // match both tbz or tbnz
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_conversion_callback);
+}
+
+void kpf_conversion_patch2(xnu_pf_patchset_t* xnu_text_exec_patchset) {
+    // /x 1f2003d50a0000580f0000eb00000054:ffffffff0f0000ff0f00ffff0f0000ff
+    uint64_t matches[] = {
+        0xd503201f,
+        0x5800000a,
+        0xeb00000f,
+        0x54000000
+    };
+    uint64_t masks[] = {
+        0xffffffff,
+        0xff00000f,
+        0xffff000f,
+        0xff00000f
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_conversion_callback2);
 }
 
 bool found_convert_port_to_map = false;
@@ -2580,6 +2604,7 @@ void command_kpf() {
 
     kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_conversion_patch(xnu_text_exec_patchset);
+    kpf_conversion_patch2(xnu_text_exec_patchset);
     kpf_mac_mount_patch(xnu_text_exec_patchset);
     kpf_mac_dounmount_patch_0(xnu_text_exec_patchset);
     kpf_mac_vm_map_protect_patch(xnu_text_exec_patchset);
