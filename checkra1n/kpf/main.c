@@ -1462,12 +1462,45 @@ bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     *f_apfs_privcheck = 0xeb00001f; // cmp x0, x0
     return true;
 }
+bool kpf_apfs_personalized_hash(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    uint32_t* cbz_success = find_prev_insn(opcode_stream, 0x500, 0x34000000, 0xff000000);
+    
+    if (!cbz_success) {
+        puts("kpf_apfs_personalized_hash: failed to find success cbz");
+        return false;
+    } else {
+        puts("KPF: found kpf_apfs_personalized_hash");
+    }
+    
+    uint32_t branch_success = 0x14000000 | (sxt32(cbz_success[0] >> 5, 19) & 0x03ffffff);
+    
+    uint32_t* cbz_fail = find_prev_insn(cbz_success, 0x10, 0x34000000, 0xff000000);
+    
+    if (!cbz_fail) {
+        puts("kpf_apfs_personalized_hash: failed to find fail cbz");
+        return false;
+    }
+    
+    uint32_t addr_fail = xnu_ptr_to_va(cbz_fail) + (sxt32(cbz_fail[0] >> 5, 19) << 2);
+    
+    uint32_t array_pos = addr_fail - *cbz_fail;
+    
+    DEVLOG("array pos is ", array_pos);
+    
+    cbz_fail[array_pos] = branch_success;
+    
+    return true;
+}
+
 bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     opcode_stream[-19] = 0xd2800000;
     opcode_stream[-18] = RET;
     
     puts("KPF: Found root authentication required");
+    
+    return kpf_apfs_personalized_hash(patch, opcode_stream);
 }
+
 bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     uint32_t* tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
     
@@ -1478,6 +1511,7 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     *tbnz = RET;
     
     puts("KPF: Found root seal broken");
+    return true;
 }
 
 void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
