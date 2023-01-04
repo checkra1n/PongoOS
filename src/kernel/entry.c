@@ -24,6 +24,7 @@
  * SOFTWARE.
  *
  */
+#include <reent.h>
 #include <pongo.h>
 #include <fuse/fuse_private.h>
 #include <recfg/recfg_soc.h>
@@ -187,6 +188,7 @@ __attribute__((noinline)) void pongo_entry_cached()
     screen_init();
 
     // Set up main task for scheduling
+    _REENT_INIT_PTR_ZEROED(&task_current()->reent);
     task_current()->vm_space = &kernel_vm_space;
     task_current()->cpsr = 0x205;
     task_current()->ttbr0 = kernel_vm_space.ttbr0;
