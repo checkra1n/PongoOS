@@ -25,11 +25,17 @@
  *
  */
 #include <pongo.h>
-#include <sys/errno.h>
+#include <errno.h>
+#include <reent.h>
 
-pid_t _getpid(void)
+pid_t _getpid_r(struct _reent *reent)
 {
     return task_current()->pid;
+}
+
+struct _reent* __getreent(void)
+{
+    return &task_current()->reent;
 }
 
 #if 0

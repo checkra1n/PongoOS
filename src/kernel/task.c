@@ -25,6 +25,7 @@
  *
  */
 #include <errno.h>
+#include <reent.h>
 #include <stdlib.h>
 #include <pongo.h>
 
@@ -497,6 +498,7 @@ void task_register_unlinked(struct task* task, void (*entry)()) {
         proc_reference(task->proc);
     }
 
+    _REENT_INIT_PTR(&task->reent);
     task->refcount = TASK_REFCOUNT_GLOBAL;
     task_set_entry(task);
     task->entry = (uint64_t)entry;
