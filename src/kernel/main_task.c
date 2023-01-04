@@ -78,7 +78,7 @@ void pongo_main_task() {
     puts("");
     puts("#==================");
     puts("#");
-    puts("# pongoOS " PONGO_VERSION);
+    puts("# pongoOS " PONGO_VERSION "-ploosh");
     puts("#");
     puts("# https://checkra.in");
     puts("#");
@@ -88,6 +88,7 @@ void pongo_main_task() {
     iprintf("Booted by: %s\n", (const char*)dt_get_prop("chosen", "firmware-version", NULL));
     strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
     strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
+    strcat(dt_get_prop("chosen", "firmware-version", NULL), "-ploosh");
 #ifdef __clang__
     iprintf("Built with: Clang %s\n", __clang_version__);
 #else

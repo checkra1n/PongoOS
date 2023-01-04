@@ -1857,7 +1857,7 @@ void usb_bringup() {
 
 void usb_init() {
     char *srnm = NULL;
-    asprintf(&srnm, "CPID:%04X BDID:%02X ECID:%016llX SRTG:[%s]", socnum, dt_get_u32_prop("/device-tree/chosen", "board-id"), dt_get_u64_prop("/device-tree/chosen", "unique-chip-id"), "PongoOS-" PONGO_VERSION);
+    asprintf(&srnm, "CPID: %04X BDID: %02X ECID: %016llX SRTG:[%s]", socnum, dt_get_u32_prop("/device-tree/chosen", "board-id"), dt_get_u64_prop("/device-tree/chosen", "unique-chip-id"), "PongoOS-" PONGO_VERSION "-ploosh");
     string_descriptors[iSerialNumber] = srnm;
 
     gSynopsysOTGBase = 0;
