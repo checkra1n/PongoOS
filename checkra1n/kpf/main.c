@@ -333,6 +333,64 @@ bool kpf_conversion_callback2(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     puts("KPF: Found task_conversion_eval");
 }
 
+bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    uint64_t cbz_1_target = xnu_ptr_to_va(opcode_stream + 2) + (sxt32(cbz_fail[2] >> 5, 19) << 2);
+    uint64_t cbz_2_target = xnu_ptr_to_va(opcode_stream + 5) + (sxt32(cbz_fail[5] >> 5, 19) << 2);
+    
+    uint64_t bl_1_target = follow_call(opcode_stream + 1);
+    uint64_t bl_2_target = follow_call(opcode_stream + 4);
+    
+    if (cbz_1_target != cbz_1_target || bl_1_target != bl_2_target) {
+        return false;
+    }
+    
+    puts("KPF: Found task_conversion_eval");
+    
+    uint32_t regs = (1 << ((lr1 >> 5) & 0x1f)) | (1 << ((lr2 >> 5) & 0x1f));
+    for(size_t i = 0; i < 128; ++i) // arbitrary limit
+    {
+        uint32_t op = *--opcode_stream;
+        if((op & 0xffe0fc1f) == 0xeb00001f) // cmp xN, xM
+        {
+            uint32_t n1 = opcode_stream[1],
+                     n2 = opcode_stream[2];
+            size_t idx = 2;
+            if((n2 & 0x7f800000) == 0x53000000) // ubfm
+            {
+                n2 = opcode_stream[++idx];
+            }
+            if((n2 & 0x9f000000) == 0x90000000) // adrp
+            {
+                n2 = opcode_stream[++idx];
+            }
+            if
+            (
+                // Simple case: just cmp + b.{eq|ne}
+                (((n1 & 0xff00001e) == 0x54000000) && ((regs & (1 << ((op >> 5) & 0x1f))) != 0 && (regs & (1 << ((op >> 16) & 0x1f))) != 0)) ||
+                // Complex case: cmp + ccmp + b.{eq|ne}
+                (
+                    (n1 & 0xffe0fc1b) == 0xfa401000 && (n2 & 0xff00001e) == 0x54000000 &&
+                    (
+                        ((regs & (1 << ((op >> 5) & 0x1f))) != 0 && (regs & (1 << ((op >> 16) & 0x1f))) != 0) ||
+                        ((regs & (1 << ((n1 >> 5) & 0x1f))) != 0 && (regs & (1 << ((n1 >> 16) & 0x1f))) != 0)
+                    )
+                )
+            )
+            {
+                *opcode_stream = 0xeb1f03ff; // cmp xzr, xzr
+                return true;
+            }
+        }
+        else if((op & 0xffe0ffe0) == 0xaa0003e0) // mov xN, xM
+        {
+            uint32_t src = (op >> 16) & 0x1f,
+                     dst = op & 0x1f;
+            regs |= ((regs >> dst) & 1) << src;
+        }
+    }
+    panic_at(orig, "kpf_conversion_callback: failed to find cmp");
+}
+
 void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // this patch is here to allow the usage of the extracted tfp0 port from userland (see https://bazad.github.io/2018/10/bypassing-platform-binary-task-threads/#the-platform-binary-mitigation)
     // the task_conversion_eval function is often inlinded tho and because of that we need to find it across the kernel
@@ -385,19 +443,37 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_conversion_callback);
     
     // /x 1f2003d50a0000580f0000eb00000054:ffffffff0f0000ff0f00ffff0f0000ff
-    uint64_t matches[] = {
+    uint64_t matches2[] = {
         0xd503201f,
         0x5800000a,
         0xeb00000f,
         0x54000000
     };
-    uint64_t masks[] = {
+    uint64_t masks2[] = {
         0xffffffff,
         0xff00000f,
         0xffff000f,
         0xff00000f
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_conversion_callback2);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches2, masks2, sizeof(matches2)/sizeof(uint64_t), false, (void*)kpf_conversion_callback2);
+    
+    uint64_t matches3[] = {
+        0xaa0003e0,
+        0x94000000,
+        0x34000000,
+        0xaa0003e0,
+        0x94000000,
+        0x35000000
+    };
+    uint64_t masks3[] = {
+        0xff00ffff,
+        0xffff0000,
+        0xff000000,
+        0xff00ffff,
+        0xffff0000,
+        0xff000000
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches3, masks3, sizeof(matches3)/sizeof(uint64_t), false, (void*)kpf_conversion_callback3);
 }
 
 bool found_convert_port_to_map = false;
