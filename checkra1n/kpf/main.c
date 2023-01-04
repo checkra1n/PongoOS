@@ -1667,12 +1667,16 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     xnu_pf_maskmatch(patchset, "apfs_auth_required", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
     
     uint64_t iii_matches[] = {
-        0xb0ff8580,
-        0x910d0000
+        0x00ff8080,
+        0x910d0000,
+        0x94030000,
+        0x52800200
     };
     uint64_t iii_masks[] = {
-        0xffffffff,
-        0xff0f00ff
+        0x0ffff0ff,
+        0xffff00ff,
+        0xffff0000,
+        0xffffff0f
     };
     xnu_pf_maskmatch(patchset, "apfs_seal_broken", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
 }
