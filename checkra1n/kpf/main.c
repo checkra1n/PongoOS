@@ -334,8 +334,8 @@ bool kpf_conversion_callback2(struct xnu_pf_patch* patch, uint32_t* opcode_strea
 }
 
 bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    uint64_t cbz_1_target = xnu_ptr_to_va(opcode_stream + 2) + (sxt32(cbz_fail[2] >> 5, 19) << 2);
-    uint64_t cbz_2_target = xnu_ptr_to_va(opcode_stream + 5) + (sxt32(cbz_fail[5] >> 5, 19) << 2);
+    uint64_t cbz_1_target = xnu_ptr_to_va(opcode_stream + 2) + (sxt32(opcode_stream[2] >> 5, 19) << 2);
+    uint64_t cbz_2_target = xnu_ptr_to_va(opcode_stream + 5) + (sxt32(opcode_stream[5] >> 5, 19) << 2);
     
     uint64_t bl_1_target = follow_call(opcode_stream + 1);
     uint64_t bl_2_target = follow_call(opcode_stream + 4);
@@ -346,49 +346,17 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     
     puts("KPF: Found task_conversion_eval");
     
-    uint32_t regs = (1 << ((lr1 >> 5) & 0x1f)) | (1 << ((lr2 >> 5) & 0x1f));
-    for(size_t i = 0; i < 128; ++i) // arbitrary limit
-    {
-        uint32_t op = *--opcode_stream;
-        if((op & 0xffe0fc1f) == 0xeb00001f) // cmp xN, xM
-        {
-            uint32_t n1 = opcode_stream[1],
-                     n2 = opcode_stream[2];
-            size_t idx = 2;
-            if((n2 & 0x7f800000) == 0x53000000) // ubfm
-            {
-                n2 = opcode_stream[++idx];
-            }
-            if((n2 & 0x9f000000) == 0x90000000) // adrp
-            {
-                n2 = opcode_stream[++idx];
-            }
-            if
-            (
-                // Simple case: just cmp + b.{eq|ne}
-                (((n1 & 0xff00001e) == 0x54000000) && ((regs & (1 << ((op >> 5) & 0x1f))) != 0 && (regs & (1 << ((op >> 16) & 0x1f))) != 0)) ||
-                // Complex case: cmp + ccmp + b.{eq|ne}
-                (
-                    (n1 & 0xffe0fc1b) == 0xfa401000 && (n2 & 0xff00001e) == 0x54000000 &&
-                    (
-                        ((regs & (1 << ((op >> 5) & 0x1f))) != 0 && (regs & (1 << ((op >> 16) & 0x1f))) != 0) ||
-                        ((regs & (1 << ((n1 >> 5) & 0x1f))) != 0 && (regs & (1 << ((n1 >> 16) & 0x1f))) != 0)
-                    )
-                )
-            )
-            {
-                *opcode_stream = 0xeb1f03ff; // cmp xzr, xzr
-                return true;
-            }
-        }
-        else if((op & 0xffe0ffe0) == 0xaa0003e0) // mov xN, xM
-        {
-            uint32_t src = (op >> 16) & 0x1f,
-                     dst = op & 0x1f;
-            regs |= ((regs >> dst) & 1) << src;
-        }
+    uint32_t* beq;
+    
+    while (beq = find_prev_insn(opcode_stream, 0x100, 0x54000300, 0xffffff0f)) {
+        uint64_t followed_call = follow_call(beq);
+        
+        if (followed_call == bl_1_target) break;
+        
+        --beq;
     }
-    panic_at(orig, "kpf_conversion_callback: failed to find cmp");
+    
+    beq[-1] = 0xeb1f03ff;
 }
 
 void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
