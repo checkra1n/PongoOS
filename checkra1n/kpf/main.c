@@ -1667,14 +1667,14 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     xnu_pf_maskmatch(patchset, "apfs_auth_required", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
     
     uint64_t iii_matches[] = {
-        0x00ff8080,
-        0x910d0000,
+        0x00ff8000,
+        0x91000000,
         0x94030000,
         0x52800200
     };
     uint64_t iii_masks[] = {
-        0x0ffff0ff,
-        0xffff00ff,
+        0x0ffff00f,
+        0xff0000ff,
         0xffff0000,
         0xffffff0f
     };
