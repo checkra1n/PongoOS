@@ -797,7 +797,7 @@ void alloc_init() {
         ppage_list[i] = PAGE_WIRED; // wire all pages, carve out later.
     }
 
-    uint64_t alloc_heap_base = ((gBootArgs->topOfKernelData - 0x800000000 + kCacheableView) + 0x3fffULL) & ~0x3fffULL;
+    uint64_t alloc_heap_base = ((gTopOfKernelData - 0x800000000 + kCacheableView) + 0x3fffULL) & ~0x3fffULL;
     uint64_t alloc_heap_end = early_heap;
 
     phys_force_free(vatophys_static((void*)alloc_heap_base), alloc_heap_end - alloc_heap_base);
@@ -809,7 +809,7 @@ void* alloc_static(uint32_t size) { // memory returned by this will be added to 
 
     size = (size + 0x3fffULL) & ~0x3fffULL;
     disable_interrupts();
-    uint64_t base = (gBootArgs->topOfKernelData + 0x3fffULL) & ~0x3fffULL;
+    uint64_t base = (gTopOfKernelData + 0x3fffULL) & ~0x3fffULL;
     uint32_t idx = (base - gBootArgs->physBase) >> 14;
     for (uint32_t i = 0; i < (size >> 14); ++i) {
         if (ppage_list[idx + i] != PAGE_FREE) {
@@ -818,7 +818,7 @@ void* alloc_static(uint32_t size) { // memory returned by this will be added to 
         ppage_list[idx + i] = PAGE_WIRED;
         wired_pages++;
     }
-    gBootArgs->topOfKernelData = base + size;
+    gTopOfKernelData = base + size;
     enable_interrupts();
 
     return (void*)(base - 0x800000000 + kCacheableView);

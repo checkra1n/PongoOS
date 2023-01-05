@@ -630,6 +630,7 @@ PONGO_EXPORT(serial_enable_rx);
 //PONGO_EXPORT(__memcpy_chk);
 PONGO_EXPORT(resize_loader_xfer_data);
 PONGO_EXPORT(gBootArgs);
+PONGO_EXPORT(gTopOfKernelData);
 PONGO_EXPORT(gEntryPoint);
 PONGO_EXPORT(gDeviceTree);
 PONGO_EXPORT(gIOBase);
