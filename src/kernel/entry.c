@@ -30,6 +30,7 @@
 #include <recfg/recfg_soc.h>
 
 boot_args *gBootArgs;
+uint64_t gTopOfKernelData;
 void *gEntryPoint;
 volatile char gBootFlag = 0;
 dt_node_t *gDeviceTree;
@@ -298,6 +299,7 @@ extern uint64_t gPongoSlide;
 _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point, void *trampoline))
 {
     gBootArgs = (boot_args*)kernel_args;
+    gTopOfKernelData = gBootArgs->topOfKernelData;
     gEntryPoint = entryp;
     lowlevel_setup(gBootArgs->physBase & 0x7ffffffff, gBootArgs->memSize);
     rebase_pc(gPongoSlide);
@@ -320,16 +322,18 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
         // XXX: We should really replace loader_xfer_recv_data with something dedicated here.
         jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000000, (uint64_t)gBootArgs, 0, (uint64_t)gEntryPoint);
     }
-    else if(gBootFlag == BOOT_FLAG_LINUX)
-    {
-        linux_boot();
-    }
     else
     {
-        tz_lockdown();
-        xnu_boot();
+        if(gBootFlag == BOOT_FLAG_LINUX)
+        {
+            linux_boot();
+        }
+        else
+        {
+            xnu_boot();
+        }
+        exit_to_el1_image(gBootArgs, gEntryPoint, (void*)((gTopOfKernelData + 0x3fffULL) & ~0x3fffULL));
     }
-    exit_to_el1_image((void*)gBootArgs, gEntryPoint, (void*)((gBootArgs->topOfKernelData + 0x3fffULL) & ~0x3fffULL));
     screen_puts("didn't boot?!");
     while(1)
     {}

@@ -214,14 +214,14 @@ void linux_dtree_overlay(char *boot_args)
         void *rd_end = (void *)((((uint64_t)rd_start) + ramdisk_size + 7ull) & -8ull);
 
         int ret = fdt_setprop_u64(fdt, node, "linux,initrd-start", (uint64_t) rd_start);
-        if (ret < 0) 
+        if (ret < 0)
         {
             iprintf("Cannot update chosen node [linux,initrd-start]\n");
             return;
         }
 
         ret = fdt_setprop_u64(fdt, node, "linux,initrd-end", (uint64_t) rd_end);
-        if (ret < 0) 
+        if (ret < 0)
         {
             iprintf("Cannot update chosen node [linux,initrd-end]\n");
             return;
@@ -369,4 +369,5 @@ void linux_prep_boot()
 void linux_boot()
 {
     memcpy(gEntryPoint, gLinuxStage, gLinuxStageSize);
+    gTopOfKernelData = (uint64_t)gLinuxStage + gLinuxStageSize;
 }
