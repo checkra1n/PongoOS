@@ -369,5 +369,5 @@ void linux_prep_boot()
 void linux_boot()
 {
     memcpy(gEntryPoint, gLinuxStage, gLinuxStageSize);
-    gTopOfKernelData = (uint64_t)gLinuxStage + gLinuxStageSize;
+    gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxStageSize;
 }
