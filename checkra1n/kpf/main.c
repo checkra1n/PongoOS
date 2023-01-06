@@ -1600,11 +1600,14 @@ bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     
     puts("KPF: found apfs_vfsop_mount");
     
-    uint32_t *tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
+    if (kernelVersion.darwinMajor == 22) {
+        uint32_t *tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
     
-    tbnz[0] = NOP;
+        tbnz[0] = NOP;
     
-    puts("KPF: found updating mount not allowed");
+        puts("KPF: found updating mount not allowed");
+    }
+    
     return true;
 }
 
@@ -1668,30 +1671,30 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     }
     
     uint64_t ii_matches[] = {
-        0x90ff8200,
-        0x910002d6,
-        0x52800008
-    };
-    uint64_t ii_masks[] = {
-        0xffffff00,
-        0xff0003ff,
-        0xffff000f
-    };
-    xnu_pf_maskmatch(patchset, "apfs_auth_required", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
-    
-    uint64_t iii_matches[] = {
         0x00ff8000,
         0x91000000,
         0x94030000,
         0x52800200
     };
-    uint64_t iii_masks[] = {
+    uint64_t ii_masks[] = {
         0x0ffff00f,
         0xff0000ff,
         0xffff0000,
         0xffffff0f
     };
-    xnu_pf_maskmatch(patchset, "apfs_seal_broken", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
+    xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
+    
+    uint64_t iii_matches[] = {
+        0x90ff8200,
+        0x910002d6,
+        0x52800008
+    };
+    uint64_t iii_masks[] = {
+        0xffffff00,
+        0xff0003ff,
+        0xffff000f
+    };
+    xnu_pf_maskmatch(patchset, "apfs_auth_required", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
     
     uint64_t remount_matches2[] = {
         0x37700000, // tbnz w0, 0xe, *
