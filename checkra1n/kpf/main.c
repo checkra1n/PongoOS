@@ -1871,7 +1871,7 @@ bool kpf_amfi_force_dev_mode(struct xnu_pf_patch *patch, uint32_t *opcode_stream
     
     uint32_t *cbz = find_prev_insn(opcode_stream, 0x100, 0x34000000, 0xfc000000);
     
-    cbz[0] = 0x14000000 | (sxt32(opcode_stream[1] >> 5, 19) & 0x03ffffff);
+    cbz[0] = 0x14000000 | (sxt32(cbz[0] >> 5, 19) & 0x03ffffff);
     
     return true;
 }
