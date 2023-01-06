@@ -352,7 +352,7 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     uint64_t bl_1_target = follow_call(opcode_stream + 1);
     uint64_t bl_2_target = follow_call(opcode_stream + 4);
     
-    if (cbz_1_target != cbz_1_target || bl_1_target != bl_2_target) {
+    if (cbz_1_target != cbz_1_target || bl_1_target != bl_2_target || opcode_stream[0] != opcode_stream[7]) {
         return false;
     }
     
@@ -440,7 +440,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches2, masks2, sizeof(matches2)/sizeof(uint64_t), false, (void*)kpf_conversion_callback2);
     
-    /*uint64_t matches3[] = {
+    uint64_t matches3[] = {
         0xaa0003e0,
         0x94000000,
         0x34000000,
@@ -456,7 +456,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xffff0000,
         0xff000000
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches3, masks3, sizeof(matches3)/sizeof(uint64_t), false, (void*)kpf_conversion_callback3);*/
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches3, masks3, sizeof(matches3)/sizeof(uint64_t), false, (void*)kpf_conversion_callback3);
 }
 
 bool found_convert_port_to_map = false;
