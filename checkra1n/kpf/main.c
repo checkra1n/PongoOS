@@ -352,7 +352,7 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     uint64_t bl_1_target = follow_call(opcode_stream + 1);
     uint64_t bl_2_target = follow_call(opcode_stream + 4);
     
-    if (cbz_1_target != cbz_1_target || bl_1_target != bl_2_target || opcode_stream[0] != opcode_stream[7]) {
+    if (cbz_1_target != cbz_1_target || bl_1_target != bl_2_target || opcode_stream[0] != opcode_stream[6]) {
         return false;
     }
     
