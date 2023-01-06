@@ -1589,7 +1589,7 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
         panic("kpf_apfs_seal_broken: failed to find tbnz");
     }
     
-    *tbnz = RET;
+    tbnz[0] = RET;
     
     puts("KPF: Found root seal broken");
     return true;
