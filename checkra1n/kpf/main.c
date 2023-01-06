@@ -1599,17 +1599,17 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     return true;
 }
 
-bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    opcode_stream[0] = 0x52800000; /* mov w0, 0 */
-    
-    puts("KPF: found apfs_vfsop_mount");
-    
+bool kpf_apfs_allow_mount_patches(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     if (kernelVersion.darwinMajor == 22) {
         uint32_t *tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
     
         tbnz[0] = NOP;
     
         puts("KPF: found updating mount not allowed");
+    } else {
+        opcode_stream[0] = 0x52800000; /* mov w0, 0 */
+    
+        puts("KPF: found apfs_vfsop_mount");
     }
     
     return true;
@@ -1714,7 +1714,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         0xffc003a0,
     };
 
-    xnu_pf_maskmatch(patchset, "apfs_vfsop_mount", remount_matches2, remount_masks2, sizeof(remount_masks2) / sizeof(uint64_t), true, (void *)kpf_apfs_vfsop_mount);
+    xnu_pf_maskmatch(patchset, "apfs_allow_mount", remount_matches2, remount_masks2, sizeof(remount_masks2) / sizeof(uint64_t), true, (void *)kpf_apfs_allow_mount_patches);
 }
 static uint32_t* amfi_ret;
 bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
