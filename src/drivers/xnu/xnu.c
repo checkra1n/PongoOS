@@ -1296,12 +1296,16 @@ void xnu_pf_patchset_destroy(xnu_pf_patchset_t* patchset) {
     if (patchset->jit_matcher) jit_free(patchset->jit_matcher);
     free(patchset);
 }
-void xnu_boot(void) {
-    uint64_t addr = socnum == 0x8960 ? 0x200000910 : 0x200000490;
+void xnu_boot(void)
+{
+    // XXX: Make this use the new TZ driver once done
+    tz_lockdown();
+    /*uint64_t addr = socnum == 0x8960 ? 0x200000910 : 0x200000490;
     if(*(volatile uint32_t*)addr != 0x1)
     {
         panic("Cannot boot XNU with TZ0 unlocked");
-    }
+    }*/
+    gBootArgs->topOfKernelData = gTopOfKernelData;
 }
 
 void xnu_init(void) {
