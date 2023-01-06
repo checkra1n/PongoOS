@@ -352,21 +352,16 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     uint64_t bl_1_target = follow_call(opcode_stream + 1);
     uint64_t bl_2_target = follow_call(opcode_stream + 4);
     
-    if (cbz_1_target != cbz_1_target || bl_1_target != bl_2_target) {
-        return false;
-    }
-    
-    printf("opcode_stream[0] = 0x%lx, opcode_stream[7] = 0x%lx", opcode_stream[0], opcode_stream[7]);
-    if (opcode_stream[0] != opcode_stream[7]) {
+    if (cbz_1_target != cbz_1_target || bl_1_target != bl_2_target || opcode_stream[0] != opcode_stream[7]) {
         return false;
     }
     
     puts("KPF: Found task_conversion_eval");
     
-    uint32_t* beq;
+    uint32_t* beq = opcode_stream;
     
-    while (beq = find_prev_insn(opcode_stream, 0x100, 0x54000300, 0xffffff0f)) {
-        uint64_t followed_call = follow_call(beq);
+    while (beq = find_prev_insn(beq, 0x100, 0x54000300, 0xffffff0f)) {
+        uint64_t followed_call = beq + sxt32(beq[0], 26);
         
         if (followed_call == bl_1_target) break;
         
