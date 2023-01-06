@@ -363,7 +363,7 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     while (beq = find_prev_insn(beq, 0x100, 0x54000300, 0xffffff0f)) {
         uint64_t followed_call = beq + sxt32(beq[0], 26);
         
-        if (followed_call == bl_1_target) break;
+        if (followed_call == cbz_1_target) break;
         
         --beq;
     }
