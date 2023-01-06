@@ -356,6 +356,8 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
         return false;
     }
     
+    printf("opcode_stream[0] = 0x%lx, opcode_stream[7] = 0x%lx", opcode_stream[0], opcode_stream[7]);
+    
     puts("KPF: Found task_conversion_eval");
     
     uint32_t* beq;
@@ -446,9 +448,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0x34000000,
         0xaa0003e0,
         0x94000000,
-        0x35000000,
-        0xd2800000,
-        0xaa0003e0,
+        0x35000000
     };
     uint64_t masks3[] = {
         0xff00ffff,
@@ -456,9 +456,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xff000000,
         0xff00ffff,
         0xffff0000,
-        0xff000000,
-        0xffffff00,
-        0xff00ffff
+        0xff000000
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches3, masks3, sizeof(matches3)/sizeof(uint64_t), false, (void*)kpf_conversion_callback3);
 }
