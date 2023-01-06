@@ -2786,7 +2786,7 @@ void module_entry() {
     puts("# checkra1n kpf " CHECKRA1N_VERSION);
     puts("#");
     puts("# Proudly written in nano");
-    puts("# (c) 2019-2022 Kim Jong Cracks");
+    puts("# (c) 2019-2023 Kim Jong Cracks");
     puts("#");
     puts("# This software is not for sale");
     puts("# If you purchased this, please");
