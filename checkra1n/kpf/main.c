@@ -1599,6 +1599,12 @@ bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     opcode_stream[0] = 0x52800000; /* mov w0, 0 */
     
     puts("KPF: found apfs_vfsop_mount");
+    
+    uint32_t *tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
+    
+    tbnz[0] = NOP;
+    
+    puts("KPF: found updating mount not allowed");
     return true;
 }
 
@@ -2481,37 +2487,6 @@ bool allow_update_mount_callback(struct xnu_pf_patch *patch, uint32_t *opcode_st
     return true;
 }
 
-void kpf_allow_mount_patch(xnu_pf_patchset_t* patchset) {
-    /*
-     fffffff008dbde8c         mov        x0, x19
-     fffffff008dbde90         bl         sub_fffffff007d386d8
-     fffffff008dbde94         tbnz       w0, 0xe, sub_fffffff008dbc6b0+6584   <- jump to "Updating mount to read/write mode is not allowed" -> NOP
-     fffffff008dbde98         ldr        w8, [sp, #0x90]
-     fffffff008dbde9c         and        w8, w8, #0xfffffffe
-     fffffff008dbdea0         str        w8, [sp, #0x90]
-     fffffff008dbdea4         add        x0, x22, #0x460
-     fffffff008dbdea8         add        x1, sp, #0x230
-     fffffff008dbdeac         add        x3, sp, #0x7c
-     fffffff008dbdeb0         mov        w2, #0x80
-     fffffff008dbdeb4         bl         sub_fffffff008dc5984
-     */
-    
-    
-    uint64_t matches[] = {
-        0x37700000, // tbnz  w0, 0xe,
-        0xb80000e8, // ldr   w8, [sp, #*]
-        0x121f7908, // and   w8, w8, #0xfffffffe
-    };
-    
-    uint64_t masks[] = {
-        0xfff8001f,
-        0xf88008ff,
-        0xffffffff,
-    };
-    
-    xnu_pf_maskmatch(patchset, "allow_update_mount", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)allow_update_mount_callback);
-}
-
 checkrain_option_t gkpf_flags, checkra1n_flags;
 
 int gkpf_didrun = 0;
@@ -2590,7 +2565,6 @@ void command_kpf() {
     if(livefs_string_match)
     {
         kpf_root_livefs_patch(apfs_patchset);
-        kpf_allow_mount_patch(apfs_patchset);
     }
 
     xnu_pf_emit(apfs_patchset);
