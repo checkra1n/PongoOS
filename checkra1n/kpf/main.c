@@ -363,10 +363,14 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     while (beq = find_prev_insn(beq, 0x100, 0x54000300, 0xffffff0f)) {
         uint64_t followed_call = beq + sxt32(beq[0], 26);
         
+        printf("followed to %s\n", followed_call);
+        
         if (followed_call == cbz_1_target) break;
         
         --beq;
     }
+    
+    printf("we're at %s, value is 0x%lx\n", xnu_ptr_to_va(beq), beq[0]);
     
     beq[-1] = 0xeb1f03ff;
     
