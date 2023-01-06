@@ -361,7 +361,7 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     uint32_t* beq = opcode_stream;
     
     while (beq = find_prev_insn(beq, 0x100, 0x54000300, 0xffffff0f)) {
-        uint64_t followed_call = xnu_ptr_to_va(beq) + sxt32(*beq, 19);
+        uint64_t followed_call = xnu_ptr_to_va(beq) + (sxt32(beq[0] >> 5, 19) << 2);
         
         printf("followed to 0x%llx\n", followed_call);
         
