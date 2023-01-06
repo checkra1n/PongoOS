@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2019-2022 checkra1n team
+#  Copyright (C) 2019-2023 checkra1n team
 #  This file is part of pongoOS.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
