@@ -1823,9 +1823,20 @@ bool kpf_amfi_mac_syscall_low(struct xnu_pf_patch *patch, uint32_t *opcode_strea
     return kpf_amfi_mac_syscall(patch, opcode_stream + 3 + sxt32(opcode_stream[3] >> 5, 19)); // uint32 takes care of << 2
 }
 bool kpf_amfi_force_dev_mode(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    opcode_stream[1] = 0x14000000 | (sxt32(opcode_stream[1] >> 5, 19) & 0x03ffffff);
+    uint64_t page = ((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(opcode_stream[0]);
+    uint32_t off = (opcode_stream[1] >> 10) & 0xfff;
+    const char *str = (const char *)(page + off);
+    
+    if (strcmp(str, "AMFI: developer mode is force enabled\n") != 0) {
+        return false;
+    }
 
     puts("KPF: found force_developer_mode");
+    
+    uint32_t *cbz = find_prev_insn(opcode_stream, 0x100, 0x34000000, 0xfc000000);
+    
+    cbz[0] = 0x14000000 | (sxt32(opcode_stream[1] >> 5, 19) & 0x03ffffff);
+    
     return true;
 }
 void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
@@ -2014,14 +2025,12 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
 
     // /x 081d40390800003408008052:ffffffff0f00fffffff1ffff
     uint64_t iiiii_matches[] = {
-        0x39401d08,
-        0x34000008,
-        0x52800008
+        0x90000000,
+        0x91000000,
     };
     uint64_t iiiii_masks[] = {
-        0xffffffff,
-        0xffff000f,
-        0xfffff0ff
+        0x9f00001f,
+        0xffc003ff,
     };
     xnu_pf_maskmatch(patchset, "force_dev_mode", iiiii_matches, iiiii_masks, sizeof(iiiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_force_dev_mode);
 }
