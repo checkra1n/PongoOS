@@ -357,6 +357,9 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     }
     
     printf("opcode_stream[0] = 0x%lx, opcode_stream[7] = 0x%lx", opcode_stream[0], opcode_stream[7]);
+    if (opcode_stream[0] != opcode_stream[7]) {
+        return false;
+    }
     
     puts("KPF: Found task_conversion_eval");
     
