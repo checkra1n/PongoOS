@@ -1690,7 +1690,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         0x9f00001f,
         0xffc003ff,
     };
-    xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
+    xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_seal_broken);
     
     uint64_t iii_matches[] = {
         0x90ff8200,
