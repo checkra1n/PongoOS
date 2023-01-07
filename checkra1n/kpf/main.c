@@ -1587,6 +1587,14 @@ bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
 }
 
 bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    uint64_t page = ((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(opcode_stream[0]);
+    uint32_t off = (opcode_stream[1] >> 10) & 0xfff;
+    const char *str = (const char *)(page + off);
+    
+    if (strcmp(str, "\"root volume seal is broken %p\\n\"") != 0) {
+        return false;
+    }
+    
     uint32_t* tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
     
     if (!tbnz) {
@@ -1675,16 +1683,12 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     }
     
     uint64_t ii_matches[] = {
-        0x00ff8000,
+        0x90000000,
         0x91000000,
-        0x94030000,
-        0x52800200
     };
     uint64_t ii_masks[] = {
-        0x0ffff00f,
-        0xff0000ff,
-        0xffff0000,
-        0xffffff0f
+        0x9f00001f,
+        0xffc003ff,
     };
     xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
     
