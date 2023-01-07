@@ -2524,10 +2524,10 @@ void command_kpf() {
     xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
     xnu_pf_patchset_t* text_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     
-    char *launchdString = (char *) memmem((unsigned char *) text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *) "/sbin/launchd", strlen("/sbin/launchd"));
+    /*char *launchdString = (char *) memmem((unsigned char *) text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *) "/sbin/launchd", strlen("/sbin/launchd"));
     if (!launchdString) panic("no launchd string?");
     strncpy(launchdString, "/jbin/launchd", sizeof("/sbin/launchd"));
-    printf("KPF: changed launchd string to %s\n", launchdString);
+    printf("KPF: changed launchd string to %s\n", launchdString);*/
     
     xnu_pf_emit(text_patchset);
     xnu_pf_apply(text_cstring_range, text_patchset);
