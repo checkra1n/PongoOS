@@ -3036,7 +3036,7 @@ void module_entry() {
     puts("# If you purchased this, please");
     puts("# report the seller.");
     puts("#");
-    puts("# Get it for free at https://github.com/Ploosho/PongoOS");
+    puts("# Get it for free at https://github.com/guacaplushy/PongoOS");
     puts("#");
     puts("#====  Made by  ===");
     puts("# argp, axi0mx, danyl931, jaywalker, kirb, littlelailo, nitoTV");
