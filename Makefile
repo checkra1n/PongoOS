@@ -140,6 +140,9 @@ $(BUILD)/Pongo: Makefile $(PONGO_C) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 
 $(BUILD)/checkra1n-kpf-pongo: Makefile $(KPF_C) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(KPF_C) $(EMBEDDED_CC_FLAGS) $(KPF_CC_FLAGS)
+	
+$(BUILD)/dtpatcher: Makefile checkra1n/dtpatcher/main.c $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
+	$(EMBEDDED_CC) -o $@ checkra1n/dtpatcher/main.c $(EMBEDDED_CC_FLAGS) $(KPF_CC_FLAGS)
 
 $(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $(AUX)/vmacho.c $(CFLAGS)
