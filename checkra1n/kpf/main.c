@@ -1591,7 +1591,7 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     uint32_t off = (opcode_stream[1] >> 10) & 0xfff;
     const char *str = (const char *)(page + off);
     
-    if (strcmp(str, "\"root volume seal is broken %p\\n\" @%s:%d") != 0) {
+    if (strcmp(str, "\"root volume seal is broken %p\\n\"") != 0) {
         return false;
     }
     
@@ -1683,12 +1683,12 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     }
     
     uint64_t ii_matches[] = {
-        0x00008080,
+        0x9f000000,
         0x91000000,
     };
     uint64_t ii_masks[] = {
-        0x0f00f0ff,
-        0xff0000ff,
+        0x90000000,
+        0xff000000,
     };
     xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
     
@@ -2069,8 +2069,8 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
         0x91000000,
     };
     uint64_t iiiii_masks[] = {
-        0x9f00001f,
-        0xffc003ff,
+        0x9f000000,
+        0xff000000,
     };
     xnu_pf_maskmatch(patchset, "force_dev_mode", iiiii_matches, iiiii_masks, sizeof(iiiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_force_dev_mode);
 }
