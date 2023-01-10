@@ -444,7 +444,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches2, masks2, sizeof(matches2)/sizeof(uint64_t), false, (void*)kpf_conversion_callback2);
     
-    uint64_t matches3[] = {
+    /*uint64_t matches3[] = {
         0xaa0003e0,
         0x94000000,
         0x34000000,
@@ -460,7 +460,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xffff0000,
         0xff000000
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches3, masks3, sizeof(matches3)/sizeof(uint64_t), false, (void*)kpf_conversion_callback3);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches3, masks3, sizeof(matches3)/sizeof(uint64_t), false, (void*)kpf_conversion_callback3);*/
 }
 
 bool found_convert_port_to_map = false;
