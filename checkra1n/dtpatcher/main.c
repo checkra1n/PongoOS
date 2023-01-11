@@ -29,75 +29,10 @@
 #define APFS_VOL_ROLE_VM        0x0008
 #define APFS_VOL_ROLE_PREBOOT   0x0010
 
-static int gNewEntry = 0;
+static char *gNewEntry;
 static int hasChanged = 0;
 
-void dtpatcher(const char* cmd, char* args) {
-    
-    // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk0s1
-    
-    if(!hasChanged) {
-        uint32_t len = 0;
-        dt_node_t* dev = dt_find(gDeviceTree, "fstab");
-        if (!dev) panic("invalid devicetree: no device!");
-        uint32_t* val = dt_prop(dev, "max_fs_entries", &len);
-        if (!val) panic("invalid devicetree: no prop!");
-        uint32_t* patch = (uint32_t*)val;
-        printf("fstab max_fs_entries: %016llx: %08x\n", (uint64_t)val, patch[0]);
-        uint32_t entries = patch[0];
-        entries += 1;
-        //patch[0] = entries;
-        //printf("new fstab max_fs_entries: %016llx: %08x\n", (uint64_t)val, patch[0]);
-        hasChanged = 1;
-        gNewEntry = atoi(args);
-    }
-    
-    //    {
-    //        // wat?!
-    //        uint32_t len = 0;
-    //        dt_node_t* dev = dt_find(gDeviceTree, "system-vol");
-    //        if (!dev) panic("invalid devicetree: no device!");
-    //
-    //        uint32_t* val = dt_prop(dev, "vol.fs_role", &len);
-    //        if (!val) panic("invalid devicetree: no prop!");
-    //        // get role
-    //        uint32_t* patch = (uint32_t*)val;
-    //        printf("old system vol.fs_role: %016llx: %08x\n", (uint64_t)val, patch[0]);
-    //        // change sys -> recv
-    //        patch[0] = APFS_VOL_ROLE_RECOVERY;
-    //        printf("new system vol.fs_role: %016llx: %08x\n", (uint64_t)val, patch[0]);
-    //
-    //        val = dt_prop(dev, "vol.fs_name", &len);
-    //        if (!val) panic("invalid devicetree: no prop!");
-    //        // get fs_name
-    //        uint8_t* npatch = (uint8_t*)val;
-    //        printf("old system vol.fs_name: %016llx: %c\n", (uint64_t)val, npatch[0]);
-    //        // change System -> Xystem
-    //        npatch[0] = 'X';
-    //        printf("new system vol.fs_name: %016llx: %c\n", (uint64_t)val, npatch[0]);
-    //
-    //    }
-    
-    {
-        uint32_t len = 0;
-        dt_node_t* dev = dt_find(gDeviceTree, "chosen");
-        if (!dev) panic("invalid devicetree: no device!");
-        uint32_t* val = dt_prop(dev, "root-matching", &len);
-        if (!val) panic("invalid devicetree: no prop!");
-        
-        char str[0x100]; // max size = 0x100
-        memset(&str, 0x0, 0x100);
-        sprintf(str, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">disk0s1s%d</string></dict>", gNewEntry);
-        //sprintf(str, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Minor</key><integer size=\"64\" ID=\"2\">%d</integer></dict>", gNewEntry);
-        
-        memset(val, 0x0, 0x100);
-        memcpy(val, str, 0x100);
-        printf("set new entry: %016llx: disk0s1s%d\n", (uint64_t)val, gNewEntry);
-    }
-    
-}
-
-void dtpatcher16(const char* cmd, char* args) {
+void dtpatchef(const char* cmd, char* args) {
     
     // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk1
     
@@ -112,10 +47,10 @@ void dtpatcher16(const char* cmd, char* args) {
         uint32_t entries = patch[0];
         entries += 1;
         hasChanged = 1;
-        gNewEntry = atoi(args);
+        gNewEntry = args;
     }
     
-    {
+    /*{
         // wat?!
         uint32_t len = 0;
         dt_node_t* dev = dt_find(gDeviceTree, "system-vol");
@@ -139,7 +74,7 @@ void dtpatcher16(const char* cmd, char* args) {
         rwpatch[1] = 'w';
         printf("new system vol.fs_type: %016llx: %c\n", (uint64_t)val, rwpatch[1]);
         
-    }
+    }*/
     
     {
         uint32_t len = 0;
@@ -150,11 +85,11 @@ void dtpatcher16(const char* cmd, char* args) {
         
         char str[0x100]; // max size = 0x100
         memset(&str, 0x0, 0x100);
-        sprintf(str, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">disk1s%d</string></dict>", gNewEntry);
+        sprintf(str, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", gNewEntry);
         
         memset(val, 0x0, 0x100);
         memcpy(val, str, 0x100);
-        printf("set new entry: %016llx: disk1s%d\n", (uint64_t)val, gNewEntry);
+        printf("set new entry: %016llx: %s\n", (uint64_t)val, gNewEntry);
     }
     
 }
@@ -172,7 +107,6 @@ void module_entry() {
     puts("# Get it for free at https://github.com/guacaplushy/PongoOS");
 
     command_register("dtpatch", "run dt patcher", dtpatcher);
-    command_register("dtpatch16", "run dt patcher for ios 16", dtpatcher16);
 }
 
 char* module_name = "dtpatcher-ploosh";
