@@ -2845,8 +2845,9 @@ void command_kpf() {
     if (!dyld_hook_addr) panic("no dyld_hook_addr?");
     if (offsetof_p_flags == -1) panic("no p_flags?");
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
-    if (!vfs_context_current) panic("missing patch: vfs_context_current");
-    if (kmap_port_string_match && !found_convert_port_to_map) panic("missing patch: convert_port_to_map");
+    if (!vfs_context_current) panic("Missing patch: vfs_context_current");
+    if (!found_kpf_conversion_ldr && !found_kpf_conversion_bl && !found_kpf_conversion_imm) panic("Missing patch: task_conversion_eval");
+    if (kmap_port_string_match && !found_convert_port_to_map) panic("Missing patch: convert_port_to_map");
     if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
     if (do_ramfile && !IOMemoryDescriptor_withAddress) panic("Missing patch: iomemdesc");
 
