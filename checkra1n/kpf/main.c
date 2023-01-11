@@ -337,48 +337,6 @@ static bool kpf_conversion_callback_ldr(struct xnu_pf_patch *patch, uint32_t *op
     panic_at(orig, "kpf_conversion_callback: failed to find cmp");
 }
 
-bool kpf_conversion_callback2(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    
-    opcode_stream[4] = 0xeb1f03ff;
-    
-    puts("KPF: Found task_conversion_eval");
-    return true;
-}
-
-bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    
-    uint64_t cbz_1_target = xnu_ptr_to_va(opcode_stream + 2) + (sxt32(opcode_stream[2] >> 5, 19) << 2);
-    uint64_t cbz_2_target = xnu_ptr_to_va(opcode_stream + 5) + (sxt32(opcode_stream[5] >> 5, 19) << 2);
-    
-    uint64_t bl_1_target = follow_call(opcode_stream + 1);
-    uint64_t bl_2_target = follow_call(opcode_stream + 4);
-    
-    if (cbz_1_target != cbz_1_target || bl_1_target != bl_2_target || opcode_stream[0] != opcode_stream[7]) {
-        return false;
-    }
-    
-    puts("KPF: Found task_conversion_eval");
-    
-    uint32_t* beq = opcode_stream;
-    
-    while (beq = find_prev_insn(beq, 0x100, 0x54000300, 0xffffff0f)) {
-        uint64_t followed_call = xnu_ptr_to_va(beq) + (sxt32(beq[0] >> 5, 19) << 2);
-        
-        printf("followed to 0x%llx\n", followed_call);
-        
-        if (followed_call == cbz_1_target) break;
-        
-        --beq;
-    }
-    
-    printf("we're at 0x%llx, value is 0x%lx\n", xnu_ptr_to_va(beq), beq[0]);
-    
-    beq[-1] = 0xeb1f03ff;
-    
-    return true;
-}
-
-
 static bool kpf_conversion_callback(uint32_t *opcode_stream, bool forward)
 {
     uint32_t * const orig = opcode_stream;
@@ -386,6 +344,7 @@ static bool kpf_conversion_callback(uint32_t *opcode_stream, bool forward)
     {
         panic_at(orig, "kpf_conversion_callback: found both ldr and bl/imm");
     }
+    puts("KPF: Found task_conversion_eval");
 
     for(size_t i = 0, max = forward ? 0x18 : 0x30; i < max; ++i)
     {
@@ -431,6 +390,7 @@ static bool kpf_conversion_callback_bl(struct xnu_pf_patch *patch, uint32_t *opc
     {
         return false;
     }
+    
     // Search for bitfield marker in target function. We can be quite restrictive here
     // because if this doesn't match, then nothing will and we'll get a KPF panic.
     // Also make sure we don't seek past the end of any function here.
@@ -476,6 +436,7 @@ static bool kpf_conversion_callback_imm(struct xnu_pf_patch *patch, uint32_t *op
     {
         panic_at(opcode_stream, "kpf_conversion_callback: found imm more than once");
     }
+    
     found_kpf_conversion_imm = true;
     return kpf_conversion_callback(opcode_stream, true);
 }
