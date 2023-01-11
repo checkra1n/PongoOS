@@ -316,7 +316,6 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
             )
             {
                 *opcode_stream = 0xeb1f03ff; // cmp xzr, xzr
-                conversion_ran = true;
                 return true;
             }
         }
