@@ -1669,8 +1669,9 @@ bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     const char *str = (const char *)(page + off);
     
     if (strcmp(str, "is_root_hash_authentication_required_ios") == 0) {
-        opcode_stream[-19] = 0xd2800000;
-        opcode_stream[-18] = RET;
+        uint32_t* func_start = find_prev_insn(opcode_stream, 0x25, 0xa9b000f0, 0xfff000f0);
+        func_start[0] = 0xd2800000;
+        func_start[1] = RET;
 
         puts("KPF: Found root authentication required");
     
