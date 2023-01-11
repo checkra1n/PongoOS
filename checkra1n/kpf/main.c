@@ -253,10 +253,8 @@ bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     return true;
 }
 
-bool conversion_ran = false;
 
 bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    if (conversion_ran) return false;
     
     uint32_t * const orig = opcode_stream;
     uint32_t lr1 = opcode_stream[0],
@@ -333,18 +331,14 @@ bool kpf_conversion_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
 }
 
 bool kpf_conversion_callback2(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    if (conversion_ran) return false;
     
     opcode_stream[4] = 0xeb1f03ff;
     
     puts("KPF: Found task_conversion_eval");
-    
-    conversion_ran = true;
     return true;
 }
 
 bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    if (conversion_ran) return false;
     
     uint64_t cbz_1_target = xnu_ptr_to_va(opcode_stream + 2) + (sxt32(opcode_stream[2] >> 5, 19) << 2);
     uint64_t cbz_2_target = xnu_ptr_to_va(opcode_stream + 5) + (sxt32(opcode_stream[5] >> 5, 19) << 2);
@@ -374,7 +368,6 @@ bool kpf_conversion_callback3(struct xnu_pf_patch* patch, uint32_t* opcode_strea
     
     beq[-1] = 0xeb1f03ff;
     
-    conversion_ran = true;
     return true;
 }
 
@@ -444,7 +437,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches2, masks2, sizeof(matches2)/sizeof(uint64_t), false, (void*)kpf_conversion_callback2);
     
-    /*uint64_t matches3[] = {
+    uint64_t matches3[] = {
         0xaa0003e0,
         0x94000000,
         0x34000000,
@@ -460,7 +453,7 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xffff0000,
         0xff000000
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches3, masks3, sizeof(matches3)/sizeof(uint64_t), false, (void*)kpf_conversion_callback3);*/
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "conversion_patch", matches3, masks3, sizeof(matches3)/sizeof(uint64_t), false, (void*)kpf_conversion_callback3);
 }
 
 bool found_convert_port_to_map = false;
