@@ -32,7 +32,7 @@
 static char *gNewEntry;
 static int hasChanged = 0;
 
-void dtpatchef(const char* cmd, char* args) {
+void dtpatcher(const char* cmd, char* args) {
     
     // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk1
     
