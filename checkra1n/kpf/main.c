@@ -1592,7 +1592,6 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     const char *str = (const char *)(page + off);
     
     if (strcmp(str, "\"root volume seal is broken %p\\n\" @%s:%d") != 0) {
-        printf("nfr %s", str);
         return false;
     }
     
