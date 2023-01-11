@@ -1664,12 +1664,20 @@ bool kpf_apfs_personalized_hash(struct xnu_pf_patch* patch, uint32_t* opcode_str
 }
 
 bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    opcode_stream[-19] = 0xd2800000;
-    opcode_stream[-18] = RET;
+    uint64_t page = ((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(opcode_stream[0]);
+    uint32_t off = (opcode_stream[1] >> 10) & 0xfff;
+    const char *str = (const char *)(page + off);
     
-    puts("KPF: Found root authentication required");
+    if (strcmp(str, "is_root_hash_authentication_required_ios") == 0) {
+        opcode_stream[-19] = 0xd2800000;
+        opcode_stream[-18] = RET;
+
+        puts("KPF: Found root authentication required");
     
-    return kpf_apfs_personalized_hash(patch, opcode_stream);
+        return kpf_apfs_personalized_hash(patch, opcode_stream);
+    } else {
+        return false;
+    }
 }
 
 bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
@@ -1777,14 +1785,12 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
     
     uint64_t iii_matches[] = {
-        0x90ff8200,
-        0x910002d6,
-        0x52800008
+        0x00000000,
+        0x91000000,
     };
     uint64_t iii_masks[] = {
-        0xffffff00,
-        0xff0003ff,
-        0xffff000f
+        0x0f000000,
+        0xff000000,
     };
     xnu_pf_maskmatch(patchset, "apfs_auth_required", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
     
