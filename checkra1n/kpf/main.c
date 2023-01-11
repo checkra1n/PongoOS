@@ -3110,6 +3110,83 @@ void overlay_cmd(const char* cmd, char* args) {
     loader_xfer_recv_count = 0;
 }
 
+#define APFS_VOL_ROLE_NONE      0x0000
+#define APFS_VOL_ROLE_SYSTEM    0x0001
+#define APFS_VOL_ROLE_USER      0x0002
+#define APFS_VOL_ROLE_RECOVERY  0x0004
+#define APFS_VOL_ROLE_VM        0x0008
+#define APFS_VOL_ROLE_PREBOOT   0x0010
+
+static char *gNewEntry;
+static int hasChanged = 0;
+
+void dtpatcher(const char* cmd, char* args) {
+    
+    // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk1
+    
+    if(!hasChanged) {
+        uint32_t len = 0;
+        dt_node_t* dev = dt_find(gDeviceTree, "fstab");
+        if (!dev) panic("invalid devicetree: no device!");
+        uint32_t* val = dt_prop(dev, "max_fs_entries", &len);
+        if (!val) panic("invalid devicetree: no prop!");
+        uint32_t* patch = (uint32_t*)val;
+        printf("fstab max_fs_entries: %016llx: %08x\n", (uint64_t)val, patch[0]);
+        uint32_t entries = patch[0];
+        entries += 1;
+        hasChanged = 1;
+        gNewEntry = args;
+    }
+    
+    /*{
+        // wat?!
+        uint32_t len = 0;
+        dt_node_t* dev = dt_find(gDeviceTree, "system-vol");
+        if (!dev) panic("invalid devicetree: no device!");
+        
+        uint32_t* val = dt_prop(dev, "vol.fs_role", &len);
+        if (!val) panic("invalid devicetree: no prop!");
+        // get role
+        uint32_t* patch = (uint32_t*)val;
+        printf("old system vol.fs_role: %016llx: %08x\n", (uint64_t)val, patch[0]);
+        // change sys -> recv
+        patch[0] = APFS_VOL_ROLE_RECOVERY;
+        printf("new system vol.fs_role: %016llx: %08x\n", (uint64_t)val, patch[0]);
+        
+        val = dt_prop(dev, "vol.fs_type", &len);
+        if (!val) panic("invalid devicetree: no prop!");
+        // get fs_type
+        uint8_t* rwpatch = (uint8_t*)val;
+        printf("old system vol.fs_type: %016llx: %c\n", (uint64_t)val, rwpatch[1]);
+        // change ro -> rw
+        rwpatch[1] = 'w';
+        printf("new system vol.fs_type: %016llx: %c\n", (uint64_t)val, rwpatch[1]);
+        
+    }*/
+    
+    {
+        uint32_t len = 0;
+        dt_node_t* dev = dt_find(gDeviceTree, "chosen");
+        if (!dev) panic("invalid devicetree: no device!");
+        uint32_t* val = dt_prop(dev, "root-matching", &len);
+        if (!val) panic("invalid devicetree: no prop!");
+        
+        char str[0x100]; // max size = 0x100
+        memset(&str, 0x0, 0x100);
+        sprintf(str, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", gNewEntry);
+        
+        memset(val, 0x0, 0x100);
+        memcpy(val, str, 0x100);
+        printf("set new entry: %016llx: %s\n", (uint64_t)val, gNewEntry);
+    }
+    
+}
+
+char* module_name = "dtpatcher-ploosh";
+
+struct pongo_exports exported_symbols[] = {
+    {.name = 0, .value = 0}
+
 void module_entry() {
     puts("");
     puts("");
@@ -3140,6 +3217,7 @@ void module_entry() {
     command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags_cmd);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
     command_register("overlay", "loads an overlay disk image", overlay_cmd);
+    command_register("dtpatch", "run dt patcher", dtpatcher);
 }
 char* module_name = "checkra1n-kpf2-12.0,16.3-ploosh";
 
