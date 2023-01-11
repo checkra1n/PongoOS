@@ -3182,11 +3182,6 @@ void dtpatcher(const char* cmd, char* args) {
     
 }
 
-char* module_name = "dtpatcher-ploosh";
-
-struct pongo_exports exported_symbols[] = {
-    {.name = 0, .value = 0}
-
 void module_entry() {
     puts("");
     puts("");
