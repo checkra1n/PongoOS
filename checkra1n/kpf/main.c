@@ -344,6 +344,7 @@ static bool kpf_conversion_callback(uint32_t *opcode_stream, bool forward)
     {
         panic_at(orig, "kpf_conversion_callback: found both ldr and bl/imm");
     }
+    puts("KPF: Found task_conversion_eval");
 
     for(size_t i = 0, max = forward ? 0x18 : 0x30; i < max; ++i)
     {
