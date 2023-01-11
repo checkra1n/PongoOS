@@ -1608,17 +1608,15 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
 }
 
 bool kpf_apfs_allow_mount_patches(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    if (kernelVersion.darwinMajor == 22) {
-        uint32_t *tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
+    uint32_t *tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
     
-        tbnz[0] = NOP;
+    tbnz[0] = NOP;
     
-        puts("KPF: found updating mount not allowed");
-    } else {
-        opcode_stream[0] = 0x52800000; /* mov w0, 0 */
+    puts("KPF: found updating mount not allowed");
+
+    opcode_stream[0] = 0x52800000; /* mov w0, 0 */
     
-        puts("KPF: found apfs_vfsop_mount");
-    }
+    puts("KPF: found apfs_vfsop_mount");
     
     return true;
 }
