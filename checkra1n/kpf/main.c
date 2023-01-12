@@ -3072,7 +3072,7 @@ void command_kpf() {
         info->flags = checkra1n_flags;
     }
     if (pinfo && rootdev) {
-        pinfo->rootdev = rootdev;
+        strcpy(pinfo->rootdev, rootdev);
     }
     if (checkrain_option_enabled(gkpf_flags, checkrain_option_verbose_boot))
         gBootArgs->Video.v_display = 0;
