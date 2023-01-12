@@ -34,6 +34,7 @@
 #define RET 0xd65f03c0
 
 uint32_t offsetof_p_flags, *dyld_hook;
+char rootdev[0x16];
 
 #ifdef DEV_BUILD
     #define DEVLOG(x, ...) do { \
@@ -3051,6 +3052,7 @@ void command_kpf() {
     }
 
     struct kerninfo *info = NULL;
+    struct paleinfo *pinfo = NULL;
     if (ramdisk_buf) {
         puts("KPF: Found ramdisk, appending kernelinfo");
 
@@ -3058,6 +3060,7 @@ void command_kpf() {
         ramdisk_buf = realloc(ramdisk_buf, ramdisk_size + 0x10000);
         info = (struct kerninfo*)(ramdisk_buf+ramdisk_size);
         bzero(info, sizeof(struct kerninfo));
+        pinfo = (struct paleinfo*)(*(uint64_t *)info + 0x1000);
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
         ramdisk_size += 0x10000;
@@ -3067,6 +3070,9 @@ void command_kpf() {
         info->base = xnu_slide_value(hdr) + 0xFFFFFFF007004000ULL;
         info->slide = xnu_slide_value(hdr);
         info->flags = checkra1n_flags;
+    }
+    if (pinfo && rootdev) {
+        pinfo->rootdev = rootdev;
     }
     if (checkrain_option_enabled(gkpf_flags, checkrain_option_verbose_boot))
         gBootArgs->Video.v_display = 0;
@@ -3189,6 +3195,11 @@ void dtpatcher(const char* cmd, char* args) {
     
 }
 
+void set_rootdev(const char* cmd, char* args) {
+    strcpy(rootdev, args);
+    printf("set paleinfo rootdev to %s\n", rootdev);
+}
+
 void module_entry() {
     puts("");
     puts("");
@@ -3220,6 +3231,7 @@ void module_entry() {
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
     command_register("overlay", "loads an overlay disk image", overlay_cmd);
     command_register("dtpatch", "run dt patcher", dtpatcher);
+    command_register("rootfs", "set rootdev for paleinfo", set_rootdev);
 }
 char* module_name = "checkra1n-kpf2-12.0,16.3-ploosh";
 
