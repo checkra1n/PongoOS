@@ -34,7 +34,7 @@
 #define RET 0xd65f03c0
 
 uint32_t offsetof_p_flags, *dyld_hook;
-char rootdev[0x16] = NULL;
+char rootdev[0x10] = {0};
 
 #ifdef DEV_BUILD
     #define DEVLOG(x, ...) do { \
