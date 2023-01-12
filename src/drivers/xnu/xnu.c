@@ -25,6 +25,7 @@
  *
  */
 
+#include <tz/tz.h>
 #include <pongo.h>
 void (*preboot_hook)(void);
 
