@@ -71,7 +71,7 @@ struct kerninfo {
 };
 struct paleinfo {
     char rootdev[0x10];
-}
+};
 struct kpfinfo {
     struct kerninfo k;
     checkrain_option_t kpf_flags;
