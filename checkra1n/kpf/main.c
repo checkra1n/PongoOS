@@ -1067,7 +1067,6 @@ bool kpf_mac_vm_map_protect_callback(struct xnu_pf_patch* patch, uint32_t* opcod
     delta &= 0x03ffffff;
     delta |= 0x14000000; // b *
     opcode_stream[patch_idx] = delta;
-    found_vm_map_protect = true;
     puts("KPF: Found vm_map_protect");
 
     xnu_pf_disable_patch(patch);
