@@ -1053,12 +1053,12 @@ bool kpf_mac_vm_map_protect_callback(struct xnu_pf_patch* patch, uint32_t* opcod
         first_ldr++; // ldr
         delta = first_ldr - (&opcode_stream[patch_idx]);
     } else {
-        uint32_t* first_tbnz = find_next_insn(&opcode_stream[0], 0x20, 0x36080000, 0xfff80000);
-        if (first_tbnz) {
-            patch_idx = first_tbnz - opcode_stream;
-            delta = (first_tbnz[0] >> 5) & 0x3FFF;
+        uint32_t* first_tbz = find_next_insn(&opcode_stream[0], 0x20, 0x36080000, 0xfff80000);
+        if (first_tbz) {
+            patch_idx = first_tbz - opcode_stream;
+            delta = (first_tbz[0] >> 5) & 0x3FFF;
         } else {
-            DEVLOG("kpf_mac_vm_map_protect_callback: failed to find ldr/tbnz");
+            DEVLOG("kpf_mac_vm_map_protect_callback: failed to find ldr/tbz");
             return false;
         }
     }
