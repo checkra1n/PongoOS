@@ -1039,22 +1039,34 @@ void kpf_find_shellcode_area(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     }
     xnu_pf_maskmatch(xnu_text_exec_patchset, "find_shellcode_area", matches, masks, count, true, (void*)kpf_find_shellcode_area_callback);
 }
+
+static bool found_vm_map_protect = false;
 bool kpf_mac_vm_map_protect_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    puts("KPF: Found vm_map_protect");
     // tbnz w8, 9, * in C code this is:
     // if (map->map_disallow_new_exec == TRUE) {
     // and then we jump out of this so that we don't have these checks (no *WX and no new --X when the process has requested it)
+    uint32_t delta = 0;
+    uint32_t patch_idx = 0;
     uint32_t* first_ldr = find_next_insn(&opcode_stream[0], 0x400, 0x37480000, 0xFFFF0000);
-    if(!first_ldr)
-    {
-        DEVLOG("kpf_mac_vm_map_protect_callback: failed to find ldr");
-        return false;
+    if (first_ldr) {
+        patch_idx = 2;
+        first_ldr++; // ldr
+        delta = first_ldr - (&opcode_stream[patch_idx]);
+    } else {
+        uint32_t* first_tbnz = find_next_insn(&opcode_stream[0], 0x20, 0x36080000, 0xfff80000);
+        if (first_tbnz) {
+            patch_idx = first_tbnz - opcode_stream;
+            delta = (first_tbnz[0] >> 5) & 0x3FFF;
+        } else {
+            DEVLOG("kpf_mac_vm_map_protect_callback: failed to find ldr/tbnz");
+            return false;
+        }
     }
-    first_ldr++;
-    uint32_t delta = first_ldr - (&opcode_stream[2]);
     delta &= 0x03ffffff;
-    delta |= 0x14000000;
-    opcode_stream[2] = delta;
+    delta |= 0x14000000; // b *
+    opcode_stream[patch_idx] = delta;
+    found_vm_map_protect = true;
+    puts("KPF: Found vm_map_protect");
     xnu_pf_disable_patch(patch);
     return true;
 }
@@ -2644,6 +2656,7 @@ void command_kpf() {
     if (!dyld_hook_addr) panic("no dyld_hook_addr?");
     if (offsetof_p_flags == -1) panic("no p_flags?");
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
+    if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
     if (!found_kpf_conversion_ldr && !found_kpf_conversion_bl && !found_kpf_conversion_imm) panic("Missing patch: task_conversion_eval");
     if (kmap_port_string_match && !found_convert_port_to_map) panic("Missing patch: convert_port_to_map");
