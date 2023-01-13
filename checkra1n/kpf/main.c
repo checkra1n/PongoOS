@@ -1640,37 +1640,8 @@ bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     *f_apfs_privcheck = 0xeb00001f; // cmp x0, x0
     return true;
 }
-bool kpf_apfs_personalized_hash(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    uint32_t* cbz_success = find_prev_insn(opcode_stream, 0x500, 0x34000000, 0xff000000);
-    
-    if (!cbz_success) {
-        puts("kpf_apfs_personalized_hash: failed to find success cbz");
-        return false;
-    } else {
-        puts("KPF: found kpf_apfs_personalized_hash");
-    }
-    
-    uint32_t branch_success = 0x14000000 | (sxt32(cbz_success[0] >> 5, 19) & 0x03ffffff);
-    
-    uint32_t* cbz_fail = find_prev_insn(cbz_success, 0x10, 0xb4000000, 0xff000000);
-    
-    if (!cbz_fail) {
-        puts("kpf_apfs_personalized_hash: failed to find fail cbz");
-        return false;
-    }
-    
-    uint64_t addr_fail = xnu_ptr_to_va(cbz_fail) + (sxt32(cbz_fail[0] >> 5, 19) << 2);
-    
-    uint32_t array_pos = (sxt32(cbz_fail[0] >> 5, 19) << 2) / 4;
-    
-    DEVLOG("addr diff is %d, addrs: success is 0x%lx, fail is 0x%lx, target is 0x%llx, insns: branch is 0x%lx (BE)", array_pos, xnu_ptr_to_va(cbz_success), xnu_ptr_to_va(cbz_fail), addr_fail, branch_success);
-    
-    cbz_fail[array_pos - 1] = branch_success;
-    
-    return true;
-}
 
-bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+bool kpf_apfs_auth_patches(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     uint64_t page = ((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(opcode_stream[0]);
     uint32_t off = (opcode_stream[1] >> 10) & 0xfff;
     const char *str = (const char *)(page + off);
@@ -1681,8 +1652,34 @@ bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
         func_start[1] = RET;
 
         puts("KPF: Found root authentication required");
+    } else if (strcmp(str, "\"could not authenticate personalized root hash! (%p, %zu)\\n\" @%s:%d")) {
+        uint32_t* cbz_success = find_prev_insn(opcode_stream, 0x500, 0x34000000, 0xff000000);
     
-        return kpf_apfs_personalized_hash(patch, opcode_stream);
+        if (!cbz_success) {
+            puts("kpf_apfs_personalized_hash: failed to find success cbz");
+            return false;
+        } else {
+            puts("KPF: found kpf_apfs_personalized_hash");
+        }
+
+        uint32_t branch_success = 0x14000000 | (sxt32(cbz_success[0] >> 5, 19) & 0x03ffffff);
+
+        uint32_t* cbz_fail = find_prev_insn(cbz_success, 0x10, 0xb4000000, 0xff000000);
+
+        if (!cbz_fail) {
+            puts("kpf_apfs_personalized_hash: failed to find fail cbz");
+            return false;
+        }
+
+        uint64_t addr_fail = xnu_ptr_to_va(cbz_fail) + (sxt32(cbz_fail[0] >> 5, 19) << 2);
+
+        uint32_t array_pos = (sxt32(cbz_fail[0] >> 5, 19) << 2) / 4;
+
+        DEVLOG("addr diff is %d, addrs: success is 0x%lx, fail is 0x%lx, target is 0x%llx, insns: branch is 0x%lx (BE)", array_pos, xnu_ptr_to_va(cbz_success), xnu_ptr_to_va(cbz_fail), addr_fail, branch_success);
+
+        cbz_fail[array_pos - 1] = branch_success;
+
+        return true;
     } else {
         return false;
     }
@@ -1800,7 +1797,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         0x0f000000,
         0xff000000,
     };
-    xnu_pf_maskmatch(patchset, "apfs_auth_required", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_required);
+    xnu_pf_maskmatch(patchset, "apfs_auth_patches", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_patches);
     
     uint64_t remount_matches2[] = {
         0x37700000, // tbnz w0, 0xe, *
