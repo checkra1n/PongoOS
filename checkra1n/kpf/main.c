@@ -1720,7 +1720,7 @@ bool kpf_apfs_allow_mount_patches(struct xnu_pf_patch *patch, uint32_t *opcode_s
     return true;
 }
 
-void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
+void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union, bool ios16) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
     // we also want to call it so we patch that check out
     // example from i7 13.3:
@@ -1789,15 +1789,17 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     };
     xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_seal_broken);
     
-    uint64_t iii_matches[] = {
-        0x00000000,
-        0x91000000,
-    };
-    uint64_t iii_masks[] = {
-        0x0f000000,
-        0xff000000,
-    };
-    xnu_pf_maskmatch(patchset, "apfs_auth_patches", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_patches);
+    if (ios16) {
+        uint64_t iii_matches[] = {
+            0x00000000,
+            0x91000000,
+        };
+        uint64_t iii_masks[] = {
+            0x0f000000,
+            0xff000000,
+        };
+        xnu_pf_maskmatch(patchset, "apfs_auth_patches", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_patches);
+    }
     
     uint64_t remount_matches2[] = {
         0x37700000, // tbnz w0, 0xe, *
@@ -2666,7 +2668,7 @@ void command_kpf() {
     if((constraints_string_match != NULL) != (kernelVersion.darwinMajor >= 22)) panic("Launch constraints presence doesn't match expected Darwin version");
 #endif
 
-    kpf_apfs_patches(apfs_patchset, rootvp_string_match == NULL);
+    kpf_apfs_patches(apfs_patchset, rootvp_string_match == NULL, cryptex_string_match != NULL);
 
     if(livefs_string_match)
     {
