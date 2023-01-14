@@ -1652,7 +1652,7 @@ bool kpf_apfs_auth_patches(struct xnu_pf_patch* patch, uint32_t* opcode_stream) 
         func_start[1] = RET;
 
         puts("KPF: Found root authentication required");
-    } else if (strcmp(str, "\"could not authenticate personalized root hash! (%p, %zu)\\n\" @%s:%d")) {
+    } else if (strcmp(str, "\"could not authenticate personalized root hash! (%p, %zu)\\n\" @%s:%d") == 0) {
         uint32_t* cbz_success = find_prev_insn(opcode_stream, 0x500, 0x34000000, 0xff000000);
     
         if (!cbz_success) {
