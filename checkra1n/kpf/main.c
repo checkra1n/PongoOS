@@ -3151,7 +3151,7 @@ void command_kpf() {
         ramdisk_buf = realloc(ramdisk_buf, ramdisk_size + 0x10000);
         info = (struct kerninfo*)(ramdisk_buf+ramdisk_size);
         bzero(info, sizeof(struct kerninfo));
-        pinfo = (struct paleinfo*)(*(uint64_t *)info + 0x1000);
+        pinfo = (struct paleinfo*)(ramdisk_buf+ramdisk_size+0x1000);
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
         ramdisk_size += 0x10000;
