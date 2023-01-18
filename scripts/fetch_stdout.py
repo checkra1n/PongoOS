@@ -23,11 +23,34 @@
 # 
 
 import sys
-import usb.core
-dev = usb.core.find(idVendor=0x05ac, idProduct=0x4141)
+import usb.core  # sudo pip install pyusb libusb
+
+#$ lsusb
+# ID 05ac:4141 Apple, Inc. pongoOS USB Device
+dev = usb.core.find( idVendor=0x05ac, idProduct=0x4141 )
 if dev is None:
     raise ValueError('Device not found')
 dev.set_configuration()
 
-#dev.ctrl_transfer(0x21, 4, 0, 0, 0)
-print("".join(chr (x) for x in dev.ctrl_transfer(0xa1, 1, 0, 0, 512)))
+dev.ctrl_transfer(0x21, 4, 0, 0, 0)
+
+bmRequest_Direction_HostToDevice = 0x00
+bmRequest_Direction_DeviceToHost = 0x80
+
+bmRequest_Recipient_Interface = 0x01
+bmRequest_Type_Class          = 0x20
+
+
+bmRequestType =  \
+    bmRequest_Direction_DeviceToHost | \
+    bmRequest_Type_Class | \
+    bmRequest_Recipient_Interface 
+
+print( "".join( chr (x) for x in dev.ctrl_transfer(
+          bmRequestType   = bmRequestType, 
+          bRequest        = 1, 
+          wValue          = 0, 
+          wIndex          = 0,
+          data_or_wLength = 0x200
+    )
+    ))        
