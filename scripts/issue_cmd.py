@@ -22,11 +22,52 @@
 # SOFTWARE.
 # 
 import sys
-import usb.core
-dev = usb.core.find(idVendor=0x05ac, idProduct=0x4141)
+import usb.core  # sudo pip install pyusb libusb
+
+#$ lsusb
+# ID 05ac:4141 Apple, Inc. pongoOS USB Device
+dev = usb.core.find( idVendor=0x05ac, idProduct=0x4141 )
 if dev is None:
     raise ValueError('Device not found')
-dev.set_configuration()
 
-#dev.ctrl_transfer(0x21, 4, 0, 0, 0)
-dev.ctrl_transfer(0x21, 3, 0, 0, sys.argv[1] + "\n")
+dev.set_configuration()
+# if you get 'usb.core.USBError: [Errno 5] Input/Output Error'
+# create a file Pongo.rules in /etc/udev/rules.d/ with MODE="0666"
+
+bmRequest_Direction_HostToDevice = 0x00
+bmRequest_Direction_DeviceToHost = 0x80
+
+bmRequest_Recipient_Interface = 0x01
+bmRequest_Type_Class          = 0x20
+
+#dev.ctrl_transfer( 0x21, 4, 0, 0, 0)
+bmRequestType =  \
+    bmRequest_Direction_HostToDevice | \
+    bmRequest_Type_Class | \
+    bmRequest_Recipient_Interface 
+
+dev.ctrl_transfer( 
+    bmRequestType   = bmRequestType, 
+    bRequest        = 3, 
+    wValue          = 0, 
+    wIndex          = 0,
+    data_or_wLength = sys.argv[1] + "\n",
+    timeout         = None
+)
+
+
+#issue fetch stdout
+bmRequestType =  \
+    bmRequest_Direction_DeviceToHost | \
+    bmRequest_Type_Class | \
+    bmRequest_Recipient_Interface 
+
+print( "".join( chr (x) for x in dev.ctrl_transfer(
+          bmRequestType   = bmRequestType, 
+          bRequest        = 1, 
+          wValue          = 0, 
+          wIndex          = 0,
+          data_or_wLength = 0x200
+    )
+    ))
+ 
