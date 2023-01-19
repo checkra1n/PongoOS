@@ -2705,15 +2705,6 @@ void command_kpf() {
     struct mach_header_64* hdr = xnu_header();
     xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
     xnu_pf_patchset_t* text_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
-    
-    char *launchdString = (char *) memmem((unsigned char *) text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *) "/sbin/launchd", strlen("/sbin/launchd"));
-    if (!launchdString) panic("no launchd string?");
-    strncpy(launchdString, "/jbin/launchd", sizeof("/sbin/launchd"));
-    printf("KPF: changed launchd string to %s\n", launchdString);
-    
-    xnu_pf_emit(text_patchset);
-    xnu_pf_apply(text_cstring_range, text_patchset);
-    xnu_pf_patchset_destroy(text_patchset);
 
 #ifdef DEV_BUILD
     xnu_pf_range_t* text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
@@ -3286,6 +3277,21 @@ void dtpatcher(const char* cmd, char* args) {
     
 }
 
+void set_launchd(const char* cmd, char* args) {
+    struct mach_header_64* hdr = xnu_header();
+    xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
+    xnu_pf_patchset_t* text_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
+    
+    char *launchdString = (char *) memmem((unsigned char *) text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *) "/sbin/launchd", strlen("/sbin/launchd"));
+    if (!launchdString) panic("no launchd string?");
+    strncpy(launchdString, args, sizeof("/sbin/launchd"));
+    printf("changed launchd string to %s\n", launchdString);
+    
+    xnu_pf_emit(text_patchset);
+    xnu_pf_apply(text_cstring_range, text_patchset);
+    xnu_pf_patchset_destroy(text_patchset);
+}
+
 void set_rootdev(const char* cmd, char* args) {
     strcpy(rootdev, args);
     printf("set paleinfo rootdev to %s\n", rootdev);
@@ -3323,6 +3329,7 @@ void module_entry() {
     command_register("overlay", "loads an overlay disk image", overlay_cmd);
     command_register("dtpatch", "run dt patcher", dtpatcher);
     command_register("rootfs", "set rootdev for paleinfo", set_rootdev);
+    command_register("launchd", "set launchd for palera1n", set_launchd);
 }
 char* module_name = "checkra1n-kpf2-12.0,16.3-ploosh";
 
