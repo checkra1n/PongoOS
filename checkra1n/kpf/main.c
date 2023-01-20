@@ -1779,7 +1779,7 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
         return false;
     }
     
-    uint32_t* tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
+    uint32_t* tbnz = find_prev_insn(opcode_stream, 0x100, 0x36000000, 0x7e000000);
     
     if (!tbnz) {
         panic("kpf_apfs_seal_broken: failed to find tbnz");
@@ -1791,13 +1791,35 @@ bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     return true;
 }
 
-bool kpf_apfs_allow_mount_patches(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    uint32_t *tbnz = find_prev_insn(opcode_stream, 0x100, 0x37000000, 0xff000000);
+bool kpf_apfs_allow_rw_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    uint64_t page = ((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(opcode_stream[0]);
+    uint32_t off = (opcode_stream[1] >> 10) & 0xfff;
+    const char *str = (const char *)(page + off);
     
-    tbnz[0] = NOP;
+    if (strcmp(str, "%s:%d: %s Updating mount to read/write mode is not allowed") != 0) {
+        return false;
+    }
     
-    puts("KPF: found updating mount not allowed");
+    puts("KPF: found updating mount to r/w not allowed");
+    
+    uint32_t *tbnz = find_prev_insn(opcode_stream, 0x100, 0x36000000, 0x7e000000);
+    
+    if (!tbnz) {
+        panic("kpf_apfs_allow_rw_mount: failed to find tbnz");
+    }
+    
+    uint32_t *tbnz2 = find_prev_insn(tbnz, 0x100, 0x36000000, 0x7e000000);
+    
+    if (!tbnz) {
+        panic("kpf_apfs_allow_rw_mount: failed to find tbnz2");
+    }
+    
+    tbnz2[0] = NOP;
+    
+    return true;
+}
 
+bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     opcode_stream[0] = 0x52800000; /* mov w0, 0 */
     
     puts("KPF: found apfs_vfsop_mount");
@@ -1886,21 +1908,35 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union, bool ios16) 
         xnu_pf_maskmatch(patchset, "apfs_auth_patches", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)kpf_apfs_auth_patches);
     }
     
-    uint64_t remount_matches2[] = {
+    uint64_t remount_matches[] = {
         0x37700000, // tbnz w0, 0xe, *
         0xb94003a0, // ldr x*, [x29/sp, *]
         0x121f7800, // and w*, w*, 0xfffffffe
         0xb90003a0, // str x*, [x29/sp, *]
     };
 
-    uint64_t remount_masks2[] = {
+    uint64_t remount_masks[] = {
         0xfff8001f,
         0xfffe03a0,
         0xfffffc00,
         0xffc003a0,
     };
 
-    xnu_pf_maskmatch(patchset, "apfs_allow_mount", remount_matches2, remount_masks2, sizeof(remount_masks2) / sizeof(uint64_t), true, (void *)kpf_apfs_allow_mount_patches);
+    xnu_pf_maskmatch(patchset, "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks2) / sizeof(uint64_t), true, (void *)kpf_apfs_vfsop_mount);
+    
+    if (ios16) {
+        uint64_t remount_matches2[] = {
+            0x00000000,
+            0x91000000,
+        };
+
+        uint64_t remount_masks2[] = {
+            0x0f000000,
+            0xff000000,
+        };
+
+        xnu_pf_maskmatch(patchset, "apfs_allow_rw_mount", remount_matches2, remount_masks2, sizeof(remount_masks2) / sizeof(uint64_t), false, (void *)kpf_apfs_allow_rw_mount);
+    }
 }
 static uint32_t* amfi_ret;
 bool kpf_amfi_execve_tail(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
