@@ -479,6 +479,23 @@ PONGO_EXPORT(vsscanf);
 PONGO_EXPORT(write);
 
 // Pongo
+PONGO_EXPORT(dt_check);
+PONGO_EXPORT(dt_parse);
+PONGO_EXPORT(dt_find);
+PONGO_EXPORT(dt_prop);
+PONGO_EXPORT(dt_node);
+PONGO_EXPORT(dt_get);
+PONGO_EXPORT(dt_node_prop);
+PONGO_EXPORT(dt_get_prop);
+PONGO_EXPORT(dt_node_u32);
+PONGO_EXPORT(dt_get_u32);
+PONGO_EXPORT(dt_node_u64);
+PONGO_EXPORT(dt_get_u64);
+PONGO_EXPORT(dt_alloc_memmap);
+PONGO_EXPORT(dt_get_u32_prop);
+PONGO_EXPORT(dt_get_u64_prop);
+PONGO_EXPORT(dt_get_u64_prop_i);
+
 // TODO: sort & clean up, match headers
 PONGO_EXPORT(xnu_pf_apply_each_kext);
 PONGO_EXPORT(xnu_pf_get_first_kext);
@@ -508,10 +525,6 @@ PONGO_EXPORT(xnu_pf_emit);
 PONGO_EXPORT(xnu_pf_apply);
 PONGO_EXPORT(macho_get_segment);
 PONGO_EXPORT(macho_get_section);
-PONGO_EXPORT(dt_check);
-PONGO_EXPORT(dt_parse);
-PONGO_EXPORT(dt_find);
-PONGO_EXPORT(dt_prop);
 PONGO_EXPORT(event_fire);
 PONGO_EXPORT(event_wait);
 PONGO_EXPORT(event_wait_asserted);
@@ -585,10 +598,6 @@ PONGO_EXPORT(spin);
 PONGO_EXPORT(get_ticks);
 PONGO_EXPORT(usleep);
 PONGO_EXPORT(sleep);
-PONGO_EXPORT(dt_get_prop);
-PONGO_EXPORT(dt_get_u32_prop);
-PONGO_EXPORT(dt_get_u64_prop);
-PONGO_EXPORT(dt_get_u64_prop_i);
 PONGO_EXPORT(wdt_reset);
 PONGO_EXPORT(wdt_enable);
 PONGO_EXPORT(wdt_disable);

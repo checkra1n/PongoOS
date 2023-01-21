@@ -60,10 +60,18 @@ struct memmap
     uint64_t size;
 };
 
-uint32_t dt_get_u32_prop(const char* device, const char* prop);
-uint64_t dt_get_u64_prop(const char* device, const char* prop);
-uint64_t dt_get_u64_prop_i(const char* device, const char* prop, uint32_t idx);
-void* dt_get_prop(const char* device, const char* prop, uint32_t* size);
-struct memmap* dt_alloc_memmap(dt_node_t* node, const char* name);
+dt_node_t* dt_node(dt_node_t *node, const char *name);
+dt_node_t* dt_get(const char *name);
+void* dt_node_prop(dt_node_t *node, const char *prop, uint32_t *size);
+void* dt_get_prop(const char *device, const char *prop, uint32_t *size);
+uint32_t dt_node_u32(dt_node_t *node, const char *prop, uint32_t idx);
+uint32_t dt_get_u32(const char *device, const char *prop, uint32_t idx);
+uint64_t dt_node_u64(dt_node_t *node, const char *prop, uint32_t idx);
+uint64_t dt_get_u64(const char *device, const char *prop, uint32_t idx);
+struct memmap* dt_alloc_memmap(dt_node_t *node, const char *name);
+
+uint32_t dt_get_u32_prop(const char *device, const char *prop) __attribute__((deprecated("dt_get_u32_prop is deprecated. Consider switching to dt_get_u32.", "dt_get_u32")));
+uint64_t dt_get_u64_prop(const char *device, const char *prop) __attribute__((deprecated("dt_get_u64_prop is deprecated. Consider switching to dt_get_u64.", "dt_get_u64")));
+uint64_t dt_get_u64_prop_i(const char *device, const char *prop, uint32_t idx) __attribute__((deprecated("dt_get_u64_prop_i is deprecated. Consider switching to dt_get_u64.", "dt_get_u64")));
 
 #endif /* DTREE_H */

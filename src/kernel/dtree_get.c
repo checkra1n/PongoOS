@@ -24,67 +24,115 @@
  * SOFTWARE.
  *
  */
-#include <pongo.h>
+#include "dtree.h"
+#include "pongo.h"
+#include <stdint.h>
+#include <string.h>
 
-uint32_t dt_get_u32_prop(const char* device, const char* prop)
+dt_node_t* dt_node(dt_node_t *node, const char *name)
 {
-    uint32_t rval = 0;
-    uint32_t len = 0;
-    dt_node_t* dev = dt_find(gDeviceTree, device);
-    if (!dev) panic("invalid devicetree: no device!");
-    uint32_t* val = dt_prop(dev, prop, &len);
-    if (!val) panic("invalid devicetree: no prop!");
-    memcpy(&rval, &val[0], 4);
-    return rval;
-}
-uint64_t dt_get_u64_prop(const char* device, const char* prop)
-{
-    uint64_t rval = 0;
-    uint32_t len = 0;
-    dt_node_t* dev = dt_find(gDeviceTree, device);
-    if (!dev) panic("invalid devicetree: no device!");
-    uint64_t* val = dt_prop(dev, prop, &len);
-    if (!val) panic("invalid devicetree: no prop!");
-    memcpy(&rval, &val[0], 8);
-    return rval;
-}
-uint64_t dt_get_u64_prop_i(const char* device, const char* prop, uint32_t idx)
-{
-    uint64_t rval = 0;
-    uint32_t len = 0;
-    dt_node_t* dev = dt_find(gDeviceTree, device);
-    if (!dev) panic("invalid devicetree: no device!");
-    uint64_t* val = dt_prop(dev, prop, &len);
-    if (!val) panic("invalid devicetree: no prop!");
-    memcpy(&rval, &val[idx], 8);
-    return rval;
-}
-void* dt_get_prop(const char* device, const char* prop, uint32_t* size)
-{
-    uint32_t len = 0;
-    dt_node_t* dev = dt_find(gDeviceTree, device);
-    if (!dev) panic("invalid devicetree: no device!");
-    void* val = dt_prop(dev, prop, &len);
-    if (!val) panic("invalid devicetree: no prop!");
-    if (size) *size = len;
-    return val;
-}
-
-static int dt_find_memmap_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len)
-{
-    if ((key[0] == 'M' && key[1] == 'e' && key[9] == 'R' && key[10] == 'e') || (strcmp(*(void**)a, "RAMDisk") == 0)) {
-        strcpy((char*)key, *(void**)a);
-        *(void**)a = val;
-        return 1;
+    dt_node_t *dev = dt_find(node, name);
+    if(!dev)
+    {
+        panic("Missing DeviceTree node: %s", name);
     }
-    return 0;
+    return dev;
 }
 
-struct memmap* dt_alloc_memmap(dt_node_t* node, const char* name)
+dt_node_t* dt_get(const char *name)
 {
-    void* val = (void*)name;
-    dt_parse(node, -1, NULL, NULL, NULL, &dt_find_memmap_cb, &val);
-    if (val == name)
-        return NULL;
+    return dt_node(gDeviceTree, name);
+}
+
+void* dt_node_prop(dt_node_t *node, const char *prop, uint32_t *size)
+{
+    void *val = dt_prop(node, prop, size);
+    if(!val)
+    {
+        panic("Missing DeviceTree prop: %s", prop);
+    }
     return val;
+}
+
+void* dt_get_prop(const char *device, const char *prop, uint32_t *size)
+{
+    return dt_node_prop(dt_get(device), prop, size);
+}
+
+uint32_t dt_node_u32(dt_node_t *node, const char *prop, uint32_t idx)
+{
+    uint32_t len = 0;
+    uint32_t *val = dt_node_prop(node, prop, &len);
+    if(len < (idx + 1) * sizeof(*val))
+    {
+        panic("DeviceTree u32 out of bounds: %s[%u]", prop, idx);
+    }
+    return val[idx];
+}
+
+uint32_t dt_get_u32(const char *device, const char *prop, uint32_t idx)
+{
+    return dt_node_u32(dt_get(device), prop, idx);
+}
+
+uint64_t dt_node_u64(dt_node_t *node, const char *prop, uint32_t idx)
+{
+    uint32_t len = 0;
+    uint64_t *val = dt_node_prop(node, prop, &len);
+    if(len < (idx + 1) * sizeof(*val))
+    {
+        panic("DeviceTree u64 out of bounds: %s[%u]", prop, idx);
+    }
+    return val[idx];
+}
+
+uint64_t dt_get_u64(const char *device, const char *prop, uint32_t idx)
+{
+    return dt_node_u64(dt_get(device), prop, idx);
+}
+
+static int dt_alloc_memmap_cb(void *a, dt_node_t *node, int depth, const char *key, void *val, uint32_t len)
+{
+    if(strncmp(key, "MemoryMapReserved-", 18) != 0)
+    {
+        return 0;
+    }
+    if(len != sizeof(struct memmap))
+    {
+        panic("dt_alloc_memmap: property has wrong length");
+    }
+    strncpy((char*)key, *(void**)a, DT_KEY_LEN); // We actually want to fill the entire rest with zeroes
+    *(void**)a = val;
+    return 1;
+}
+
+struct memmap* dt_alloc_memmap(dt_node_t *node, const char *name)
+{
+    if(strlen(name) >= DT_KEY_LEN)
+    {
+        panic("dt_alloc_memmap: name exceeds DT_KEY_LEN");
+    }
+    void *val = (void*)name;
+    if(dt_parse(node, -1, NULL, NULL, NULL, &dt_alloc_memmap_cb, &val) == 1)
+    {
+        return val;
+    }
+    return NULL;
+}
+
+// Legacy
+
+uint32_t dt_get_u32_prop(const char *device, const char *prop)
+{
+    return dt_get_u32(device, prop, 0);
+}
+
+uint64_t dt_get_u64_prop(const char *device, const char *prop)
+{
+    return dt_get_u64(device, prop, 0);
+}
+
+uint64_t dt_get_u64_prop_i(const char *device, const char *prop, uint32_t idx)
+{
+    return dt_get_u64(device, prop, idx);
 }
