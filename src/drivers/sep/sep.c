@@ -1172,14 +1172,14 @@ void sep_cmd(const char* cmd, char* args) {
 }
 
 void sep_setup() {
-    gSEPDev = dt_find(gDeviceTree, "/device-tree/arm-io/sep");
+    gSEPDev = dt_find(gDeviceTree, "/arm-io/sep");
     if(!gSEPDev) panic("sep_setup: no device!");
 
     uint32_t len = 0;
     uint32_t *xnu_wants_booted = dt_prop(gSEPDev, "sepfw-booted", &len);
     gXNUExpectsBooted = xnu_wants_booted && len == 4 && *xnu_wants_booted != 0;
 
-    dt_node_t *map = dt_find(gDeviceTree, "/device-tree/chosen/memory-map");
+    dt_node_t *map = dt_find(gDeviceTree, "/chosen/memory-map");
     if(!map) panic("sep_setup: no memory-map!");
     uint64_t *fw = dt_prop(map, "SEPFW", &len);
     if(fw)

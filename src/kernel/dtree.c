@@ -104,8 +104,18 @@ static int dt_find_cb(void *a, dt_node_t *node, int depth, const char *key, void
     const char *name = arg->name;
     if(name[0] == '/') // Absolute path
     {
-        // If we ever get here, we traversed back out of an entry that
-        // we matched against, without finding a matching child node.
+        // Don't require "/device-tree" prefix for everything.
+        if(depth == 0)
+        {
+            return 0;
+        }
+        // If we're in the subtree of a node we didn't match against, then ignore everything.
+        if(depth > arg->matchdepth)
+        {
+            return 0;
+        }
+        // If this condition is ever true, then we traversed back out of an entry
+        // that we matched against, without finding a matching child node.
         if(depth < arg->matchdepth)
         {
             return -1;
@@ -118,7 +128,7 @@ static int dt_find_cb(void *a, dt_node_t *node, int depth, const char *key, void
             if(strncmp(name, val, size) == 0 && size + 1 == len && ((const char*)val)[size] == '\0')
             {
                 arg->name = end;
-                ++arg->matchdepth;
+                arg->matchdepth = depth + 1;
             }
             return 0;
         }
@@ -135,7 +145,7 @@ static int dt_find_cb(void *a, dt_node_t *node, int depth, const char *key, void
 
 dt_node_t* dt_find(dt_node_t *node, const char *name)
 {
-    dt_find_cb_t arg = { name, NULL, 0 };
+    dt_find_cb_t arg = { name, NULL, 1 };
     dt_parse(node, 0, NULL, NULL, NULL, &dt_find_cb, &arg);
     return arg.node;
 }
@@ -150,7 +160,7 @@ typedef struct
 static int dt_prop_cb(void *a, dt_node_t *node, int depth, const char *key, void *val, uint32_t len)
 {
     dt_prop_cb_t *arg = a;
-    if(strcmp(arg->key, key) == 0)
+    if(strncmp(arg->key, key, DT_KEY_LEN) == 0)
     {
         arg->val = val;
         arg->len = len;

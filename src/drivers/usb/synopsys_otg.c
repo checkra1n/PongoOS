@@ -1843,8 +1843,8 @@ void usb_bringup() {
             *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
             break;
     }
-    *(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = dt_get_u32_prop("/otgphyctrl", "cfg0-device");
-    *(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = dt_get_u32_prop("/otgphyctrl", "cfg1-device");
+    *(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = dt_get_u32_prop("/arm-io/otgphyctrl", "cfg0-device");
+    *(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = dt_get_u32_prop("/arm-io/otgphyctrl", "cfg1-device");
     *(volatile uint32_t*)(gSynopsysOTGBase) |= 1;
     spin(20);
     *(volatile uint32_t*)(gSynopsysOTGBase) &= 0xFFFFFFF3;
@@ -1857,12 +1857,12 @@ void usb_bringup() {
 
 void usb_init() {
     char *srnm = NULL;
-    asprintf(&srnm, "CPID:%04X BDID:%02X ECID:%016llX SRTG:[%s]", socnum, dt_get_u32_prop("/device-tree/chosen", "board-id"), dt_get_u64_prop("/device-tree/chosen", "unique-chip-id"), "PongoOS-" PONGO_VERSION);
+    asprintf(&srnm, "CPID:%04X BDID:%02X ECID:%016llX SRTG:[%s]", socnum, dt_get_u32_prop("/chosen", "board-id"), dt_get_u64_prop("/chosen", "unique-chip-id"), "PongoOS-" PONGO_VERSION);
     string_descriptors[iSerialNumber] = srnm;
 
     gSynopsysOTGBase = 0;
     uint32_t sz = 0;
-    uint64_t *reg = dt_get_prop("/otgphyctrl", "reg", &sz);
+    uint64_t *reg = dt_get_prop("/arm-io/otgphyctrl", "reg", &sz);
     if(reg)
     {
         sz /= 0x10;
@@ -1883,7 +1883,7 @@ void usb_init() {
     // Can't trust "usb-device" dtre entry, because that can be USB3 and we want USB2
     gSynopsysBase = (gSynopsysOTGBase & ~0xfffULL) + 0x00100000;
 
-    dt_node_t *usbComplex = dt_find(gDeviceTree, "/usb-complex");
+    dt_node_t *usbComplex = dt_find(gDeviceTree, "/arm-io/usb-complex");
     const uint64_t *usbComplexReg = NULL;
     if(usbComplex)
     {
