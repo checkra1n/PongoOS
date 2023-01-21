@@ -24,7 +24,7 @@
  * SOFTWARE.
  *
  */
-#include "dtree.h"
+#include "dt.h"
 #include "pongo.h"
 #include <stdint.h>
 #include <string.h>

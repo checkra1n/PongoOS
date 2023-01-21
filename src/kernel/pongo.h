@@ -34,8 +34,6 @@
 #include <strings.h>
 #include <kerninfo.h>
 
-#include "dtree.h"
-
 #ifdef PONGO_PRIVATE
 #include "framebuffer/fb.h"
 #include "usb/usb.h"
@@ -53,6 +51,10 @@
 #include "aes/aes.h"
 #include "sep/sep.h"
 #endif
+
+// XXX: the includes here pull in stuff we historically declared in pongo.h
+//      and should be removed eventually, when doing so doesn't break everything.
+#include "dt/dt.h"
 
 #define BOOT_LINE_LENGTH_iOS12 0x100
 #define BOOT_LINE_LENGTH_iOS13 0x260
