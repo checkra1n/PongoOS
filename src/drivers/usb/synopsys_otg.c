@@ -1817,7 +1817,12 @@ void usb_main() {
 
 static uint64_t reg1=0, reg2=0, reg3=0;
 
-void usb_bringup() {
+static void usb_bringup(dt_node_t *otgphyctrl)
+{
+    // Get these before we touch HW
+    uint32_t cfg0 = dt_node_u32(otgphyctrl, "cfg0-device", 0);
+    uint32_t cfg1 = dt_node_u32(otgphyctrl, "cfg1-device", 0);
+
     clock_gate(reg1, 0);
     clock_gate(reg2, 0);
     clock_gate(reg3, 0);
@@ -1843,8 +1848,8 @@ void usb_bringup() {
             *(volatile uint32_t*)(gSynopsysComplexBase + 0x5c) = 0x108;
             break;
     }
-    *(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = dt_get_u32_prop("/arm-io/otgphyctrl", "cfg0-device");
-    *(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = dt_get_u32_prop("/arm-io/otgphyctrl", "cfg1-device");
+    *(volatile uint32_t *)(gSynopsysOTGBase + 0x8) = cfg0;
+    *(volatile uint32_t *)(gSynopsysOTGBase + 0xc) = cfg1;
     *(volatile uint32_t*)(gSynopsysOTGBase) |= 1;
     spin(20);
     *(volatile uint32_t*)(gSynopsysOTGBase) &= 0xFFFFFFF3;
@@ -1855,24 +1860,23 @@ void usb_bringup() {
     spin(1500);
 }
 
-void usb_init() {
+void usb_init(void)
+{
+    dt_node_t *chosen = dt_get("/chosen");
     char *srnm = NULL;
-    asprintf(&srnm, "CPID:%04X BDID:%02X ECID:%016llX SRTG:[%s]", socnum, dt_get_u32_prop("/chosen", "board-id"), dt_get_u64_prop("/chosen", "unique-chip-id"), "PongoOS-" PONGO_VERSION);
+    asprintf(&srnm, "CPID:%04X BDID:%02X ECID:%016llX SRTG:[%s]", socnum, dt_node_u32(chosen, "board-id", 0), dt_node_u64(chosen, "unique-chip-id", 0), "PongoOS-" PONGO_VERSION);
     string_descriptors[iSerialNumber] = srnm;
 
     gSynopsysOTGBase = 0;
+    dt_node_t *otgphyctrl = dt_get("/arm-io/otgphyctrl");
     uint32_t sz = 0;
-    uint64_t *reg = dt_get_prop("/arm-io/otgphyctrl", "reg", &sz);
-    if(reg)
+    uint64_t *reg = dt_node_prop(otgphyctrl, "reg", &sz);
+    for(uint32_t i = 0, max = sz / 0x10; i < max; ++i)
     {
-        sz /= 0x10;
-        for(uint32_t i = 0; i < sz; ++i)
+        if(reg[2*i + 1] == 0x20)
         {
-            if(reg[2*i + 1] == 0x20)
-            {
-                gSynopsysOTGBase = reg[2*i];
-                break;
-            }
+            gSynopsysOTGBase = reg[2*i];
+            break;
         }
     }
     if(!gSynopsysOTGBase)
@@ -1884,19 +1888,9 @@ void usb_init() {
     gSynopsysBase = (gSynopsysOTGBase & ~0xfffULL) + 0x00100000;
 
     dt_node_t *usbComplex = dt_find(gDeviceTree, "/arm-io/usb-complex");
-    const uint64_t *usbComplexReg = NULL;
     if(usbComplex)
     {
-        uint32_t len = 0;
-        usbComplexReg = dt_prop(usbComplex, "reg", &len);
-        if(usbComplexReg && len != 0x10)
-        {
-            panic("usb-complex->reg property has the wrong size");
-        }
-    }
-    if(usbComplexReg)
-    {
-        gSynopsysComplexBase = gIOBase + usbComplexReg[0];
+        gSynopsysComplexBase = gIOBase + dt_node_u64(usbComplex, "reg", 0);
     }
     else if(socnum == 0x8960)
     {
@@ -1906,7 +1900,7 @@ void usb_init() {
     }
     else
     {
-        panic("Missing usb-complex->reg property");
+        panic("Missing DeviceTree node: /arm-io/usb-complex");
     }
 
     struct usb_regs regs;
@@ -1929,7 +1923,7 @@ void usb_init() {
     usb_done = false;
     usb_irq_mode = 1;
     usb_usbtask_handoff_mode = 0;
-    usb_bringup();
+    usb_bringup(otgphyctrl);
 
     gSynopsysCoreVersion = reg_read(rGSNPSID) & 0xffff;
     USB_DEBUG(USB_DEBUG_STANDARD, "gSynopsysCoreVersion: 0x%x", gSynopsysCoreVersion);
@@ -1990,7 +1984,8 @@ static void usb_reap(void)
     reg_or(rDCTL, 0x2);
 }
 
-void usb_teardown() {
+void usb_teardown(void)
+{
     if (!gSynopsysOTGBase)
         return;
     disable_interrupts();

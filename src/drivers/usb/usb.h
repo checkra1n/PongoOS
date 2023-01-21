@@ -138,8 +138,8 @@ enum {
     iSerialNumber = 3,
 };
 
-extern void usb_init();
-extern void usb_teardown();
+extern void usb_init(void);
+extern void usb_teardown(void);
 extern void ep0_begin_data_in_stage(const void *data, uint32_t size, void (*callback)(void));
 extern void ep0_begin_data_out_stage(bool (*callback)(const void *data, uint32_t size));
 extern size_t usb_read(void *data, size_t size);
