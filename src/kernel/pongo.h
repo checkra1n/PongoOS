@@ -34,6 +34,8 @@
 #include <strings.h>
 #include <kerninfo.h>
 
+#include "dtree.h"
+
 #ifdef PONGO_PRIVATE
 #include "framebuffer/fb.h"
 #include "usb/usb.h"
@@ -52,7 +54,6 @@
 #include "sep/sep.h"
 #endif
 
-#define DT_KEY_LEN 0x20
 #define BOOT_LINE_LENGTH_iOS12 0x100
 #define BOOT_LINE_LENGTH_iOS13 0x260
 
@@ -103,25 +104,6 @@ typedef struct boot_args {
 	};
 } __attribute__((packed)) boot_args;
 
-typedef struct
-{
-    uint32_t nprop;
-    uint32_t nchld;
-    char prop[];
-} dt_node_t;
-
-typedef struct
-{
-    char key[DT_KEY_LEN];
-    uint32_t len;
-    char val[];
-} dt_prop_t;
-
-struct memmap {
-    uint64_t addr;
-    uint64_t size;
-};
-
 extern volatile char gBootFlag;
 #define BOOT_FLAG_DEFAULT 0
 #define BOOT_FLAG_HARD 1
@@ -137,12 +119,6 @@ extern void lock_take(lock* lock); // takes a lock spinning initially but after 
 extern void lock_take_spin(lock* lock); // takes a lock spinning until it acquires it
 extern void lock_release(lock* lock); // releases ownership on a lock
 
-extern int dt_check(void* mem, uint32_t size, uint32_t* offp);
-extern int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg);
-extern dt_node_t* dt_find(dt_node_t* node, const char* name);
-extern void* dt_prop(dt_node_t* node, const char* key, uint32_t* lenp);
-extern void* dt_get_prop(const char* device, const char* prop, uint32_t* size);
-extern struct memmap* dt_alloc_memmap(dt_node_t* node, const char* name);
 extern void task_yield_asserted();
 extern void _task_yield();
 extern uint8_t * loader_xfer_recv_data;
@@ -427,9 +403,6 @@ extern void disable_interrupts();
 extern uint64_t get_ticks();
 extern void usleep(uint64_t usec);
 extern void sleep(uint32_t sec);
-extern uint32_t dt_get_u32_prop(const char* device, const char* prop);
-extern uint64_t dt_get_u64_prop(const char* device, const char* prop);
-extern uint64_t dt_get_u64_prop_i(const char* device, const char* prop, uint32_t idx);
 extern void unmask_interrupt(uint32_t reg);
 extern void mask_interrupt(uint32_t reg);
 extern _Noreturn void wdt_reset();

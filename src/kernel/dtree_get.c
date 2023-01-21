@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,11 +22,12 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
 
-uint32_t dt_get_u32_prop(const char* device, const char* prop) {
+uint32_t dt_get_u32_prop(const char* device, const char* prop)
+{
     uint32_t rval = 0;
     uint32_t len = 0;
     dt_node_t* dev = dt_find(gDeviceTree, device);
@@ -36,7 +37,8 @@ uint32_t dt_get_u32_prop(const char* device, const char* prop) {
     memcpy(&rval, &val[0], 4);
     return rval;
 }
-uint64_t dt_get_u64_prop(const char* device, const char* prop) {
+uint64_t dt_get_u64_prop(const char* device, const char* prop)
+{
     uint64_t rval = 0;
     uint32_t len = 0;
     dt_node_t* dev = dt_find(gDeviceTree, device);
@@ -46,7 +48,8 @@ uint64_t dt_get_u64_prop(const char* device, const char* prop) {
     memcpy(&rval, &val[0], 8);
     return rval;
 }
-uint64_t dt_get_u64_prop_i(const char* device, const char* prop, uint32_t idx) {
+uint64_t dt_get_u64_prop_i(const char* device, const char* prop, uint32_t idx)
+{
     uint64_t rval = 0;
     uint32_t len = 0;
     dt_node_t* dev = dt_find(gDeviceTree, device);
@@ -56,7 +59,8 @@ uint64_t dt_get_u64_prop_i(const char* device, const char* prop, uint32_t idx) {
     memcpy(&rval, &val[idx], 8);
     return rval;
 }
-void* dt_get_prop(const char* device, const char* prop, uint32_t* size) {
+void* dt_get_prop(const char* device, const char* prop, uint32_t* size)
+{
     uint32_t len = 0;
     dt_node_t* dev = dt_find(gDeviceTree, device);
     if (!dev) panic("invalid devicetree: no device!");
@@ -66,3 +70,21 @@ void* dt_get_prop(const char* device, const char* prop, uint32_t* size) {
     return val;
 }
 
+static int dt_find_memmap_cb(void* a, dt_node_t* node, int depth, const char* key, void* val, uint32_t len)
+{
+    if ((key[0] == 'M' && key[1] == 'e' && key[9] == 'R' && key[10] == 'e') || (strcmp(*(void**)a, "RAMDisk") == 0)) {
+        strcpy((char*)key, *(void**)a);
+        *(void**)a = val;
+        return 1;
+    }
+    return 0;
+}
+
+struct memmap* dt_alloc_memmap(dt_node_t* node, const char* name)
+{
+    void* val = (void*)name;
+    dt_parse(node, -1, NULL, NULL, NULL, &dt_find_memmap_cb, &val);
+    if (val == name)
+        return NULL;
+    return val;
+}
