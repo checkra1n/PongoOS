@@ -124,16 +124,6 @@ struct memmap* dt_alloc_memmap(dt_node_t *node, const char *name)
 
 static void dt_cmd_log(const char *cmd, char *args)
 {
-    //struct boot_args* cBootArgs = (struct boot_args*)((uint64_t)gBootArgs - 0x800000000 + kCacheableView);
-    //iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
-    /*dt_arg_t arg =
-    {
-        .name = NULL,
-        .prop = NULL,
-        .size = 0xFFFF,
-    };*/
-
-    //dt_parse(gDeviceTree, 0, NULL, &dt_cbn, gDeviceTree, &dt_cbp, &arg);
     int argc = 0;
     const char *argv[4] = { NULL, NULL, NULL, NULL };
 
