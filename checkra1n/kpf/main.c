@@ -2718,7 +2718,7 @@ bool allow_update_mount_callback(struct xnu_pf_patch *patch, uint32_t *opcode_st
     return true;
 }
 
-checkrain_option_t gkpf_flags, checkra1n_flags;
+checkrain_option_t gkpf_flags, checkra1n_flags, palera1n_flags;
 
 int gkpf_didrun = 0;
 int gkpf_spin_on_fail = 1;
@@ -3191,8 +3191,14 @@ void command_kpf() {
         info->slide = xnu_slide_value(hdr);
         info->flags = checkra1n_flags;
     }
-    if (pinfo && rootdev) {
+    if (pinfo) {
         strcpy(pinfo->rootdev, rootdev);
+        pinfo->version = 1;
+        pinfo->flags = palera1n_flags;
+        pinfo->magic = PALEINFO_MAGIC;
+    }
+    if (checkrain_option_enabled(palera1n_flags, checkrain_option_enabled(palera1n_flags, palerain_option_rootful)) && rootdev[0] == 0) {
+        panic("cannot have rootful when rootdev is unset");
     }
     if (checkrain_option_enabled(gkpf_flags, checkrain_option_verbose_boot))
         gBootArgs->Video.v_display = 0;
@@ -3222,6 +3228,11 @@ void checkra1n_flags_cmd(const char *cmd, char *args)
 void kpf_flags_cmd(const char *cmd, char *args)
 {
     set_flags(args, &gkpf_flags, "kpf_flags");
+}
+
+void palera1n_flags_cmd(const char *cmd, char *args)
+{
+    set_flags(args, &palera1n_flags, "palera1n_flags");
 }
 
 void overlay_cmd(const char* cmd, char* args) {
@@ -3368,6 +3379,7 @@ void module_entry() {
     command_register("dtpatch", "run dt patcher", dtpatcher);
     command_register("rootfs", "set rootdev for paleinfo", set_rootdev);
     command_register("launchd", "set launchd for palera1n", set_launchd);
+    command_register("palera1n_flags", "set flags for palera1n userland", palera1n_flags_cmd);
 }
 char* module_name = "checkra1n-kpf2-12.0,16.3-ploosh";
 

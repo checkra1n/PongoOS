@@ -54,6 +54,11 @@
 #define checkrain_option_overlay            (1 << 2)
 #define checkrain_option_force_revert       (1 << 7) /* keep this at 7 */
 
+// palera1n option
+#define palerain_option_rootful             (1 << 0)
+
+#define PALEINFO_MAGIC 'PLSH'
+
 typedef uint32_t checkrain_option_t, *checkrain_option_p;
 
 typedef enum {
@@ -70,6 +75,9 @@ struct kerninfo {
     checkrain_option_t flags;
 };
 struct paleinfo {
+    uint32_t magic; // 'PLSH' / 0x504c5348
+    uint32_t version; // 1
+    checkrain_option_t flags;
     char rootdev[0x10];
 };
 struct kpfinfo {
@@ -99,5 +107,4 @@ static inline bool checkrain_option_enabled(checkrain_option_t flags, checkrain_
     }
     return (flags & opt) != 0;
 }
-
 #endif
