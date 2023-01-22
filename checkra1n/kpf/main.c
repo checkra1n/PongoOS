@@ -1747,7 +1747,7 @@ bool kpf_apfs_auth_patches(struct xnu_pf_patch* patch, uint32_t* opcode_stream) 
             puts("KPF: found kpf_apfs_personalized_hash");
         }
         
-        uint32_t* cbz_fail = find_prev_insn(cbz_success, 0x16, 0x34000000, 0x7e000000);
+        uint32_t* cbz_fail = find_prev_insn(cbz_success - 1, 0x16, 0x34000000, 0x7e000000);
 
         if (!cbz_fail) {
             puts("kpf_apfs_personalized_hash: failed to find fail cbz");
@@ -1810,7 +1810,7 @@ bool kpf_apfs_allow_rw_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream
         panic("kpf_apfs_allow_rw_mount: failed to find tbnz");
     }
     
-    uint32_t *tbnz2 = find_prev_insn(tbnz, 0x100, 0x36000000, 0x7e000000);
+    uint32_t *tbnz2 = find_prev_insn(tbnz - 1, 0x100, 0x36000000, 0x7e000000);
     
     if (!tbnz) {
         panic("kpf_apfs_allow_rw_mount: failed to find tbnz2");
