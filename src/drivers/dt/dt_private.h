@@ -24,29 +24,15 @@
  * SOFTWARE.
  *
  */
-#include <pongo.h>
+#ifndef DT_PRIVATE_H
+#define DT_PRIVATE_H
 
-void gpio_main() {
-    while(1) {
-        iprintf("gpio irq %x\n", task_current()->irq_type);
-        task_exit_irq();
-    }
-}
-struct task gpio_task = {.name = "gpio"};
+#ifdef PONGO_PRIVATE
 
-uint64_t gGpioBase;
-void gpio_early_init() {
-    gGpioBase = dt_get_u32_prop("gpio", "reg");
-    gGpioBase += gIOBase;
-}
+#include <stddef.h>
 
-void gpio_init() {
-    /*
-    size_t len = 0;
-    dt_node_t* buttons = dt_get("buttons");
-    uint32_t* interrupts = dt_get_prop(buttons, "interrupts", &len);
+void dt_init(void *mem, size_t size);
 
-    for (int i=0; i<len/4; i++) {
-        task_register_irq(&gpio_task, gpio_main, interrupts[i]);
-    }*/
-}
+#endif /* PONGO_PRIVATE */
+
+#endif /* DT_PRIVATE_H */

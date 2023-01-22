@@ -57,8 +57,8 @@ void linux_dtree_init(void)
 
     int node = 0, node1 = 0;
     fdt_appendprop_string(fdt, node, "compatible", compatible_apple);
-    uint32_t size;
-    void *prop = dt_prop(gDeviceTree, "product-name", &size);
+    size_t size;
+    void *prop = dt_node_prop(gDeviceTree, "product-name", &size);
     char name[20];
     strncpy(name, prop, size);
     name[size] = 0;

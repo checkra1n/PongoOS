@@ -24,12 +24,13 @@
  * SOFTWARE.
  *
  */
-#ifndef DTREE_H
-#define DTREE_H
+#ifndef DT_H
+#define DT_H
 
+#include <stddef.h>
 #include <stdint.h>
 
-/********** ********** ********** ********** ********** dtree.c ********** ********** ********** ********** **********/
+/********** ********** ********** ********** ********** dt.c ********** ********** ********** ********** **********/
 
 #define DT_KEY_LEN 0x20
 
@@ -47,12 +48,15 @@ typedef struct
     char val[];
 } dt_prop_t;
 
-int dt_check(void *mem, uint32_t size, uint32_t *offp);
-int dt_parse(dt_node_t *node, int depth, uint32_t *offp, int (*cb_node)(void*, dt_node_t*), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void *cbp_arg);
-dt_node_t* dt_find(dt_node_t *node, const char *name);
-void* dt_prop(dt_node_t *node, const char *key, uint32_t *lenp);
+extern int dt_check(void *mem, size_t size, size_t *offp) __asm__("_dt_check$64");
+extern int dt_parse(dt_node_t *node, int depth, size_t *offp, int (*cb_node)(void*, dt_node_t*), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, size_t), void *cbp_arg) __asm__("_dt_parse$64");
+extern dt_node_t* dt_find(dt_node_t *node, const char *name);
+extern void* dt_prop(dt_node_t *node, const char *key, size_t *lenp) __asm__("_dt_prop$64");
+extern int dt_print(dt_node_t *node, int argc, const char **argv);
 
-/********** ********** ********** ********** ********** dtree_get.c ********** ********** ********** ********** **********/
+/********** ********** ********** ********** ********** dt_get.c ********** ********** ********** ********** **********/
+
+extern dt_node_t *gDeviceTree;
 
 struct memmap
 {
@@ -60,18 +64,18 @@ struct memmap
     uint64_t size;
 };
 
-dt_node_t* dt_node(dt_node_t *node, const char *name);
-dt_node_t* dt_get(const char *name);
-void* dt_node_prop(dt_node_t *node, const char *prop, uint32_t *size);
-void* dt_get_prop(const char *device, const char *prop, uint32_t *size);
-uint32_t dt_node_u32(dt_node_t *node, const char *prop, uint32_t idx);
-uint32_t dt_get_u32(const char *device, const char *prop, uint32_t idx);
-uint64_t dt_node_u64(dt_node_t *node, const char *prop, uint32_t idx);
-uint64_t dt_get_u64(const char *device, const char *prop, uint32_t idx);
-struct memmap* dt_alloc_memmap(dt_node_t *node, const char *name);
+extern dt_node_t* dt_node(dt_node_t *node, const char *name);
+extern dt_node_t* dt_get(const char *name);
+extern void* dt_node_prop(dt_node_t *node, const char *prop, size_t *size);
+extern void* dt_get_prop(const char *device, const char *prop, size_t *size) __asm__("_dt_get_prop$64");
+extern uint32_t dt_node_u32(dt_node_t *node, const char *prop, uint32_t idx);
+extern uint32_t dt_get_u32(const char *device, const char *prop, uint32_t idx);
+extern uint64_t dt_node_u64(dt_node_t *node, const char *prop, uint32_t idx);
+extern uint64_t dt_get_u64(const char *device, const char *prop, uint32_t idx);
+extern struct memmap* dt_alloc_memmap(dt_node_t *node, const char *name);
 
-uint32_t dt_get_u32_prop(const char *device, const char *prop) __attribute__((deprecated("dt_get_u32_prop is deprecated. Consider switching to dt_get_u32.", "dt_get_u32")));
-uint64_t dt_get_u64_prop(const char *device, const char *prop) __attribute__((deprecated("dt_get_u64_prop is deprecated. Consider switching to dt_get_u64.", "dt_get_u64")));
-uint64_t dt_get_u64_prop_i(const char *device, const char *prop, uint32_t idx) __attribute__((deprecated("dt_get_u64_prop_i is deprecated. Consider switching to dt_get_u64.", "dt_get_u64")));
+extern uint32_t dt_get_u32_prop(const char *device, const char *prop) __attribute__((deprecated("dt_get_u32_prop is deprecated. Consider switching to dt_get_u32.", "dt_get_u32")));
+extern uint64_t dt_get_u64_prop(const char *device, const char *prop) __attribute__((deprecated("dt_get_u64_prop is deprecated. Consider switching to dt_get_u64.", "dt_get_u64")));
+extern uint64_t dt_get_u64_prop_i(const char *device, const char *prop, uint32_t idx) __attribute__((deprecated("dt_get_u64_prop_i is deprecated. Consider switching to dt_get_u64.", "dt_get_u64")));
 
-#endif /* DTREE_H */
+#endif /* DT_H */

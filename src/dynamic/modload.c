@@ -93,7 +93,7 @@ __asm__                                     \
 #define PONGO_EXPORT_RENAME(name, orig) PONGO_EXPORT_RAW(name, _ ## orig)
 #define PONGO_EXPORT(name) PONGO_EXPORT_RENAME(name, name)
 
-// Newlib
+// ========== ========== ========== ========== Newlib ========== ========== ========== ==========
 // This list has been manually curated, since we want a lot of newlib to be removed with LTO.
 // Removed stuff includes:  all float/double math, wide/multibyte char support, most file operations,
 //                          arc4, time functions, ctype/locale/timezone, atexit, env variables
@@ -478,20 +478,29 @@ PONGO_EXPORT(vsprintf);
 PONGO_EXPORT(vsscanf);
 PONGO_EXPORT(write);
 
-// Pongo
-PONGO_EXPORT(dt_check);
-PONGO_EXPORT(dt_parse);
+// ========== ========== ========== ========== Pongo ========== ========== ========== ==========
+
+// DeviceTree
+PONGO_EXPORT(gDeviceTree);
+PONGO_EXPORT(dt_check$64);
+PONGO_EXPORT(dt_parse$64);
 PONGO_EXPORT(dt_find);
-PONGO_EXPORT(dt_prop);
+PONGO_EXPORT(dt_prop$64);
+PONGO_EXPORT(dt_print);
 PONGO_EXPORT(dt_node);
 PONGO_EXPORT(dt_get);
 PONGO_EXPORT(dt_node_prop);
-PONGO_EXPORT(dt_get_prop);
+PONGO_EXPORT(dt_get_prop$64);
 PONGO_EXPORT(dt_node_u32);
 PONGO_EXPORT(dt_get_u32);
 PONGO_EXPORT(dt_node_u64);
 PONGO_EXPORT(dt_get_u64);
 PONGO_EXPORT(dt_alloc_memmap);
+// DeviceTree legacy compat
+PONGO_EXPORT_RENAME(dt_check, dt_check$32);
+PONGO_EXPORT_RENAME(dt_parse, dt_parse$32);
+PONGO_EXPORT_RENAME(dt_prop, dt_prop$32);
+PONGO_EXPORT_RENAME(dt_get_prop, dt_get_prop$32);
 PONGO_EXPORT(dt_get_u32_prop);
 PONGO_EXPORT(dt_get_u64_prop);
 PONGO_EXPORT(dt_get_u64_prop_i);
@@ -528,7 +537,6 @@ PONGO_EXPORT(macho_get_section);
 PONGO_EXPORT(event_fire);
 PONGO_EXPORT(event_wait);
 PONGO_EXPORT(event_wait_asserted);
-PONGO_EXPORT(dt_alloc_memmap);
 //PONGO_EXPORT(bzero);
 //PONGO_EXPORT(memset);
 PONGO_EXPORT(memcpy_trap);
@@ -641,7 +649,6 @@ PONGO_EXPORT(resize_loader_xfer_data);
 PONGO_EXPORT(gBootArgs);
 PONGO_EXPORT(gTopOfKernelData);
 PONGO_EXPORT(gEntryPoint);
-PONGO_EXPORT(gDeviceTree);
 PONGO_EXPORT(gIOBase);
 PONGO_EXPORT(gPMGRBase);
 PONGO_EXPORT(unlzma_decompress);

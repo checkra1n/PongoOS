@@ -1869,7 +1869,7 @@ void usb_init(void)
 
     gSynopsysOTGBase = 0;
     dt_node_t *otgphyctrl = dt_get("/arm-io/otgphyctrl");
-    uint32_t sz = 0;
+    size_t sz = 0;
     uint64_t *reg = dt_node_prop(otgphyctrl, "reg", &sz);
     for(uint32_t i = 0, max = sz / 0x10; i < max; ++i)
     {

@@ -1171,16 +1171,15 @@ void sep_cmd(const char* cmd, char* args) {
     }
 }
 
-void sep_setup() {
-    gSEPDev = dt_find(gDeviceTree, "/arm-io/sep");
-    if(!gSEPDev) panic("sep_setup: no device!");
+void sep_setup(void)
+{
+    gSEPDev = dt_get("/arm-io/sep");
 
-    uint32_t len = 0;
+    size_t len = 0;
     uint32_t *xnu_wants_booted = dt_prop(gSEPDev, "sepfw-booted", &len);
     gXNUExpectsBooted = xnu_wants_booted && len == 4 && *xnu_wants_booted != 0;
 
-    dt_node_t *map = dt_find(gDeviceTree, "/chosen/memory-map");
-    if(!map) panic("sep_setup: no memory-map!");
+    dt_node_t *map = dt_get("/chosen/memory-map");
     uint64_t *fw = dt_prop(map, "SEPFW", &len);
     if(fw)
     {
@@ -1189,8 +1188,7 @@ void sep_setup() {
         gSEPFWLen = fw[1];
     }
 
-    uint64_t* reg = dt_prop(gSEPDev, "reg", &len);
-    if(!reg) panic("sep_setup: no reg prop!");
+    uint64_t* reg = dt_node_prop(gSEPDev, "reg", &len);
     if(len < 16) panic("sep_setup: sep reg prop too short");
 
     uint64_t sep_reg_u = reg[0] + gIOBase;
@@ -1202,8 +1200,7 @@ void sep_setup() {
         is_sep64 = 0;
     }
 
-    uint32_t* ints = dt_prop(gSEPDev, "interrupts", &len);
-    if(!ints) panic("sep_setup: no interrupts prop!");
+    uint32_t* ints = dt_node_prop(gSEPDev, "interrupts", &len);
     if(len != 16) panic("sep_setup: sep interrupts != 4");
 
     struct task* sep_irq_task = task_create_extended("sep", sep_irq, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);

@@ -116,172 +116,6 @@ void pongo_boot_xargs(const char* cmd, char* args) {
 
 _Static_assert(__builtin_offsetof(struct boot_args, deviceTreeLength) + 4 == __builtin_offsetof(struct boot_args, iOS13.CommandLine), "boot-args CommandLine offset");
 
-// DTree printing
-
-
-typedef struct
-{
-    const char *name;
-    const char *prop;
-    size_t size;
-} dt_arg_t;
-#define LOG(str, args...) do { iprintf(str "\n", ##args); } while(0)
-#define REQ(expr) \
-    do \
-    { \
-        if(!(expr)) \
-        { \
-            ERR("!(" #expr ")"); \
-            goto out; \
-        } \
-    } while(0)
-
-static int dt_cbn(void *a, dt_node_t *node)
-{
-    if(a != node)
-    {
-        LOG("--------------------------------------------------------------------------------------------------------------------------------");
-    }
-    return 0;
-}
-
-static int dt_cbp(void *a, dt_node_t *node, int depth, const char *key, void *val, uint32_t len)
-{
-    int retval = 0;
-    dt_arg_t *arg = a;
-    const char *prop = arg->prop;
-    if(!prop || strncmp(prop, key, DT_KEY_LEN) == 0)
-    {
-        // Print name, if we're in single-prop mode and recursive
-        if(depth >= 0 && prop && strcmp(key, "name") != 0)
-        {
-            uint32_t l = 0;
-            void *v = dt_prop(node, "name", &l);
-            if(v)
-            {
-                dt_arg_t tmp = *arg;
-                tmp.prop = NULL;
-                retval = dt_cbp(&tmp, node, depth, "name", v, l);
-            }
-        }
-        if(depth < 0) depth = 0;
-        bool printable = true;
-        char *str = val;
-        for(size_t i = 0; i < len; ++i)
-        {
-            char c = str[i];
-            if((c < 0x20 || c >= 0x7f) && c != '\t' && c != '\n')
-            {
-                if(c == 0x0 && i == len - 1)
-                {
-                    continue;
-                }
-                printable = false;
-                break;
-            }
-        }
-        if(printable)
-        {
-            LOG("%*s%-*s %s", depth * 4, "", DT_KEY_LEN, key, str);
-        }
-        else if(len == 1 || len == 2 || len == 4) // 8 is usually not uint64
-        {
-            uint64_t v = 0;
-            for(size_t i = 0; i < len; ++i)
-            {
-                uint8_t c = str[i];
-                v |= (uint64_t)c << (i * 8);
-            }
-            LOG("%*s%-*s 0x%0*llx", depth * 4, "", DT_KEY_LEN, key, (int)len * 2, v);
-        }
-        else
-        {
-            const char *k = key;
-            const char *hex = "0123456789abcdef";
-            char xs[49] = {};
-            char cs[17] = {};
-            size_t sz = arg->size;
-            if(sz == 8)
-            {
-                xs[0]  = xs[19] = '0';
-                xs[1]  = xs[20] = 'x';
-                xs[18] = xs[37] = ' ';
-            }
-            else if(sz == 4)
-            {
-                xs[0]  = xs[11] =          xs[23] = xs[34] = '0';
-                xs[1]  = xs[12] =          xs[24] = xs[35] = 'x';
-                xs[10] = xs[21] = xs[22] = xs[33] = xs[44] = ' ';
-            }
-            else
-            {
-                xs[2] = xs[5] = xs[8] = xs[11] = xs[14] = xs[17] = xs[20] = xs[23] = xs[24] = xs[27] = xs[30] = xs[33] = xs[36] = xs[39] = xs[42] = xs[45] = ' ';
-            }
-            size_t i;
-            for(i = 0; i < len; ++i)
-            {
-                uint8_t c = str[i];
-                size_t is = i % 0x10;
-                size_t ix;
-                if(sz == 8)
-                {
-                    ix = (is >= 0x8 ? 51 : 16) - (2 * is);
-                }
-                else if(sz == 4)
-                {
-                    ix = (is >= 0x8 ? (is >= 0xc ? 66 : 47) : (is >= 0x4 ? 27 : 8)) - (2 * is);
-                }
-                else
-                {
-                    ix = 3 * is + (is >= 0x8 ? 1 : 0);
-                }
-                xs[ix    ] = hex[(c >> 4) & 0xf];
-                xs[ix + 1] = hex[(c     ) & 0xf];
-                cs[is] = c >= 0x20 && c < 0x7f ? c : '.';
-                if(is == 0xf)
-                {
-                    LOG("%*s%-*s %-*s  |%s|", depth * 4, "", DT_KEY_LEN, k, (int)sizeof(xs), xs, cs);
-                    k = "";
-                }
-            }
-            if((i % 0x10) != 0)
-            {
-                size_t is = i % 0x10;
-                size_t ix;
-                if(sz == 8)
-                {
-                    ix = (is >= 0x8 ? 51 : 16) - (2 * is);
-                    xs[ix    ] = '0';
-                    xs[ix + 1] = 'x';
-                    for(size_t iz = is >= 0x8 ? 19 : 0; iz < ix; ++iz)
-                    {
-                        xs[iz] = ' ';
-                    }
-                    ix = is > 0x8 ? 37 : 18;
-                }
-                else if(sz == 4)
-                {
-                    ix = (is >= 0x8 ? (is >= 0xc ? 66 : 47) : (is >= 0x4 ? 27 : 8)) - (2 * is);
-                    xs[ix    ] = '0';
-                    xs[ix + 1] = 'x';
-                    for(size_t iz = is >= 0x8 ? (is >= 0xc ? 34 : 23) : (is >= 0x4 ? 11 : 0); iz < ix; ++iz)
-                    {
-                        xs[iz] = ' ';
-                    }
-                    ix = is > 0x8 ? (is > 0xc ? 44 : 33) : (is > 0x4 ? 21 : 10);
-                }
-                else
-                {
-                    ix = 3 * is + (is >= 0x8 ? 1 : 0);
-                }
-                xs[ix] = '\0';
-                cs[is] = '\0';
-                LOG("%*s%-*s %-*s  |%s|", depth * 4, "", DT_KEY_LEN, k, (int)sizeof(xs), xs, cs);
-            }
-        }
-    }
-    return retval;
-}
 void log_bootargs(const char *cmd, char *args)
 {
     struct boot_args* cBootArgs = (struct boot_args*)((uint64_t)gBootArgs - 0x800000000 + kCacheableView);
@@ -314,19 +148,6 @@ void log_bootargs(const char *cmd, char *args)
             cBootArgs->iOS12.memSizeActual,
             cBootArgs->iOS13.bootFlags,
             cBootArgs->iOS13.memSizeActual);
-}
-void log_dtree(const char *cmd, char *args)
-{
-    //struct boot_args* cBootArgs = (struct boot_args*)((uint64_t)gBootArgs - 0x800000000 + kCacheableView);
-    //iprintf("gBootArgs:\n\tRevision: %x\n\tVersion: %x\n\tvirtBase: %llx\n\tphysBase %llx\n\tmemSize: %llx\n\ttopOfKernelData: %llx\n\tmachineType: %x\n\tdeviceTreeP: %llx\n\tdeviceTreeLength: %x\n\tCommandLine: %s\n\tbootFlags: %llx\n\tmemSizeActual: %llx\n", cBootArgs->Revision, cBootArgs->Version, cBootArgs->virtBase, cBootArgs->physBase, cBootArgs->memSize, cBootArgs->topOfKernelData, cBootArgs->machineType, (uint64_t)cBootArgs->deviceTreeP, cBootArgs->deviceTreeLength, cBootArgs->CommandLine, cBootArgs->bootFlags, cBootArgs->memSizeActual);
-    dt_arg_t arg =
-    {
-        .name = NULL,
-        .prop = NULL,
-        .size = 0xFFFF,
-    };
-
-    dt_parse(gDeviceTree, 0, NULL, &dt_cbn, gDeviceTree, &dt_cbp, &arg);
 }
 
 void flip_video_display(const char *cmd, char *args) {
@@ -1310,7 +1131,6 @@ void xnu_boot(void)
 }
 
 void xnu_init(void) {
-    command_register("dt", "parses loaded devicetree", log_dtree);
     command_register("xargs", "prints or sets xnu boot-args", pongo_boot_xargs);
     //command_register("loadx", "loads xnu", pongo_copy_xnu);
     command_register("bootx", "boots xnu (patched, if such a module is loaded)", pongo_boot_hook);

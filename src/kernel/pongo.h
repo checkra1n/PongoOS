@@ -232,7 +232,6 @@ extern void task_restart(struct task* task);
 extern boot_args *gBootArgs;
 extern uint64_t gTopOfKernelData;
 extern void *gEntryPoint;
-extern dt_node_t *gDeviceTree;
 extern uint64_t gIOBase;
 extern uint64_t gPMGRBase;
 extern char* gDevType;

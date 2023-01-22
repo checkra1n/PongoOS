@@ -1,6 +1,6 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
+ *
  * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #import <pongo.h>
 struct hal_device _gRootDevice = {
@@ -39,9 +39,8 @@ void hal_probe_hal_services(struct hal_device* device) ;
 static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
     struct hal_device* parentDevice = arg;
     if (parentDevice->node == node) return 0;
-    
-    uint32_t len = 0;
-    void* val = dt_prop(node, "name", &len);
+
+    void* val = dt_prop(node, "name", NULL);
     if (val) {
         struct hal_device* device = malloc(sizeof(struct hal_device));
         device->next = parentDevice->down;
@@ -49,9 +48,9 @@ static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
         device->node = node;
         device->down = NULL;
         device->name = strdup(val);
-        
+
         hal_probe_hal_services(device);
-        
+
         if (0 != hal_invoke_service_op(device, "hal", HAL_LOAD_DTREE_CHILDREN, NULL, 0, NULL, NULL))
             panic("hal_load_dtree_child_node: HAL_LOAD_DTREE_CHILDREN failed!");
     }
@@ -63,7 +62,7 @@ static int hal_service_op(struct hal_service* svc, struct hal_device* device, ui
         device->node = gDeviceTree;
         return 0;
     } else if (method == HAL_LOAD_DTREE_CHILDREN && device->node) {
-        // int dt_parse(dt_node_t* node, int depth, uint32_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void* cbp_arg)
+        // int dt_parse(dt_node_t* node, int depth, size_t* offp, int (*cb_node)(void*, dt_node_t*), void* cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, size_t), void* cbp_arg)
         return dt_parse(device->node, 0, NULL, hal_load_dtree_child_node, device, NULL, NULL);
     } else if (method == HAL_CREATE_CHILD_DEVICE && data_out_size && *data_out_size == 8) {
         struct hal_device* ndevice = malloc(sizeof(struct hal_device));
@@ -72,14 +71,14 @@ static int hal_service_op(struct hal_service* svc, struct hal_device* device, ui
         ndevice->node = NULL;
         ndevice->down = NULL;
         ndevice->name = strdup(data_in);
-        
+
         hal_probe_hal_services(ndevice);
-        
+
         *(void**)data_out = ndevice;
-        
+
         return 0;
     }
-    
+
     return -1;
 }
 
@@ -140,12 +139,12 @@ void hal_register_platform_driver(struct hal_platform_driver* driver) {
 }
 const char* hal_platform_name() {
     if (!gPlatform) panic("hal_platform_name: no gPlatform!");
-    
+
     return gPlatform->bound_platform_driver->name;
 }
 bool hal_get_platform_value(const char* name, void* value, size_t* size) {
     if (!gPlatform) panic("hal_get_platform_value: no gPlatform!");
-    
+
     return gPlatform->bound_platform_driver->get_platform_value(name, value, size);
 }
 
@@ -153,7 +152,7 @@ static void hal_init_late() {
     extern struct driver drivers[] __asm("section$start$__DATA$__drivers");
     extern struct driver drivers_end[]  __asm("section$end$__DATA$__drivers");
     struct driver* driver = &drivers[0];
-    
+
     while (driver < &drivers_end[0]) {
         if (!(driver->flags & DRIVER_FLAGS_PLATFORM)) {
             driver->initializer(driver);
@@ -180,22 +179,22 @@ void lsdev_cmd(const char *cmd, char *args)
 void hal_init() {
     gPlatform = NULL;
     gRootDevice = &_gRootDevice;
-    
+
     extern struct driver drivers[] __asm("section$start$__DATA$__drivers");
     extern struct driver drivers_end[]  __asm("section$end$__DATA$__drivers");
     struct driver* driver = &drivers[0];
-    
+
     while (driver < &drivers_end[0]) {
         if (driver->flags & DRIVER_FLAGS_PLATFORM) {
             driver->initializer(driver);
         }
         driver++;
     }
-    
+
     _gPlatform.cpid = socnum;
-    
+
     struct hal_platform_driver* plat = platform_driver_head;
-    
+
     while (plat) {
         if (plat->probe(plat, &_gPlatform)) {
             gPlatform = &_gPlatform;
@@ -204,7 +203,7 @@ void hal_init() {
         }
         plat = plat->next;
     }
-    
+
     if (!gPlatform) {
         panic("hal_init: no platform driver for %x", socnum);
     }
@@ -213,7 +212,7 @@ void hal_init() {
 
     hal_probe_hal_services(gRootDevice);
     size_t ssz = 8;
-    
+
     if (0 != hal_invoke_service_op(gRootDevice, "hal", HAL_CREATE_CHILD_DEVICE, "dtree", 6, &gDeviceTreeDevice, &ssz))
         panic("hal_init: HAL_CREATE_CHILD_DEVICE failed!");
 
@@ -225,4 +224,3 @@ void hal_init() {
     command_register("lsdev", "prints hal devices tree", lsdev_cmd);
 
 }
-

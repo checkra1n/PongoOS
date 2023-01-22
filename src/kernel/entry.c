@@ -24,16 +24,16 @@
  * SOFTWARE.
  *
  */
+#include "fuse/fuse_private.h"
+#include "dt/dt_private.h"
+#include "recfg/recfg_soc.h"
+#include "pongo.h"
 #include <reent.h>
-#include <pongo.h>
-#include <fuse/fuse_private.h>
-#include <recfg/recfg_soc.h>
 
 boot_args *gBootArgs;
 uint64_t gTopOfKernelData;
 void *gEntryPoint;
 volatile char gBootFlag = 0;
-dt_node_t *gDeviceTree;
 uint64_t gIOBase;
 
 char* gDevType;
@@ -131,7 +131,10 @@ __attribute__((noinline)) void pongo_entry_cached()
 {
     extern char preemption_over;
     preemption_over = 1;
-    gDeviceTree = (void*)((uint64_t)gBootArgs->deviceTreeP - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000 + kCacheableView);
+
+    // Literally everything depends on this
+    dt_init((void*)((uint64_t)gBootArgs->deviceTreeP - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000 + kCacheableView), gBootArgs->deviceTreeLength);
+
     gIOBase = dt_get_u64_prop_i("arm-io", "ranges", 1);
 
     map_full_ram(gBootArgs->physBase & 0x7ffffffff, gBootArgs->memSize);

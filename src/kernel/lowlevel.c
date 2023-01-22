@@ -601,19 +601,19 @@ typedef struct
     char name[0x10];
 } pmgr_dev_t;
 
-static uint32_t gPMGRreglen = 0;
-static uint32_t gPMGRmaplen = 0;
-static uint32_t gPMGRdevlen = 0;
+static size_t gPMGRreglen = 0;
+static size_t gPMGRmaplen = 0;
+static size_t gPMGRdevlen = 0;
 static pmgr_reg_t *gPMGRreg = NULL;
 static pmgr_map_t *gPMGRmap = NULL;
 static pmgr_dev_t *gPMGRdev = NULL;
 
 void pmgr_init()
 {
-    dt_node_t *pmgr = dt_find(gDeviceTree, "pmgr");
-    gPMGRreg = dt_prop(pmgr, "reg",     &gPMGRreglen);
-    gPMGRmap = dt_prop(pmgr, "ps-regs", &gPMGRmaplen);
-    gPMGRdev = dt_prop(pmgr, "devices", &gPMGRdevlen);
+    dt_node_t *pmgr = dt_get("/arm-io/pmgr");
+    gPMGRreg = dt_node_prop(pmgr, "reg",     &gPMGRreglen);
+    gPMGRmap = dt_node_prop(pmgr, "ps-regs", &gPMGRmaplen);
+    gPMGRdev = dt_node_prop(pmgr, "devices", &gPMGRdevlen);
     gPMGRreglen /= sizeof(*gPMGRreg);
     gPMGRmaplen /= sizeof(*gPMGRmap);
     gPMGRdevlen /= sizeof(*gPMGRdev);

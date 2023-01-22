@@ -49,7 +49,7 @@ void ttbpage_free(uint64_t page) {
     enable_interrupts();
 }
 
-uint64_t ttbpage_alloc() {
+uint64_t ttbpage_alloc(void) {
     disable_interrupts();
     if (ttb_freelist) {
         void* page = ttb_freelist;
@@ -787,7 +787,7 @@ void alloc_init() {
     uint64_t memory_size = gBootArgs->memSize;
     ppages = memory_size >> 14;
 
-    ttb_alloc = ttbpage_alloc;
+    ttb_alloc = (volatile uint64_t* (*)(void))ttbpage_alloc;
     uint64_t early_heap = ttb_alloc_base - 0x800000000 + kCacheableView;
 
     early_heap = (early_heap - 4 * ppages) & ~0x3fffULL;
