@@ -1747,16 +1747,16 @@ bool kpf_apfs_auth_patches(struct xnu_pf_patch* patch, uint32_t* opcode_stream) 
             puts("KPF: found kpf_apfs_personalized_hash");
         }
         
-        cbz_success++;
-
-        uint32_t branch_success = 0x14000000 | (sxt32(cbz_success[0] >> 5, 19) & 0x03ffffff);
-
         uint32_t* cbz_fail = find_prev_insn(cbz_success, 0x16, 0x34000000, 0x7e000000);
 
         if (!cbz_fail) {
             puts("kpf_apfs_personalized_hash: failed to find fail cbz");
             return false;
         }
+        
+        cbz_success++;
+
+        uint32_t branch_success = 0x14000000 | (sxt32(cbz_success[0] >> 5, 19) & 0x03ffffff);
 
         uint64_t addr_fail = xnu_ptr_to_va(cbz_fail) + (sxt32(cbz_fail[0] >> 5, 19) << 2);
 
