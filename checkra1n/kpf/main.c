@@ -3333,8 +3333,12 @@ void set_launchd(const char* cmd, char* args) {
     
     char *launchdString = (char *) memmem((unsigned char *) text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *) "/sbin/launchd", strlen("/sbin/launchd"));
     if (!launchdString) panic("no launchd string?");
-    strncpy(launchdString, args, sizeof("/sbin/launchd"));
-    printf("changed launchd string to %s\n", launchdString);
+    if (strlen(args) != strlen("/sbin/launchd")) {
+        printf("launchd string size did not match! did not change path.\n");
+    } else {
+        strncpy(launchdString, args, sizeof("/sbin/launchd"));
+        printf("changed launchd string to %s\n", launchdString);
+    }
     
     xnu_pf_emit(text_patchset);
     xnu_pf_apply(text_cstring_range, text_patchset);
@@ -3342,8 +3346,8 @@ void set_launchd(const char* cmd, char* args) {
 }
 
 void set_rootdev(const char* cmd, char* args) {
-    strcpy(rootdev, args);
-    printf("set paleinfo rootdev to %s\n", rootdev);
+    strncpy(rootdev, args, sizeof(args));
+    printf("set rootdev in paleinfo to %s\n", rootdev);
 }
 
 void module_entry() {
