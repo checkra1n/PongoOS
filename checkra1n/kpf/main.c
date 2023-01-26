@@ -3334,7 +3334,7 @@ void set_launchd(const char* cmd, char* args) {
     char *launchdString = (char *) memmem((unsigned char *) text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *) "/sbin/launchd", strlen("/sbin/launchd"));
     if (!launchdString) panic("no launchd string?");
     if (strlen(args) != strlen("/sbin/launchd")) {
-        printf("launchd string size did not match! did not change path.\n");
+        printf("launchd string size did not match, not doing anything!\n");
     } else {
         strncpy(launchdString, args, sizeof("/sbin/launchd"));
         printf("changed launchd string to %s\n", launchdString);
@@ -3346,8 +3346,12 @@ void set_launchd(const char* cmd, char* args) {
 }
 
 void set_rootdev(const char* cmd, char* args) {
-    strncpy(rootdev, args, sizeof(args));
-    printf("set rootdev in paleinfo to %s\n", rootdev);
+    if (strlen(args) > 0x10) {
+        printf("rootdev too large for paleinfo, not doing anything!\n");
+    } else {
+        strncpy(rootdev, args, sizeof(args));
+        printf("set rootdev in paleinfo to %s\n", rootdev);
+    }
 }
 
 void module_entry() {
