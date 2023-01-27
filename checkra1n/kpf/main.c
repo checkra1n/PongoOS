@@ -3161,7 +3161,10 @@ void command_kpf() {
         checkra1n_flags &= ~checkrain_option_overlay;
     }
 
-    if(true) // Only use underlying fs on union mounts
+   
+    if (checkrain_option_enabled(info.flags, checkrain_option_force_revert) ||
+        checkrain_option_enabled(pinfo.flags, palerain_option_setup_rootful) ||
+       !checkrain_option_enabled(pinfo.flags, palerain_option_rootful)) { // Only use underlying fs on union mounts
     {
         char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
@@ -3349,7 +3352,7 @@ void set_rootdev(const char* cmd, char* args) {
     if (strlen(args) > 0x10) {
         printf("rootdev too large for paleinfo, not doing anything!\n");
     } else {
-        strncpy(rootdev, args, sizeof(args));
+        strncpy(rootdev, args, 0x10);
         printf("set rootdev in paleinfo to %s\n", rootdev);
     }
 }
