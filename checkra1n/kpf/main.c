@@ -3161,18 +3161,6 @@ void command_kpf() {
         checkra1n_flags &= ~checkrain_option_overlay;
     }
 
-   
-    if (checkrain_option_enabled(info.flags, checkrain_option_force_revert) ||
-        checkrain_option_enabled(pinfo.flags, palerain_option_setup_rootful) ||
-       !checkrain_option_enabled(pinfo.flags, palerain_option_rootful)) { // Only use underlying fs on union mounts
-    {
-        char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
-        if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
-        if (!snapshotString) panic("no snapshot string");
-
-        *snapshotString = 'x';
-        puts("KPF: Disabled snapshot temporarily");
-    }
 
     struct kerninfo *info = NULL;
     struct paleinfo *pinfo = NULL;
@@ -3203,6 +3191,19 @@ void command_kpf() {
     if (checkrain_option_enabled(palera1n_flags, checkrain_option_enabled(palera1n_flags, palerain_option_rootful)) && rootdev[0] == 0) {
         panic("cannot have rootful when rootdev is unset");
     }
+    
+    if (checkrain_option_enabled(info.flags, checkrain_option_force_revert) ||
+        checkrain_option_enabled(pinfo.flags, palerain_option_setup_rootful) ||
+       !checkrain_option_enabled(pinfo.flags, palerain_option_rootful)) { // Only use underlying fs on union mounts
+    {
+        char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
+        if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
+        if (!snapshotString) panic("no snapshot string");
+
+        *snapshotString = 'x';
+        puts("KPF: Disabled snapshot temporarily");
+    }
+    
     if (checkrain_option_enabled(gkpf_flags, checkrain_option_verbose_boot))
         gBootArgs->Video.v_display = 0;
     tick_1 = get_ticks();
