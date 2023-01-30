@@ -35,6 +35,7 @@
 
 uint32_t offsetof_p_flags, *dyld_hook;
 char rootdev[0x10] = {0};
+uint32_t partid = 0;
 
 #ifdef DEV_BUILD
     #define DEVLOG(x, ...) do { \
@@ -3183,12 +3184,16 @@ void command_kpf() {
         info->flags = checkra1n_flags;
     }
     if (pinfo) {
-        strcpy(pinfo->rootdev, rootdev);
+        strncpy(pinfo->rootdev, rootdev, 0x10);
+        if (rootdev[0] == 0 && partid != 0) {
+            if (constraints_string_match != NULL) snprintf(pinfo->rootdev, 0x10, "disk1s%u", partid);
+            else snprintf(pinfo->rootdev, 0x10, "disk0s1s%u", partid);
+        }
         pinfo->version = 1;
         pinfo->flags = palera1n_flags;
         pinfo->magic = PALEINFO_MAGIC;
     }
-    if (checkrain_option_enabled(palera1n_flags, checkrain_option_enabled(palera1n_flags, palerain_option_rootful)) && rootdev[0] == 0) {
+    if (checkrain_option_enabled(palera1n_flags, checkrain_option_enabled(palera1n_flags, palerain_option_rootful)) && pinfo->rootdev[0] == 0) {
         panic("cannot have rootful when rootdev is unset");
     }
     
@@ -3266,66 +3271,41 @@ void overlay_cmd(const char* cmd, char* args) {
 #define APFS_VOL_ROLE_PREBOOT   0x0010
 
 static char *gNewEntry;
-static int hasChanged = 0;
 
 void dtpatcher(const char* cmd, char* args) {
     
     // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk1
     
-    if(!hasChanged) {
-        uint32_t len = 0;
-        dt_node_t* dev = dt_find(gDeviceTree, "fstab");
-        if (!dev) panic("invalid devicetree: no device!");
-        uint32_t* val = dt_prop(dev, "max_fs_entries", &len);
-        if (!val) panic("invalid devicetree: no prop!");
-        uint32_t* patch = (uint32_t*)val;
-        printf("fstab max_fs_entries: %016llx: %08x\n", (uint64_t)val, patch[0]);
-        uint32_t entries = patch[0];
-        entries += 1;
-        hasChanged = 1;
-        gNewEntry = args;
-    }
-    
-    /*{
-        // wat?!
-        uint32_t len = 0;
-        dt_node_t* dev = dt_find(gDeviceTree, "system-vol");
-        if (!dev) panic("invalid devicetree: no device!");
+    uint32_t root_matching_len = 0;
+    dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
+    if (!chosen) panic("invalid devicetree: no device!");
+    uint32_t* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
+    if (!root_matching) panic("invalid devicetree: no prop!");
+
+    char str[0x100]; // max size = 0x100
+    memset(&str, 0x0, 0x100);
+
+    if (args[0] != '\0') {
+        snprintf(str, 0x100, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", gNewEntry);
         
-        uint32_t* val = dt_prop(dev, "vol.fs_role", &len);
-        if (!val) panic("invalid devicetree: no prop!");
-        // get role
-        uint32_t* patch = (uint32_t*)val;
-        printf("old system vol.fs_role: %016llx: %08x\n", (uint64_t)val, patch[0]);
-        // change sys -> recv
-        patch[0] = APFS_VOL_ROLE_RECOVERY;
-        printf("new system vol.fs_role: %016llx: %08x\n", (uint64_t)val, patch[0]);
+        memset(root_matching, 0x0, 0x100);
+        memcpy(root_matching, str, 0x100);
+        printf("set new entry: %016llx: BSD Name: %s\n", (uint64_t)root_matching, gNewEntry);
+    } else {
+        uint32_t max_fs_entries_len = 0;
+        dt_node_t* fstab = dt_find(gDeviceTree, "fstab");
+        if (!fstab) panic("invalid devicetree: no fstab!");
+        uint32_t* max_fs_entries = dt_prop(fstab, "max_fs_entries", &max_fs_entries_len);
+        if (!max_fs_entries) panic("invalid devicetree: no prop!");
+        uint32_t* patch = (uint32_t*)max_fs_entries;
+        printf("fstab max_fs_entries: %016llx: %08x\n", (uint64_t)max_fs_entries, patch[0]);
+
+        partid = patch[0] + 1U;
+        snprintf(str, 0x100, "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key><dict><key>Partition ID</key><integer>%u</integer></dict></dict>", partid);
         
-        val = dt_prop(dev, "vol.fs_type", &len);
-        if (!val) panic("invalid devicetree: no prop!");
-        // get fs_type
-        uint8_t* rwpatch = (uint8_t*)val;
-        printf("old system vol.fs_type: %016llx: %c\n", (uint64_t)val, rwpatch[1]);
-        // change ro -> rw
-        rwpatch[1] = 'w';
-        printf("new system vol.fs_type: %016llx: %c\n", (uint64_t)val, rwpatch[1]);
-        
-    }*/
-    
-    {
-        uint32_t len = 0;
-        dt_node_t* dev = dt_find(gDeviceTree, "chosen");
-        if (!dev) panic("invalid devicetree: no device!");
-        uint32_t* val = dt_prop(dev, "root-matching", &len);
-        if (!val) panic("invalid devicetree: no prop!");
-        
-        char str[0x100]; // max size = 0x100
-        memset(&str, 0x0, 0x100);
-        sprintf(str, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", gNewEntry);
-        
-        memset(val, 0x0, 0x100);
-        memcpy(val, str, 0x100);
-        printf("set new entry: %016llx: %s\n", (uint64_t)val, gNewEntry);
+        memset(root_matching, 0x0, 0x100);
+        memcpy(root_matching, str, 0x100);
+        printf("set new entry: %016llx: Partition ID: %u\n", (uint64_t)root_matching, partid);
     }
     
 }
@@ -3347,15 +3327,6 @@ void set_launchd(const char* cmd, char* args) {
     xnu_pf_emit(text_patchset);
     xnu_pf_apply(text_cstring_range, text_patchset);
     xnu_pf_patchset_destroy(text_patchset);
-}
-
-void set_rootdev(const char* cmd, char* args) {
-    if (strlen(args) > 0x10) {
-        printf("rootdev too large for paleinfo, not doing anything!\n");
-    } else {
-        strncpy(rootdev, args, 0x10);
-        printf("set rootdev in paleinfo to %s\n", rootdev);
-    }
 }
 
 void module_entry() {
@@ -3388,8 +3359,8 @@ void module_entry() {
     command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags_cmd);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
     command_register("overlay", "loads an overlay disk image", overlay_cmd);
-    command_register("dtpatch", "run dt patcher", dtpatcher);
-    command_register("rootfs", "set rootdev for paleinfo", set_rootdev);
+    command_register("dtpatch", "same as `rootfs` for compatibility", dtpatcher);
+    command_register("rootfs", "set rootfs in dt and paleinfo", dtpatcher);
     command_register("launchd", "set launchd for palera1n", set_launchd);
     command_register("palera1n_flags", "set flags for palera1n userland", palera1n_flags_cmd);
 }
