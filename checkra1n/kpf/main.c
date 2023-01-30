@@ -3294,8 +3294,6 @@ void overlay_cmd(const char* cmd, char* args) {
 #define APFS_VOL_ROLE_VM        0x0008
 #define APFS_VOL_ROLE_PREBOOT   0x0010
 
-static char *gNewEntry;
-
 void dtpatcher(const char* cmd, char* args) {
     
     // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk1
@@ -3310,11 +3308,12 @@ void dtpatcher(const char* cmd, char* args) {
     memset(&str, 0x0, 0x100);
 
     if (args[0] != '\0') {
-        snprintf(str, 0x100, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", gNewEntry);
+        snprintf(str, 0x100, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", args);
+        strncpy(rootdev, args, 0xf);
         
         memset(root_matching, 0x0, 0x100);
         memcpy(root_matching, str, 0x100);
-        printf("set new entry: %016llx: BSD Name: %s\n", (uint64_t)root_matching, gNewEntry);
+        printf("set new entry: %016llx: BSD Name: %s\n", (uint64_t)root_matching, args);
     } else {
         uint32_t max_fs_entries_len = 0;
         dt_node_t* fstab = dt_find(gDeviceTree, "fstab");
