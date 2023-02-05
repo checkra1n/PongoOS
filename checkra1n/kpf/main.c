@@ -1905,7 +1905,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union, bool ios16) 
         0x0f000000,
         0xff000000,
     };
-    xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), ios15, (void*)kpf_apfs_seal_broken);
+    xnu_pf_maskmatch(patchset, "apfs_seal_broken", ii_matches, ii_masks, sizeof(ii_matches)/sizeof(uint64_t), !have_union, (void*)kpf_apfs_seal_broken);
     
     if (ios16) {
         uint64_t iii_matches[] = {
@@ -1933,7 +1933,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union, bool ios16) 
         0xffc003a0,
     };
 
-    xnu_pf_maskmatch(patchset, "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t), true, (void *)kpf_apfs_vfsop_mount);
+    xnu_pf_maskmatch(patchset, "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t), !have_union, (void *)kpf_apfs_vfsop_mount);
     
     if (!have_union && !ios16) {
         uint64_t rootauth_matches[] = {
