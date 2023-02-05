@@ -2124,6 +2124,32 @@ bool kpf_amfi_force_dev_mode(struct xnu_pf_patch *patch, uint32_t *opcode_stream
     
     return true;
 }
+
+// written in nano fr
+bool kpf_amfi_hash_agility(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    uint64_t page = ((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(opcode_stream[0]);
+    uint32_t off = (opcode_stream[1] >> 10) & 0xfff;
+    const char *str = (const char *)(page + off);
+
+    if (strcmp(str, "AMFI: \'%s\': no hash agility data and first cd hash type (%d) does not match best cd hash type (%d)\n") == 0) {
+        uint32_t *b = find_next_insn(opcode_stream, 0x6, 0x14000000, 0xff000000);
+
+        b[0] = NOP;
+
+        printf("KPF: found not best cdhash type\n");
+        return true;
+    } else if (strcmp(str, "AMFI: \'%s\': first code directory doesn\'t match the best code directory, but no hash agility data") == 0) {
+        uint32_t *b = find_next_insn(opcode_stream, 0x4, 0x14000000, 0xff000000);
+
+        b[0] = NOP;
+
+        printf("KPF: found not best code directory\n");
+        return true;
+    } else {
+        return false;
+    }
+}
+
 void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
     // this patch helps us find the return of the amfi function so that we can jump into shellcode from there and modify the cs flags
     // to do that we search for the sequence below also as an example from i7 13.3:
@@ -2318,6 +2344,16 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
         0xff000000,
     };
     xnu_pf_maskmatch(patchset, "force_dev_mode", iiiii_matches, iiiii_masks, sizeof(iiiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_force_dev_mode);
+    
+    uint64_t iiiiii_matches[] = {
+        0x00000000,
+        0x91000000,
+    };
+    uint64_t iiiiii_masks[] = {
+        0x0f000000,
+        0xff000000,
+    };
+    xnu_pf_maskmatch(patchset, "hash_agility", iiiiii_matches, iiiiii_masks, sizeof(iiiiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_hash_agility);
 }
 
 void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
