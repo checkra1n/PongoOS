@@ -3257,7 +3257,10 @@ void command_kpf() {
         panic("cannot have rootful when rootdev is unset");
     }
     
-    if (!ramdisk_buf) { // Only use underlying fs on union mounts
+    if (!ramdisk_buf || !(checkrain_option_enabled(pinfo->flags, palerain_option_rootful) && 
+            (checkrain_option_enabled(pinfo->flags, palerain_option_setup_rootful) || 
+             checkrain_option_enabled(pinfo->flags, palerain_option_setup_rootful_forced))) || 
+            (!checkrain_option_enabled(pinfo->flags, palerain_option_rootful) && rootvp_string_match != NULL)) { // Only use underlying fs on union mounts
         char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) panic("no snapshot string");
