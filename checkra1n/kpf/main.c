@@ -2118,7 +2118,7 @@ bool kpf_amfi_force_dev_mode(struct xnu_pf_patch *patch, uint32_t *opcode_stream
 
     puts("KPF: found force_developer_mode");
     
-    uint32_t *cbz = find_prev_insn(opcode_stream, 0x100, 0x34000000, 0xff000000);
+    uint32_t *cbz = find_prev_insn(opcode_stream, 0x100, 0x34000000, 0x7e000000);
     
     cbz[0] = 0x14000000 | (sxt32(cbz[0] >> 5, 19) & 0x03ffffff);
     
@@ -2132,14 +2132,24 @@ bool kpf_amfi_hash_agility(struct xnu_pf_patch *patch, uint32_t *opcode_stream) 
     const char *str = (const char *)(page + off);
 
     if (strcmp(str, "AMFI: \'%s\': no hash agility data and first cd hash type (%d) does not match best cd hash type (%d)\n") == 0) {
-        uint32_t *b = find_next_insn(opcode_stream, 0x6, 0x14000000, 0xff000000);
+        uint32_t *b = find_next_insn(opcode_stream, 0x6, 0x14000000, 0xfc000000);
+        
+        if (!b) {
+            printf("kpf_amfi_hash_agility: branch not found!");
+            return false;
+        }
 
         b[0] = NOP;
 
         printf("KPF: found not best cdhash type\n");
         return true;
     } else if (strcmp(str, "AMFI: \'%s\': first code directory doesn\'t match the best code directory, but no hash agility data") == 0) {
-        uint32_t *b = find_next_insn(opcode_stream, 0x4, 0x14000000, 0xff000000);
+        uint32_t *b = find_next_insn(opcode_stream, 0x4, 0x14000000, 0xfc000000);
+        
+        if (!b) {
+            printf("kpf_amfi_hash_agility: branch not found!");
+            return false;
+        }
 
         b[0] = NOP;
 
