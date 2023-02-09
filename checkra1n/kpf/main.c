@@ -2131,7 +2131,7 @@ bool kpf_amfi_hash_agility(struct xnu_pf_patch *patch, uint32_t *opcode_stream) 
     uint32_t off = (opcode_stream[1] >> 10) & 0xfff;
     const char *str = (const char *)(page + off);
 
-    if (strcmp(str, "AMFI: \'%s\': no hash agility data and first cd hash type (%d) does not match best cd hash type (%d)\n") == 0) {
+    if (strcmp(str, "AMFI: \'%s\': no hash agility data and first cd hash type (%d) does not match best cd hash type (%d).\n") == 0) {
         uint32_t *b = find_next_insn(opcode_stream, 0x6, 0x14000000, 0xfc000000);
         
         if (!b) {
