@@ -2135,7 +2135,7 @@ bool kpf_amfi_hash_agility(struct xnu_pf_patch *patch, uint32_t *opcode_stream) 
         uint32_t *b = find_next_insn(opcode_stream, 0x6, 0x14000000, 0xfc000000);
         
         if (!b) {
-            printf("kpf_amfi_hash_agility: branch not found!");
+            printf("kpf_amfi_hash_agility: branch not found!\n");
             return false;
         }
 
@@ -2147,7 +2147,7 @@ bool kpf_amfi_hash_agility(struct xnu_pf_patch *patch, uint32_t *opcode_stream) 
         uint32_t *b = find_next_insn(opcode_stream, 0x4, 0x14000000, 0xfc000000);
         
         if (!b) {
-            printf("kpf_amfi_hash_agility: branch not found!");
+            printf("kpf_amfi_hash_agility: branch not found!\n");
             return false;
         }
 
