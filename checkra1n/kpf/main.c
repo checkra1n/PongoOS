@@ -3235,6 +3235,7 @@ void command_kpf() {
 
     struct kerninfo *info = NULL;
     struct paleinfo *pinfo = NULL;
+
     if (ramdisk_buf) {
         puts("KPF: Found ramdisk, appending kernelinfo");
 
@@ -3246,15 +3247,13 @@ void command_kpf() {
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
         ramdisk_size += 0x10000;
-    }
-    if (info) {
+
         info->size = sizeof(struct kerninfo);
         info->base = xnu_slide_value(hdr) + 0xFFFFFFF007004000ULL;
         info->slide = xnu_slide_value(hdr);
         info->flags = checkra1n_flags;
-    }
-    if (pinfo) {
-        strncpy(pinfo->rootdev, rootdev, 0x10);
+
+        snprintf(pinfo->rootdev, 0x10, "%s", rootdev);
         if (rootdev[0] == 0 && partid != 0) {
             if (constraints_string_match != NULL) snprintf(pinfo->rootdev, 0x10, "disk1s%u", partid);
             else snprintf(pinfo->rootdev, 0x10, "disk0s1s%u", partid);
@@ -3263,20 +3262,36 @@ void command_kpf() {
         pinfo->flags = palera1n_flags;
         pinfo->magic = PALEINFO_MAGIC;
     }
-    if (checkrain_option_enabled(palera1n_flags, checkrain_option_enabled(palera1n_flags, palerain_option_rootful)) && pinfo->rootdev[0] == 0) {
+
+    if (checkrain_option_enabled(palera1n_flags, checkrain_option_enabled(palera1n_flags, palerain_option_rootful)) && rootdev[0] == 0 && partid == 0) {
         panic("cannot have rootful when rootdev is unset");
     }
+
+
     
-    if (!ramdisk_buf || !(checkrain_option_enabled(pinfo->flags, palerain_option_rootful) && 
-            (checkrain_option_enabled(pinfo->flags, palerain_option_setup_rootful) || 
-             checkrain_option_enabled(pinfo->flags, palerain_option_setup_rootful_forced))) || 
-            (!checkrain_option_enabled(pinfo->flags, palerain_option_rootful) && rootvp_string_match != NULL)) { // Only use underlying fs on union mounts
+    if (!ramdisk_buf || rootvp_string_match == NULL) { // Only use underlying fs on union mounts
         char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) panic("no snapshot string");
 
         *snapshotString = 'x';
         puts("KPF: Disabled snapshot temporarily");
+    }
+
+    if (partid != 0 && rootdev[0] == 0) {
+        char bsd_name[0x10];
+        uint32_t root_matching_len = 0;
+        dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
+        if (!chosen) panic("invalid devicetree: no device!");
+        uint32_t* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
+        if (!root_matching) panic("invalid devicetree: no prop!");
+
+        if (constraints_string_match != NULL) snprintf(bsd_name, 0x10, "disk1s%u", partid);
+        else snprintf(bsd_name, 0x10, "disk0s1s%u", partid);
+
+        memset(root_matching, 0x0, 0x100);
+        snprintf((char*)root_matching, 0x100, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", bsd_name);
+        printf("set new entry: %016llx: BSD Name: %s\n", (uint64_t)root_matching, bsd_name);
     }
     
     if (checkrain_option_enabled(gkpf_flags, checkrain_option_verbose_boot))
@@ -3372,11 +3387,8 @@ void dtpatcher(const char* cmd, char* args) {
 
         if (baseband) partid = patch[0] + 1U;
         else partid = patch[0];
-        snprintf(str, 0x100, "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key><dict><key>Partition ID</key><integer>%u</integer></dict></dict>", partid);
-        
-        memset(root_matching, 0x0, 0x100);
-        memcpy(root_matching, str, 0x100);
-        printf("set new entry: %016llx: Partition ID: %u\n", (uint64_t)root_matching, partid);
+
+        printf("Partition ID: %u\n", partid);
     }
     
 }
