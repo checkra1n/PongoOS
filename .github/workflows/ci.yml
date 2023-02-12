@@ -51,5 +51,5 @@ jobs:
           privateKey: ${{ secrets.NICKCHAN_FTP_KEY }}
           forceUpload: true
           dryRun: false
-          localDir: '/build'
+          localDir: 'build'
           remoteDir: '/palera1n/artifacts/kpf'
