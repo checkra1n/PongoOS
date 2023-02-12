@@ -189,6 +189,74 @@ vnode_put:
 .quad 0x4141414141414140
 pattern:
 .quad 0x746E65766573662E // .fsevent
+
+.align 2
+ _vnode_check_open_shc:
+ vnode_check_open_hook:
+ sub  sp, sp, #0x50
+ stp  x22, x21, [sp, #0x20]
+ stp  x20, x19, [sp, #0x30]
+ stp  x29, x30, [sp, #0x40]
+ add  x29, sp, #0x40
+ mov  x19, x3
+ mov  x20, x2
+ mov  x21, x1
+ mov  x22, x0
+ add  x0, sp, #0xc
+ mov  w1, #0x14
+ ldr  x8, proc_selfname      // get proc name
+ blr  x8
+
+ ldp  w8, w9, [sp, #0xc]     // check if procname is 'IDSBlastDoorService' or not.
+ ldp  w10, w11, [sp, #0x14]
+ ldr  w12, [sp, #0x1c]
+ mov  w13, #0x4449
+ movk w13, #0x4253, lsl #16  // 'IDSB'
+ cmp  w8, w13
+ mov  w8, #0x616c
+ movk w8, #0x7473, lsl #16   // 'last'
+ ccmp w9, w8, #0x0, eq
+ mov  w8, #0x6f44
+ movk w8, #0x726f, lsl #16   // 'Door'
+ ccmp w10, w8, #0x0, eq
+ mov  w8, #0x6553
+ movk w8, #0x7672, lsl #16   // 'Serv'
+ ccmp w11, w8, #0x0, eq
+ mov  w8, #0x6369
+ movk w8, #0x65, lsl #16     // 'ice\x00'
+ ccmp w12, w8, #0x0, eq
+ b.eq vnode_check_open_shc$orig  // go to normal checks.
+
+ vnode_check_open_shc$shellcode: // go to sandbox_shellcode_m and make sure deny .fsevent accesses
+ mov  x0, x22
+ mov  x1, x21
+ mov  x2, x20
+ mov  x3, x19
+ ldp  x29, x30, [sp, #0x40]
+ ldp  x20, x19, [sp, #0x30]
+ ldp  x22, x21, [sp, #0x20]
+ add  sp, sp, #0x50
+ b    sandbox_shellcode_m
+
+ vnode_check_open_shc$orig:
+ mov  x0, x22
+ mov  x1, x21
+ mov  x2, x20
+ mov  x3, x19
+ ldp  x29, x30, [sp, #0x40]
+ ldp  x20, x19, [sp, #0x30]
+ ldp  x22, x21, [sp, #0x20]
+ add  sp, sp, #0x50
+ ldr  x8, vnode_check_open_orig
+ br   x8
+
+ _vnode_check_open_shc_ptr:
+ proc_selfname:
+ .quad 0x5151515151515151
+
+ vnode_check_open_orig:
+ .quad 0x5252525252525252
+ 
 _sandbox_shellcode_end:
 
 
