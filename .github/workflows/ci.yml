@@ -42,9 +42,14 @@ jobs:
       - name: Compile
         run: |
           EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' DEV_BUILD=1 make build/checkra1n-kpf-pongo
-      - name: Upload modules
-        uses: actions/upload-artifact@v2
+      - name: Upload artifact
+        uses: wangyucode/sftp-upload-action@v1.4.8
         with:
-          name: pongoOS_modules
-          path: |
-            build/checkra1n-kpf-pongo
+          host: ${{ secrets.NICKCHAN_FTP_HOST }}
+          port: ${{ secrets.NICKCHAN_FTP_PORT }}
+          username: palera1n
+          privateKey: ${{ secrets.NICKCHAN_FTP_KEY }}
+          forceUpload: true
+          dryRun: false
+          localDir: '/kpf'
+          remoteDir: '/palera1n/artifacts/kpf'
