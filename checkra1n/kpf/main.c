@@ -3475,6 +3475,8 @@ void dtpatcher(const char* cmd, char* args) {
 
         if (baseband) partid = patch[0] + 1U;
         else partid = patch[0];
+        if (socnum == 0x7000 || socnum == 0x7001) partid--;
+
         snprintf(str, 0x100, "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key><dict><key>Partition ID</key><integer>%u</integer></dict></dict>", partid);
         
         memset(root_matching, 0x0, 0x100);
