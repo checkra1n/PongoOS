@@ -3515,6 +3515,7 @@ void module_entry() {
     puts("# Proudly written in nano");
     puts("# (c) 2019-2022 Kim Jong Cracks");
     puts("# Modified by Ploosh");
+    puts("# Thanks to dora2ios for a couple patches");
     puts("#");
     puts("# This software is not for sale");
     puts("# If you purchased this, please");
