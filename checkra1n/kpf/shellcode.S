@@ -29,6 +29,11 @@
 .globl _sandbox_shellcode_end
 .globl _sandbox_shellcode_setuid_patch
 .globl _dyld_hook_shellcode
+
+.globl _vnode_check_open_shc
+.globl _vnode_check_open_shc_ptr
+.globl _vnode_check_open_shc_end
+
 .align 2
 _sandbox_shellcode:
 b sandbox_shellcode_m
