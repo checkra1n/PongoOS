@@ -759,7 +759,7 @@ void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
 }
 
 static bool found_trustcache = false;
-bool kpf_trustcache_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+bool kpf_trustcache_callback(uint32_t *opcode_stream, uint32_t *bl)
 {
     if(found_trustcache)
     {
@@ -767,7 +767,6 @@ bool kpf_trustcache_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream
     }
     found_trustcache = true;
 
-    uint32_t *bl = opcode_stream - 1;
     if((*bl & 0xffff03f0) == 0xaa0003f0) // mov x{16-31}, x0
     {
         --bl;
@@ -787,10 +786,15 @@ bool kpf_trustcache_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream
     // We legit, trust me bro.
     lookup_in_static_trust_cache[0] = 0xd2800020; // movz x0, 1
     lookup_in_static_trust_cache[1] = RET;
-    
-    bl[0] = 0x52802020;
-    
     return true;
+}
+
+bool kpf_trustcache_old(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    return kpf_trustcache_callback(opcode_stream, opcode_stream - 1);
+}
+
+bool kpf_trustcache_new(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    return kpf_trustcache_callback(opcode_stream, opcode_stream + 4);
 }
 
 void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
@@ -810,7 +814,34 @@ void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
     uint64_t masks[] = {
         0xffffffff,
     };
-    xnu_pf_maskmatch(patchset, "trustcache", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_trustcache_callback);
+    xnu_pf_maskmatch(patchset, "trustcache", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_trustcache_old);
+    
+    // iOS 16.4 beta 1 changed this to calling query_trust_cache directly.
+    //
+    // From iPad 6 16.4 beta 1:
+    // 0xfffffff00584c768      ff0f00f9       str xzr, [sp, 0x18]
+    // 0xfffffff00584c76c      e1830091       add x1, sp, 0x20
+    // 0xfffffff00584c770      e2630091       add x2, sp, 0x18
+    // 0xfffffff00584c774      20008052       mov w0, 1
+    // 0xfffffff00584c778      aff0ff97       bl 0xfffffff005848a34
+    //
+    // r2:
+    // /x ff0f00f9e1030091e20300912000805200000094:ffffffffff0ff0ffff0ff0ffffffffff000000fc
+    uint64_t matches_new[] = {
+        0xf9000fff, // str xzr, [sp, 0x*]
+        0x910003e1, // add x1, sp, 0x*
+        0x910003e2, // add x2, sp, 0x*
+        0x52800020, // mov w0, 1
+        0x94000000 // bl 0x*
+    };
+    uint64_t masks_new[] = {
+        0xffffffff,
+        0xfff00fff,
+        0xfff00fff,
+        0xffffffff,
+        0xfc000000
+    };
+    xnu_pf_maskmatch(patchset, "trustcache", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_trustcache_new);
 }
 
 static bool found_launch_constraints = false;
@@ -3087,6 +3118,7 @@ void command_kpf() {
     if (!dyld_hook_addr) panic("no dyld_hook_addr?");
     if (offsetof_p_flags == -1) panic("no p_flags?");
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
+    if (!found_trustcache) panic("Missing patch: trustcache");
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
     if (!found_kpf_conversion_ldr && !found_kpf_conversion_imm) panic("Missing patch: task_conversion_eval");
