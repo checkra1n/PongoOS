@@ -3177,7 +3177,7 @@ void command_kpf() {
     if (!found_trustcache) panic("Missing patch: trustcache");
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
-    if (!found_kpf_conversion_ldr && !found_kpf_conversion_imm) panic("Missing patch: task_conversion_eval");
+    if (!found_kpf_conversion_ldr && !found_kpf_conversion_imm && !found_kpf_conversion_bl) panic("Missing patch: task_conversion_eval");
     if (kmap_port_string_match && !found_convert_port_to_map) panic("Missing patch: convert_port_to_map");
     if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
     if (do_ramfile && !IOMemoryDescriptor_withAddress) panic("Missing patch: iomemdesc");
