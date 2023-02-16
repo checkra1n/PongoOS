@@ -575,7 +575,7 @@ bool kpf_convert_port_to_map_common(uint32_t *patchpoint)
                              (patchpoint[2] & 0xfc000000) == 0x94000000;    // bl zone_require
 #ifdef DEV_BUILD
     // 15.0 beta 2 through 15.3 final
-    if(have_zone_require != (kernelVersion.xnuMajor > 7938 && kernelVersion.xnuMajor < 8020)) panic("zone_require in convert_port_to_map doesn't match expected XNU version");
+    if(have_zone_require != ((kernelVersion.xnuMajor > 7938 && kernelVersion.xnuMajor < 8020) || kernelVersion.xnuMajor >= 8796)) panic("zone_require in convert_port_to_map doesn't match expected XNU version");
 #endif
     if(have_zone_require)
     {
