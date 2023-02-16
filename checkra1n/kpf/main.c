@@ -198,12 +198,13 @@ void kpf_kernel_version_init(xnu_pf_range_t* text_const_range) {
 #endif
 
 uint32_t* dyld_hook_addr;
+bool kpf_has_done_dyld_hook = false;
 bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     // This makes the kernel use a custom dyld path if it is present
     // it replaces the check for dyld matching "/usr/lib/dyld" with code to
     // just force it to be either "/usr/lib/dyld" or our custom path if it
     // is present.
-    if (dyld_hook_addr) {
+    if (dyld_hook_addr || kpf_has_done_dyld_hook) {
         puts("dyld_hook_addr already found; skipping");
         return false;
     }
@@ -218,6 +219,34 @@ bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     opcode_stream[2] = 0xAA0003E0|rn; // MOV x20, x0
     opcode_stream[3] = 0x14000008;    // B
     puts("KPF: Patched dyld check");
+    
+    kpf_has_done_dyld_hook = true;
+    return true;
+}
+
+bool kpf_dyld_callback_new(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    // ios 16.4 beta 1+ dyld hook
+    
+    if (dyld_hook_addr || kpf_has_done_dyld_hook) {
+        puts("dyld_hook_addr already found; skipping");
+        return false;
+    }
+    
+    uint32_t *strcmp = follow_call(opcode_stream + 4);
+    
+    uint8_t rn = (strcmp[3]>>5)&0x1f;
+    if ((strcmp[7]&0xFF00001F) != (0x35000000|rn)) {
+        DEVLOG("Invalid match for dyld patch at 0x%llx (missing CBNZ w%d)", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)), rn);
+        return false;
+    }
+    rn = (opcode_stream[3]>>16)&0x1f;
+    dyld_hook_addr = &opcode_stream[1];
+    opcode_stream[1] = 0;             // BL dyld_hook;
+    opcode_stream[2] = 0xAA0003E0|rn; // MOV x20, x0
+    opcode_stream[3] = 0x14000008;    // B
+    puts("KPF: Patched dyld check");
+    
+    kpf_has_done_dyld_hook = true;
     return true;
 }
 
@@ -755,7 +784,26 @@ void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xFFFFC000,
         0xFFE0FC1F
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_dyld_callback);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_dyld_callback);
+    
+    // ios 16.4b1+ version
+    uint64_t matches_new[] = {
+        0x54000002, // B.CS
+        0x90000000, // ADRP
+        0x91000000, // ADD Xn, Xn, #imm
+        0xAA0003E0, // MOV Xn, Xy
+        0x94000000, // BL
+        0x34000000  // CBZ
+    };
+    uint64_t masks_new[] = {
+        0xFF00000F,
+        0x9F000000,
+        0xFF000000,
+        0xFFE0FFE0,
+        0xFC000000,
+        0xFF000000
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_dyld_callback_new);
 }
 
 static bool found_trustcache = false;
@@ -3107,6 +3155,7 @@ void command_kpf() {
 
     if (!found_amfi_mac_syscall) panic("no amfi_mac_syscall");
     if (!dounmount_found) panic("no dounmount");
+    if (!kpf_has_done_dyld_hook) panic("Missing patch: dyld");
     if (!repatch_ldr_x19_vnode_pathoff) panic("no repatch_ldr_x19_vnode_pathoff");
     if (!shellcode_area) panic("no shellcode area?");
     if (!has_found_sbops) panic("no sbops?");
