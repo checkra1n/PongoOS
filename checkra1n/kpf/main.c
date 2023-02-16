@@ -2953,7 +2953,39 @@ void kpf_proc_selfname_patch(xnu_pf_patchset_t* patchset) {
         0xff000000,
     };
     
-    xnu_pf_maskmatch(patchset, "proc_selfname", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)proc_selfname_callback);
+    xnu_pf_maskmatch(patchset, "proc_selfname", matches, masks, sizeof(masks)/sizeof(uint64_t), false, (void*)proc_selfname_callback);
+
+    uint64_t i_matches[] = {
+        0xf9400000, // ldr xN, [xM, ...]
+        0xb4000000, // cbz x*, ...
+        0x91000001, // add x1, xn, #imm
+        0x93407c02, // sxtw x2, wy
+        0xaa0003e0, // mov x0, xN
+        0x92800003, // mov x3, #0xffffffffffffffff
+        0x00000000, // ldp
+        0x00000000, // ldp
+        0x14000000, // b 0x...
+        0x90000000, // adrp
+        0xf9400000, // ldr xN, [xM, ...]
+        0xb5000000, // cbnz x*, 0x...
+    };
+
+    uint64_t i_masks[] = {
+        0xffc00000, // ldr xN, [xM, ...]
+        0xff000000, // cbz x*, ...
+        0xff00000f, // add xn, xn, #imm
+        0xffff7c0f, // sxtw x2, wy
+        0xffe0ffff, // mov x0, xn
+        0xffffffff,
+        0x00000000, // ldp
+        0x00000000, // ldp
+        0xfc000000, // b 0x...
+        0x9f000000, // adrp
+        0xffc00000, // ldr xN, [xM, ...]
+        0xff000000,
+    };
+
+    xnu_pf_maskmatch(patchset, "proc_selfname", i_matches, i_masks, sizeof(i_masks)/sizeof(uint64_t), false, (void*)proc_selfname_callback);
 }
 
 checkrain_option_t gkpf_flags, checkra1n_flags, palera1n_flags;
