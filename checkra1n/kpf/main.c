@@ -234,11 +234,18 @@ bool kpf_dyld_callback_new(struct xnu_pf_patch* patch, uint32_t* opcode_stream) 
     
     uint32_t *strcmp = follow_call(opcode_stream + 4);
     
-    uint8_t rn = (strcmp[3]>>5)&0x1f;
+    uint8_t rn = strcmp[1]&0x1f;
     if ((strcmp[7]&0xFF00001F) != (0x35000000|rn)) {
         DEVLOG("Invalid match for dyld patch at 0x%llx (missing CBNZ w%d)", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)), rn);
         return false;
     }
+    rn = (strcmp[1]>>5)&0x1f;
+    uint8_t rn2 = strcmp[3]&0x1f;
+    if (rn != rn2) {
+        DEVLOG("Register extended is not the one compared! (ext: %d, cmp: %d)", rn, rn2);
+        return false;
+    }
+    
     rn = (opcode_stream[3]>>16)&0x1f;
     dyld_hook_addr = &opcode_stream[1];
     opcode_stream[1] = 0;             // BL dyld_hook;
