@@ -248,9 +248,9 @@ bool kpf_dyld_callback_new(struct xnu_pf_patch* patch, uint32_t* opcode_stream) 
     
     rn = (opcode_stream[3]>>16)&0x1f;
     dyld_hook_addr = &opcode_stream[1];
-    opcode_stream[1] = 0;             // BL dyld_hook;
-    opcode_stream[2] = 0xAA0003E0|rn; // MOV x20, x0
-    opcode_stream[3] = 0x14000008;    // B
+    opcode_stream[1] = 0;                                                     // BL dyld_hook;
+    opcode_stream[2] = 0xAA0003E0|rn;                                         // MOV x20, x0
+    opcode_stream[3] = 0x14000000|(sxt32(opcode_stream[5]>>5,19)&0x03ffffff); // B
     puts("KPF: Patched dyld check");
     
     kpf_has_done_dyld_hook = true;
