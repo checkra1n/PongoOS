@@ -225,8 +225,6 @@ bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
 }
 
 bool kpf_dyld_callback_direct(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    // ios 16.4 beta 1+ dyld hook
-    
     if (dyld_hook_addr || kpf_has_done_dyld_hook) {
         puts("dyld_hook_addr already found; skipping");
         return false;
@@ -239,18 +237,12 @@ bool kpf_dyld_callback_direct(struct xnu_pf_patch* patch, uint32_t* opcode_strea
         DEVLOG("Invalid match for dyld patch at 0x%llx (missing CBNZ w%d)", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)), rn);
         return false;
     }
-    rn = (strcmp[1]>>5)&0x1f;
-    uint8_t rn2 = (strcmp[3]>>5)&0x1f;
-    if (rn != rn2) {
-        DEVLOG("Register extended is not the one compared! (ext: %d, cmp: %d)", rn, rn2);
-        return false;
-    }
     
     rn = (opcode_stream[3]>>16)&0x1f;
     dyld_hook_addr = &opcode_stream[1];
     uint32_t cbz_off = sxt32(opcode_stream[5]>>5,19)&0x03ffffff;
-    opcode_stream[1] = 0;                                                     // BL dyld_hook;
-    opcode_stream[2] = 0xAA0003E0|rn;                                         // MOV x20, x0
+    opcode_stream[1] = 0;                      // BL dyld_hook;
+    opcode_stream[2] = 0xAA0003E0|rn;          // MOV x20, x0
     opcode_stream[3] = 0x14000000|(cbz_off+2); // B
     puts("KPF: Patched dyld check");
     
