@@ -823,7 +823,7 @@ void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
 }
 
 static bool found_trustcache = false;
-bool kpf_trustcache_callback(uint32_t *opcode_stream, uint32_t *bl)
+bool kpf_trustcache_common(uint32_t *opcode_stream, uint32_t *bl)
 {
     if(found_trustcache)
     {
@@ -857,12 +857,12 @@ bool kpf_trustcache_callback(uint32_t *opcode_stream, uint32_t *bl)
     return true;
 }
 
-bool kpf_trustcache(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    return kpf_trustcache_callback(opcode_stream, opcode_stream - 1);
+bool kpf_trustcache_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    return kpf_trustcache_common(opcode_stream, opcode_stream - 1);
 }
 
-bool kpf_trustcache_new(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    return kpf_trustcache_callback(opcode_stream, opcode_stream + 4);
+bool kpf_trustcache_callback_direct(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    return kpf_trustcache_common(opcode_stream, opcode_stream + 4);
 }
 
 void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
@@ -882,7 +882,7 @@ void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
     uint64_t masks[] = {
         0xffffffff,
     };
-    xnu_pf_maskmatch(patchset, "trustcache", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_trustcache);
+    xnu_pf_maskmatch(patchset, "trustcache", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_trustcache_callback);
     
     // iOS 16.4 beta 1 changed this to calling query_trust_cache directly.
     //
@@ -909,7 +909,7 @@ void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
         0xffffffff,
         0xfc000000
     };
-    xnu_pf_maskmatch(patchset, "trustcache", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_trustcache_new);
+    xnu_pf_maskmatch(patchset, "trustcache", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_trustcache_callback_direct);
 }
 
 static bool found_launch_constraints = false;
