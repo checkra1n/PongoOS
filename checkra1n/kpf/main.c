@@ -842,6 +842,9 @@ bool kpf_trustcache_callback(uint32_t *opcode_stream, uint32_t *bl)
     // We legit, trust me bro.
     lookup_in_static_trust_cache[0] = 0xd2800020; // movz x0, 1
     lookup_in_static_trust_cache[1] = RET;
+    
+    if ((bl[-1] & 0xff000000) == 0x91000000) bl[0] = 0x52802020;
+    
     return true;
 }
 
@@ -888,7 +891,7 @@ void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
         0x910003e1, // add x1, sp, 0x*
         0x910003e2, // add x2, sp, 0x*
         0x52800020, // mov w0, 1
-        0x94000000 // bl 0x*
+        0x94000000  // bl 0x*
     };
     uint64_t masks_new[] = {
         0xffffffff,
