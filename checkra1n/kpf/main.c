@@ -224,7 +224,7 @@ bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     return true;
 }
 
-bool kpf_dyld_callback_new(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+bool kpf_dyld_callback_direct(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     // ios 16.4 beta 1+ dyld hook
     
     if (dyld_hook_addr || kpf_has_done_dyld_hook) {
@@ -819,7 +819,7 @@ void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xFC000000,
         0xFF000000
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_dyld_callback_new);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_dyld_callback_direct);
 }
 
 static bool found_trustcache = false;
