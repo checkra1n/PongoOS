@@ -794,7 +794,15 @@ void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_dyld_callback);
     
-    // ios 16.4b1+ version
+    // iOS 16.4 beta 1 changed this to calling strcmp directly
+    // From iPad 6 16.4 beta 1:
+    // fffffff0076864fc  c2000054   b.hs    0xfffffff007686514
+    // fffffff007686500  c1cfffd0   adrp    x1, 0xfffffff007080000
+    // fffffff007686504  21580291   add     x1, x1, #0x96  {data_fffffff007080096, "/usr/lib/dyld"}
+    // fffffff007686508  e00315aa   mov     x0, x21
+    // fffffff00768650c  b6d8f197   bl      _strcmp
+    // fffffff007686510  20020034   cbz     w0, 0xfffffff007686554
+    
     uint64_t matches_new[] = {
         0x54000002, // B.CS
         0x90000000, // ADRP
@@ -843,12 +851,13 @@ bool kpf_trustcache_callback(uint32_t *opcode_stream, uint32_t *bl)
     lookup_in_static_trust_cache[0] = 0xd2800020; // movz x0, 1
     lookup_in_static_trust_cache[1] = RET;
     
+    // Only patch this when not looking up directly
     if (bl[1] == 0x52802028) bl[0] = 0x52802020;
     
     return true;
 }
 
-bool kpf_trustcache_old(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+bool kpf_trustcache(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     return kpf_trustcache_callback(opcode_stream, opcode_stream - 1);
 }
 
@@ -873,7 +882,7 @@ void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
     uint64_t masks[] = {
         0xffffffff,
     };
-    xnu_pf_maskmatch(patchset, "trustcache", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_trustcache_old);
+    xnu_pf_maskmatch(patchset, "trustcache", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_trustcache);
     
     // iOS 16.4 beta 1 changed this to calling query_trust_cache directly.
     //
@@ -2954,7 +2963,7 @@ void kpf_proc_selfname_patch(xnu_pf_patchset_t* patchset) {
         0xfc000000, // b 0x...
         0x9f000000, // adrp
         0xffc00000, // ldr xN, [xM, ...]
-        0xff000000,
+        0xff000000, // cbnz x*, 0x...
     };
     
     xnu_pf_maskmatch(patchset, "proc_selfname", matches, masks, sizeof(masks)/sizeof(uint64_t), false, (void*)proc_selfname_callback);
@@ -2965,7 +2974,7 @@ void kpf_proc_selfname_patch(xnu_pf_patchset_t* patchset) {
         0x91000001, // add x1, xn, #imm
         0x93407c02, // sxtw x2, wy
         0xaa0003e0, // mov x0, xN
-        0x92800003, // mov x3, #0xffffffffffffffff
+        0x92800003, // mov x3, #-1
         0x00000000, // ldp
         0x00000000, // ldp
         0x14000000, // b 0x...
@@ -2980,13 +2989,13 @@ void kpf_proc_selfname_patch(xnu_pf_patchset_t* patchset) {
         0xff00000f, // add xn, xn, #imm
         0xffff7c0f, // sxtw x2, wy
         0xffe0ffff, // mov x0, xn
-        0xffffffff,
+        0xffffffff, // mov x3, #-1
         0x00000000, // ldp
         0x00000000, // ldp
         0xfc000000, // b 0x...
         0x9f000000, // adrp
         0xffc00000, // ldr xN, [xM, ...]
-        0xff000000,
+        0xff000000, // cbnz x*, 0x...
     };
 
     xnu_pf_maskmatch(patchset, "proc_selfname", i_matches, i_masks, sizeof(i_masks)/sizeof(uint64_t), false, (void*)proc_selfname_callback);
