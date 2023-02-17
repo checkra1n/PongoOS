@@ -843,7 +843,7 @@ bool kpf_trustcache_callback(uint32_t *opcode_stream, uint32_t *bl)
     lookup_in_static_trust_cache[0] = 0xd2800020; // movz x0, 1
     lookup_in_static_trust_cache[1] = RET;
     
-    if ((bl[-1] & 0xff000000) == 0x91000000) bl[0] = 0x52802020;
+    if (bl[1] == 0x52802028) bl[0] = 0x52802020;
     
     return true;
 }
