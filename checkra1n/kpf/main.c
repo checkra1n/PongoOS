@@ -24,31 +24,16 @@
  * SOFTWARE.
  *
  */
+
+#include "kpf.h"
 #include <pongo.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <mach-o/loader.h>
 #include <kerninfo.h>
 #include <mac.h>
-#define NOP 0xd503201f
-#define RET 0xd65f03c0
 
 uint32_t offsetof_p_flags, *dyld_hook;
-
-#ifdef DEV_BUILD
-    #define DEVLOG(x, ...) do { \
-        printf(x "\n", ##__VA_ARGS__); \
-    } while (0)
-    #define panic_at(addr, str, ...) do { \
-        panic(str " (0x%llx)", ##__VA_ARGS__, xnu_ptr_to_va(addr)); \
-    } while (0)
-#else
-    #define DEVLOG(x, ...) do {} while (0)
-    #define panic_at(addr, str, ...) do { \
-        (void)(addr); \
-        panic(str, ##__VA_ARGS__); \
-    } while (0)
-#endif
 
 #if 0
         // AES, sigh
@@ -112,23 +97,6 @@ uint32_t* find_prev_insn(uint32_t* from, uint32_t num, uint32_t insn, uint32_t m
         num--;
     }
     return NULL;
-}
-
-int32_t sxt32(int32_t value, uint8_t bits) {
-    value = ((uint32_t)value)<<(32-bits);
-    value >>= (32-bits);
-    return value;
-}
-
-int64_t sxt64(int64_t value, uint8_t bits) {
-    value = ((uint64_t)value)<<(64-bits);
-    value >>= (64-bits);
-    return value;
-}
-
-int64_t adrp_off(uint32_t adrp)
-{
-    return sxt64((((((uint64_t)adrp >> 5) & 0x7ffffULL) << 2) | (((uint64_t)adrp >> 29) & 0x3ULL)) << 12, 33);
 }
 
 uint32_t* follow_call(uint32_t *from)
@@ -2526,19 +2494,90 @@ void kpf_root_livefs_patch(xnu_pf_patchset_t* patchset) {
 }
 #endif
 
-checkrain_option_t gkpf_flags, checkra1n_flags;
+static int kpf_compare_patches(const void *a, const void *b)
+{
+    kpf_patch_t *one = *(kpf_patch_t**)a,
+                *two = *(kpf_patch_t**)b;
+    int cmp;
+    // Bundle
+    cmp = one->bundle ? (two->bundle ? strcmp(one->bundle, two->bundle) : 1) : (two->bundle ? -1 : 0);
+    if(cmp != 0)
+    {
+        return cmp;
+    }
+    // Segment
+    cmp = strcmp(one->segment, two->segment);
+    if(cmp != 0)
+    {
+        return cmp;
+    }
+    // Section
+    cmp = one->section ? (two->section ? strcmp(one->section, two->section) : 1) : (two->section ? -1 : 0);
+    if(cmp != 0)
+    {
+        return cmp;
+    }
+    // Granule
+    return (int)one->granule - (int)two->granule;
+}
 
-int gkpf_didrun = 0;
-int gkpf_spin_on_fail = 1;
+static checkrain_option_t gkpf_flags, checkra1n_flags;
+static bool gkpf_didrun = 0;
 
-void *overlay_buf;
-uint32_t overlay_size;
+static void *overlay_buf;
+static uint32_t overlay_size;
 
-void command_kpf() {
-
-    if (gkpf_didrun)
+void command_kpf(const char *cmd, char *args)
+{
+    if(gkpf_didrun)
+    {
         puts("checkra1n KPF did run already! Behavior here is undefined.\n");
-    gkpf_didrun++;
+    }
+    gkpf_didrun = true;
+
+    uint64_t tick_0 = get_ticks();
+    uint64_t tick_1;
+
+    kpf_component_t* const kpf_components[] =
+    {
+        &kpf_vm_prot,
+    };
+
+    size_t npatches = 0;
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components); ++i)
+    {
+        kpf_component_t *component = kpf_components[i];
+        for(size_t j = 0; component->patches[j].patch; ++j)
+        {
+            ++npatches;
+        }
+    }
+
+    kpf_patch_t **patches = malloc(npatches * sizeof(kpf_patch_t*));
+    if(!patches)
+    {
+        panic("Failed to allocate patches array");
+    }
+
+    for(size_t i = 0, n = 0; i < sizeof(kpf_components)/sizeof(kpf_components); ++i)
+    {
+        kpf_component_t *component = kpf_components[i];
+        for(size_t j = 0; component->patches[j].patch; ++j)
+        {
+            kpf_patch_t *patch = &component->patches[j];
+            if(!patch->segment)
+            {
+                panic("KPF component %zu, patch %zu has NULL segment", i, j);
+            }
+            if(patch->granule != XNU_PF_ACCESS_8BIT && patch->granule != XNU_PF_ACCESS_16BIT && patch->granule != XNU_PF_ACCESS_32BIT && patch->granule != XNU_PF_ACCESS_64BIT)
+            {
+                panic("KPF component %zu, patch %zu has invalid granule", i, j);
+            }
+            patches[n++] = patch;
+        }
+    }
+
+    qsort(patches, npatches, sizeof(kpf_patch_t*), kpf_compare_patches);
 
     xnu_pf_patchset_t* xnu_text_exec_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     found_vm_fault_enter = false;
@@ -2590,6 +2629,58 @@ void command_kpf() {
     if((cryptex_string_match != NULL) != (kernelVersion.darwinMajor >= 22)) panic("Cryptex presence doesn't match expected Darwin version");
     if((constraints_string_match != NULL) != (kernelVersion.darwinMajor >= 22)) panic("Launch constraints presence doesn't match expected Darwin version");
 #endif
+
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components); ++i)
+    {
+        if(kpf_components[i]->init)
+        {
+            kpf_components[i]->init(text_cstring_range);
+        }
+    }
+
+    xnu_pf_patchset_t *patchset = NULL;
+    for(size_t i = 0; i < npatches; ++i)
+    {
+        kpf_patch_t *patch = patches[i];
+        if(!patchset)
+        {
+            patchset = xnu_pf_patchset_create(patch->granule);
+        }
+        patch->patch(patchset);
+        if(i + 1 >= npatches || kpf_compare_patches(patches + i, patches + i + 1) != 0)
+        {
+            struct mach_header_64 *bundle;
+            if(patch->bundle)
+            {
+                bundle = xnu_pf_get_kext_header(hdr, patch->bundle);
+                if(!bundle)
+                {
+                    panic("Failed to find bundle %s", patch->bundle);
+                }
+            }
+            else
+            {
+                bundle = hdr;
+            }
+            xnu_pf_range_t *range = patch->section ? xnu_pf_section(bundle, patch->segment, patch->section) : xnu_pf_segment(bundle, patch->segment);
+            if(!range)
+            {
+                if(patch->section)
+                {
+                    panic("Failed to find section %s.%s in %s", patch->segment, patch->section, patch->bundle ? patch->bundle : "XNU");
+                }
+                else
+                {
+                    panic("Failed to find segment %s in %s", patch->segment, patch->bundle ? patch->bundle : "XNU");
+                }
+            }
+            xnu_pf_emit(patchset);
+            xnu_pf_apply(range, patchset);
+            xnu_pf_patchset_destroy(patchset);
+            free(range);
+            patchset = NULL;
+        }
+    }
 
     kpf_apfs_patches(apfs_patchset, rootvp_string_match == NULL);
 #if 0
@@ -2673,9 +2764,6 @@ void command_kpf() {
     xnu_pf_range_t* data_const_range = xnu_pf_section(hdr, "__DATA_CONST", "__const");
     xnu_pf_range_t* plk_data_const_range = xnu_pf_section(hdr, "__PLK_DATA_CONST", "__data");
     xnu_pf_patchset_t* xnu_data_const_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_64BIT);
-
-    uint64_t tick_0 = get_ticks();
-    uint64_t tick_1;
 
     has_found_sbops = false;
     xnu_pf_maskmatch(xnu_data_const_patchset, "mach_traps", traps_match, traps_mask, sizeof(traps_match)/sizeof(uint64_t), false, (void*)mach_traps_callback);
@@ -2978,6 +3066,14 @@ void command_kpf() {
 
         *snapshotString = 'x';
         puts("KPF: Disabled snapshot temporarily");
+    }
+
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components); ++i)
+    {
+        if(kpf_components[i]->finish)
+        {
+            kpf_components[i]->finish(text_cstring_range);
+        }
     }
 
     struct kerninfo *info = NULL;

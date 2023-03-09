@@ -116,12 +116,13 @@ PONGO_LD_FLAGS              ?= -static -L$(LIB)/fixup -lc -Wl,-preload -Wl,-no_u
 PONGO_CC_FLAGS              ?= -Os -moutline -DPONGO_VERSION='"$(PONGO_VERSION)"' -DPONGO_BUILD='"$(PONGO_BUILD)"' -DPONGO_PRIVATE=1 -I$(SRC)/lib -I$(INC) -Iapple-include -I$(INC)/modules/linux/ -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/modules/linux/libfdt $(PONGO_LD_FLAGS) $(PONGO_CFLAGS)
 
 # KPF options
-KPF_LD_FLAGS                ?= -Wl,-kext
-KPF_CC_FLAGS                ?= -O3 -DCHECKRA1N_VERSION='"$(CHECKRA1N_VERSION)"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers -DDER_TAG_SIZE=8 -I$(SRC)/lib $(KPF_LD_FLAGS) $(KPF_CFLAGS)
+KPF_LD_FLAGS                ?= -Wl,-kext $(KPF_LDFLAGS)
+KPF_CC_FLAGS                ?= -O3 -DCHECKRA1N_VERSION='"$(CHECKRA1N_VERSION)"' -I$(INC) -Iapple-include -I$(SRC)/kernel -I$(SRC)/drivers -I$(SRC)/lib $(KPF_CFLAGS) $(KPF_LD_FLAGS)
 
 PONGO_C                     := $(wildcard $(SRC)/*/*.S) $(wildcard $(SRC)/*/*/*.S) $(wildcard $(SRC)/*/*.c) $(wildcard $(SRC)/*/*/*.c) $(wildcard $(SRC)/*/*/*/*.c)
 PONGO_H                     := $(wildcard $(SRC)/*/*.h) $(wildcard $(SRC)/*/*/*.h) $(wildcard $(SRC)/*/*/*/*.h)
 
+KPF_H                       := $(wildcard $(RA1N)/*.h)
 KPF_C                       := $(wildcard $(RA1N)/*.c) $(wildcard $(RA1N)/*.S)
 
 
@@ -138,7 +139,7 @@ $(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
 $(BUILD)/Pongo: Makefile $(PONGO_C) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(PONGO_C) $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS)
 
-$(BUILD)/checkra1n-kpf-pongo: Makefile $(KPF_C) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
+$(BUILD)/checkra1n-kpf-pongo: Makefile $(KPF_C) $(KPF_H) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(KPF_C) $(EMBEDDED_CC_FLAGS) $(KPF_CC_FLAGS)
 
 $(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
