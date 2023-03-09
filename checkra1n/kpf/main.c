@@ -123,44 +123,41 @@ uint32_t* follow_call(uint32_t *from)
     return target;
 }
 
-// Imports from shellcode.S
-extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], dyld_hook_shellcode[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
-extern uint32_t nvram_shc[], nvram_shc_end[];
-extern uint32_t kdi_shc[], kdi_shc_orig[], kdi_shc_get[], kdi_shc_addr[], kdi_shc_size[], kdi_shc_new[], kdi_shc_set[], kdi_shc_end[];
-extern uint32_t fsctl_shc[], fsctl_shc_vnode_open[], fsctl_shc_stolen_slowpath[], fsctl_shc_orig_bl[], fsctl_shc_vnode_close[], fsctl_shc_stolen_fastpath[], fsctl_shc_orig_b[], fsctl_shc_end[];
-
 #ifdef DEV_BUILD
-struct {
-    int darwinMajor;
-    int darwinMinor;
-    int darwinRevision;
-    int xnuMajor;
-} kernelVersion;
-void kpf_kernel_version_init(xnu_pf_range_t* text_const_range) {
+struct kernel_version gKernelVersion;
+static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
+{
     const char kernelVersionStringMarker[] = "@(#)VERSION: Darwin Kernel Version ";
     const char *kernelVersionString = memmem(text_const_range->cacheable_base, text_const_range->size, kernelVersionStringMarker, strlen(kernelVersionStringMarker));
-    if (kernelVersionString == NULL) {
+    if(kernelVersionString == NULL)
+    {
         panic("No kernel version string found");
     }
     const char *start = kernelVersionString + strlen(kernelVersionStringMarker);
     char *end = NULL;
     errno = 0;
-    kernelVersion.darwinMajor = strtoimax(start, &end, 10);
-    if (errno) panic("Error parsing kernel version");
+    gKernelVersion.darwinMajor = strtoimax(start, &end, 10);
+    if(errno) panic("Error parsing kernel version");
     start = end+1;
-    kernelVersion.darwinMinor = strtoimax(start, &end, 10);
-    if (errno) panic("Error parsing kernel version");
+    gKernelVersion.darwinMinor = strtoimax(start, &end, 10);
+    if(errno) panic("Error parsing kernel version");
     start = end+1;
-    kernelVersion.darwinRevision = strtoimax(start, &end, 10);
-    if (errno) panic("Error parsing kernel version");
+    gKernelVersion.darwinRevision = strtoimax(start, &end, 10);
+    if(errno) panic("Error parsing kernel version");
     start = strstr(end, "root:xnu");
-    if (start) start = strchr(start + strlen("root:xnu"), '-');
-    if (!start) panic("Error parsing kernel version");
-    kernelVersion.xnuMajor = strtoimax(start+1, &end, 10);
-    if (errno) panic("Error parsing kernel version");
-    printf("Detected Kernel version Darwin: %d.%d.%d xnu: %d\n", kernelVersion.darwinMajor, kernelVersion.darwinMinor, kernelVersion.darwinRevision, kernelVersion.xnuMajor);
+    if(start) start = strchr(start + strlen("root:xnu"), '-');
+    if(!start) panic("Error parsing kernel version");
+    gKernelVersion.xnuMajor = strtoimax(start+1, &end, 10);
+    if(errno) panic("Error parsing kernel version");
+    printf("Detected Kernel version Darwin: %d.%d.%d xnu: %d\n", gKernelVersion.darwinMajor, gKernelVersion.darwinMinor, gKernelVersion.darwinRevision, gKernelVersion.xnuMajor);
 }
 #endif
+
+// Imports from shellcode.S
+extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], dyld_hook_shellcode[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
+extern uint32_t nvram_shc[], nvram_shc_end[];
+extern uint32_t kdi_shc[], kdi_shc_orig[], kdi_shc_get[], kdi_shc_addr[], kdi_shc_size[], kdi_shc_new[], kdi_shc_set[], kdi_shc_end[];
+extern uint32_t fsctl_shc[], fsctl_shc_vnode_open[], fsctl_shc_stolen_slowpath[], fsctl_shc_orig_bl[], fsctl_shc_vnode_close[], fsctl_shc_stolen_fastpath[], fsctl_shc_orig_b[], fsctl_shc_end[];
 
 uint32_t* dyld_hook_addr;
 bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
@@ -510,169 +507,6 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset)
         0xfef80000,
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "task_conversion_eval", matches_imm, masks_imm, sizeof(matches_imm)/sizeof(uint64_t), false, (void*)kpf_conversion_callback_imm);
-}
-
-bool found_convert_port_to_map = false;
-
-bool kpf_convert_port_to_map_common(uint32_t *patchpoint)
-{
-    // Only once
-    if(found_convert_port_to_map)
-    {
-        panic("convert_port_to_map found twice!");
-    }
-
-    bool isBNE = *patchpoint & 1;
-    if (isBNE) {
-        // Follow branch (convert to B)
-        *patchpoint |= 0xf;
-        patchpoint += sxt32(*patchpoint >> 5, 19); // uint32 takes care of << 2
-    } else {
-        // Don't follow branch
-        *patchpoint = NOP;
-        // Continue at next instr
-        ++patchpoint;
-    }
-
-    // New in iOS 15: zone_require just to annoy us
-    bool have_zone_require = (patchpoint[0] & 0xfffffe1f) == 0x52800000 &&  // movz w0, {0-15}
-                             (patchpoint[1] & 0xffffe0ff) == 0x52800001 &&  // movz w1, {0x0-0x100 with granularity 8}
-                             (patchpoint[2] & 0xfc000000) == 0x94000000;    // bl zone_require
-#ifdef DEV_BUILD
-    // 15.0 beta 2 through 15.3 final
-    if(have_zone_require != (kernelVersion.xnuMajor > 7938 && kernelVersion.xnuMajor < 8020)) panic("zone_require in convert_port_to_map doesn't match expected XNU version");
-#endif
-    if(have_zone_require)
-    {
-        patchpoint[2] = NOP;
-    }
-
-    puts("KPF: Found convert_port_to_map_with_flavor");
-    found_convert_port_to_map = true;
-    return true;
-}
-
-bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-     return kpf_convert_port_to_map_common(opcode_stream + 7);
-}
-
-void kpf_convert_port_to_map_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
-    // This patch is required because in some iOS 14.0 beta, Apple started cracking down on tfp0 usage.
-    // In particular, convert_port_to_map_with_flavor will be called when a `vm_map_t` is required for
-    // write operations, and that function will panic if the map is backed by the kernel_pmap:
-    //
-    // panic(cpu 4 caller 0xfffffff007a3a57c): "userspace has control access to a "
-    // "kernel map 0xfffffff0ec61a320 through task 0xffffffe19bad64f0"
-    //
-    // Example from N69 14.0GM kernel:
-    //
-    // 0xfffffff00713db84      f50301aa       mov x21, x1
-    // 0xfffffff00713db88      3f080071       cmp w1, 2
-    // 0xfffffff00713db8c      c0020054       b.eq 0xfffffff00713dbe4
-    // 0xfffffff00713db90      bf060071       cmp w21, 1
-    // 0xfffffff00713db94      e0000054       b.eq 0xfffffff00713dbb0
-    // 0xfffffff00713db98      d5020035       cbnz w21, 0xfffffff00713dbf0
-    // 0xfffffff00713db9c      21008052       mov w1, 1
-    // 0xfffffff00713dba0      97fcff97       bl 0xfffffff00713cdfc
-    // 0xfffffff00713dba4      f30300aa       mov x19, x0
-    // 0xfffffff00713dba8      a00000b5       cbnz x0, 0xfffffff00713dbbc
-    // 0xfffffff00713dbac      11000014       b 0xfffffff00713dbf0
-    // 0xfffffff00713dbb0      acfdff97       bl 0xfffffff00713d260
-    // 0xfffffff00713dbb4      f30300aa       mov x19, x0
-    // 0xfffffff00713dbb8      c00100b4       cbz x0, 0xfffffff00713dbf0
-    // 0xfffffff00713dbbc      681640b9       ldr w8, [x19, 0x14]
-    // 0xfffffff00713dbc0      c8010034       cbz w8, 0xfffffff00713dbf8
-    // 0xfffffff00713dbc4      741640f9       ldr x20, [x19, 0x28]
-    // 0xfffffff00713dbc8      802640f9       ldr x0, [x20, 0x48]
-    // 0xfffffff00713dbcc      1f2003d5       nop
-    // 0xfffffff00713dbd0      c8eeb658       ldr x8, sym._kernel_pmap
-    // 0xfffffff00713dbd4      1f0008eb       cmp x0, x8
-    // 0xfffffff00713dbd8      80010054       b.eq 0xfffffff00713dc08
-    //
-    // Example from 15.4:
-    //
-    // 0xfffffff007887b84      e00313aa       mov x0, x19
-    // 0xfffffff007887b88      e10315aa       mov x1, x21
-    // 0xfffffff007887b8c      e20314aa       mov x2, x20
-    // 0xfffffff007887b90      62fcff97       bl 0xfffffff007886d18
-    // 0xfffffff007887b94      00feffb4       cbz x0, 0xfffffff007887b54
-    // 0xfffffff007887b98      08504039       ldrb w8, [x0, 0x14]
-    // 0xfffffff007887b9c      c8fdff34       cbz w8, 0xfffffff007887b54
-    // 0xfffffff007887ba0      141440f9       ldr x20, [x0, 0x28]
-    // 0xfffffff007887ba4      882240f9       ldr x8, [x20, 0x40]
-    // 0xfffffff007887ba8      a9eaffd0       adrp x9, 0xfffffff0075dd000
-    // 0xfffffff007887bac      29e544f9       ldr x9, [x9, 0x9c8]
-    // 0xfffffff007887bb0      1f0109eb       cmp x8, x9
-    // 0xfffffff007887bb4      c0000054       b.eq 0xfffffff007887bcc
-    //
-    // We look for the last 8 instructions then follow b.ne or nop b.eq.
-    //
-    // r2 masked search:
-    // /x 0000403900000034000040f9002040f900000090000040f91f0000eb00000054:0000c07f000000ff00c0ffff00f8ffff0000009f0000c0ff1ffce0ff1e0000ff
-    // or
-    // /x 0000403900000034000040f9002040f91f2003d5000000581f0000eb00000054:0000c07f000000ff00c0ffff00f8ffffffffffff000000ff1ffce0ff1e0000ff
-    uint64_t matches[] = {
-        0x39400000, // ldr(b) wN, [xM, ...]
-        0x34000000, // cbz
-        0xf9400000, // ldr xN, [xM, {0x0-0x78}]
-        0xf9402000, // ldr xN, [xM, {0x40|0x48}]
-        0x90000000, // adrp
-        0xf9400000, // ldr xN, [xM, ...]
-        0xeb00001f, // cmp
-        0x54000000, // b.ne / b.eq
-    };
-    uint64_t masks[] = {
-        0x7fc00000,
-        0xff000000,
-        0xffffc000,
-        0xfffff800,
-        0x9f000000,
-        0xffc00000,
-        0xffe0fc1f,
-        0xff00001e,
-    };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback);
-
-    matches[4] = NOP;
-    masks[4] = 0xffffffff;
-    matches[5] = 0x58000000; // ldr (literal)
-    masks[5] = 0xff000000;
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map_variant", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback);
-
-    // iOS 15.5 changes the adrp+ldr to an adrp+add:
-    //
-    // 0xfffffff0071d11b0      08504039       ldrb w8, [x0, 0x14]
-    // 0xfffffff0071d11b4      c8fdff34       cbz w8, 0xfffffff0071d116c
-    // 0xfffffff0071d11b8      141440f9       ldr x20, [x0, 0x28]
-    // 0xfffffff0071d11bc      882240f9       ldr x8, [x20, 0x40]
-    // 0xfffffff0071d11c0      293500d0       adrp x9, 0xfffffff007877000
-    // 0xfffffff0071d11c4      29e12a91       add x9, x9, 0xab8
-    // 0xfffffff0071d11c8      1f0109eb       cmp x8, x9
-    // 0xfffffff0071d11cc      c0000054       b.eq 0xfffffff0071d11e4
-    //
-    // /x 0000403900000034000040f9002040f900000090000000911f0000eb00000054:0000c0ff000000ff00c0ffff00f8ffff0000009f0000c0ff1ffce0ff1e0000ff
-    uint64_t matches_variant[] = {
-        0x39400000, // ldrb wN, [xM, ...]
-        0x34000000, // cbz
-        0xf9400000, // ldr xN, [xM, {0x0-0x78}]
-        0xf9402000, // ldr xN, [xM, {0x40|0x48}]
-        0x90000000, // adrp
-        0x91000000, // add
-        0xeb00001f, // cmp
-        0x54000000, // b.ne / b.eq
-    };
-    uint64_t masks_variant[] = {
-        0xffc00000,
-        0xff000000,
-        0xffffc000,
-        0xfffff800,
-        0x9f000000,
-        0xffc00000,
-        0xffe0fc1f,
-        0xff00001e,
-    };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map_alt_variant", matches_variant, masks_variant, sizeof(matches_variant)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback);
 }
 
 void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
@@ -1798,7 +1632,7 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     bool dev_mode = (ref[0] & 0xfc000000) == 0x94000000;
 #ifdef DEV_BUILD
     // 16.0 beta and up
-    if(dev_mode != (kernelVersion.darwinMajor >= 22)) panic_at(ref, "Presence of developer_mode_state doesn't match expected Darwin version");
+    if(dev_mode != (gKernelVersion.darwinMajor >= 22)) panic_at(ref, "Presence of developer_mode_state doesn't match expected Darwin version");
 #endif
     if(dev_mode)
     {
@@ -1813,7 +1647,7 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     bool entitlement = (ref[0] & 0x9f00001f) == 0x90000001 && (ref[1] & 0xffc003ff) == 0x91000021;
 #ifdef DEV_BUILD
     // iOS 13 and below
-    if(entitlement != (kernelVersion.darwinMajor <= 19)) panic_at(ref, "Call to proc_has_entitlement doesn't match expected Darwin version");
+    if(entitlement != (gKernelVersion.darwinMajor <= 19)) panic_at(ref, "Call to proc_has_entitlement doesn't match expected Darwin version");
 #endif
     if(entitlement) // adrp+add to x1
     {
@@ -2488,12 +2322,13 @@ void command_kpf(const char *cmd, char *args)
 
     kpf_component_t* const kpf_components[] =
     {
+        &kpf_mach_port,
         &kpf_trustcache,
         &kpf_vm_prot,
     };
 
     size_t npatches = 0;
-    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components); ++i)
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
     {
         kpf_component_t *component = kpf_components[i];
         for(size_t j = 0; component->patches[j].patch; ++j)
@@ -2508,7 +2343,7 @@ void command_kpf(const char *cmd, char *args)
         panic("Failed to allocate patches array");
     }
 
-    for(size_t i = 0, n = 0; i < sizeof(kpf_components)/sizeof(kpf_components); ++i)
+    for(size_t i = 0, n = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
     {
         kpf_component_t *component = kpf_components[i];
         for(size_t j = 0; component->patches[j].patch; ++j)
@@ -2551,8 +2386,6 @@ void command_kpf(const char *cmd, char *args)
     xnu_pf_range_t* apfs_text_exec_range = xnu_pf_section(apfs_header, "__TEXT_EXEC", "__text");
     xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
 
-    const char kmap_port_string[] = "userspace has control access to a"; // iOS 14 had broken panic strings
-    const char *kmap_port_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, kmap_port_string, sizeof(kmap_port_string) - 1);
     const char rootvp_string[] = "rootvp not authenticated after mounting";
     const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
     const char cryptex_string[] = "/private/preboot/Cryptexes";
@@ -2566,20 +2399,18 @@ void command_kpf(const char *cmd, char *args)
 #endif
 
 #ifdef DEV_BUILD
-    // 14.0 beta 2 onwards
-    if((kmap_port_string_match != NULL) != (kernelVersion.xnuMajor > 7090)) panic("convert_to_port panic doesn't match expected XNU version");
     // 15.0 beta 1 onwards
-    if((rootvp_string_match != NULL) != (kernelVersion.darwinMajor >= 21)) panic("rootvp_auth panic doesn't match expected Darwin version");
+    if((rootvp_string_match != NULL) != (gKernelVersion.darwinMajor >= 21)) panic("rootvp_auth panic doesn't match expected Darwin version");
 #if 0
     // 15.0 beta 1 onwards, but only iOS/iPadOS
-    if((livefs_string_match != NULL) != (kernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
+    if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
 #endif
     // 16.0 beta 1 onwards
-    if((cryptex_string_match != NULL) != (kernelVersion.darwinMajor >= 22)) panic("Cryptex presence doesn't match expected Darwin version");
-    if((constraints_string_match != NULL) != (kernelVersion.darwinMajor >= 22)) panic("Launch constraints presence doesn't match expected Darwin version");
+    if((cryptex_string_match != NULL) != (gKernelVersion.darwinMajor >= 22)) panic("Cryptex presence doesn't match expected Darwin version");
+    if((constraints_string_match != NULL) != (gKernelVersion.darwinMajor >= 22)) panic("Launch constraints presence doesn't match expected Darwin version");
 #endif
 
-    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components); ++i)
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
     {
         if(kpf_components[i]->init)
         {
@@ -2745,10 +2576,6 @@ void command_kpf(const char *cmd, char *args)
     kpf_nvram_unlock(xnu_text_exec_patchset);
     kpf_find_shellcode_area(xnu_text_exec_patchset);
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
-    if(kmap_port_string_match) // iOS 14+ only
-    {
-        kpf_convert_port_to_map_patch(xnu_text_exec_patchset);
-    }
     if(rootvp_string_match) // Union mounts no longer work
     {
         kpf_fsctl_dev_by_role(xnu_text_exec_patchset);
@@ -2781,7 +2608,6 @@ void command_kpf(const char *cmd, char *args)
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
     if (!found_kpf_conversion_ldr && !found_kpf_conversion_imm) panic("Missing patch: task_conversion_eval"); // NOTE: We omit found_kpf_conversion_bl on purpose here
-    if (kmap_port_string_match && !found_convert_port_to_map) panic("Missing patch: convert_port_to_map");
     if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
     if (do_ramfile && !IOMemoryDescriptor_withAddress) panic("Missing patch: iomemdesc");
 
@@ -3016,11 +2842,11 @@ void command_kpf(const char *cmd, char *args)
         puts("KPF: Disabled snapshot temporarily");
     }
 
-    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components); ++i)
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
     {
         if(kpf_components[i]->finish)
         {
-            kpf_components[i]->finish(text_cstring_range);
+            kpf_components[i]->finish(hdr);
         }
     }
 
