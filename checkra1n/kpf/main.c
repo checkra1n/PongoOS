@@ -723,58 +723,6 @@ void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_dyld_callback);
 }
 
-static bool found_trustcache = false;
-bool kpf_trustcache_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    if(found_trustcache)
-    {
-        panic("Found more then one trustcache call");
-    }
-    found_trustcache = true;
-
-    uint32_t *bl = opcode_stream - 1;
-    if((*bl & 0xffff03f0) == 0xaa0003f0) // mov x{16-31}, x0
-    {
-        --bl;
-    }
-    if((*bl & 0xfc000000) != 0x94000000) // bl
-    {
-        panic_at(bl, "Trustcache patch: missing bl");
-    }
-
-    // Follow the call
-    uint32_t *lookup_in_static_trust_cache = follow_call(bl);
-    // Skip any redirects
-    while((*lookup_in_static_trust_cache & 0xfc000000) == 0x14000000)
-    {
-        lookup_in_static_trust_cache = follow_call(lookup_in_static_trust_cache);
-    }
-    // We legit, trust me bro.
-    lookup_in_static_trust_cache[0] = 0xd2800020; // movz x0, 1
-    lookup_in_static_trust_cache[1] = RET;
-    return true;
-}
-
-void kpf_trustcache_patch(xnu_pf_patchset_t *patchset)
-{
-    // This patch leads to AMFI believing that everything is in trustcache.
-    // This is done by searching for the sequence below:
-    //
-    // 0xfffffff0057c3f30      92440094       bl pmap_lookup_in_static_trust_cache
-    // 0xfffffff0057c3f34      28208052       mov w8, 0x101
-    // 0xfffffff0057c3f38      1f01206a       bics wzr, w8, w0
-    //
-    // When searching with r2, just make sure to set bounds to AMFI __TEXT_EXEC.
-    // /x 28208052
-    uint64_t matches[] = {
-        0x52802028, // mov w8, 0x101
-    };
-    uint64_t masks[] = {
-        0xffffffff,
-    };
-    xnu_pf_maskmatch(patchset, "trustcache", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_trustcache_callback);
-}
-
 static bool found_launch_constraints = false;
 bool kpf_launch_constraints_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
@@ -2540,6 +2488,7 @@ void command_kpf(const char *cmd, char *args)
 
     kpf_component_t* const kpf_components[] =
     {
+        &kpf_trustcache,
         &kpf_vm_prot,
     };
 
@@ -2697,7 +2646,6 @@ void command_kpf(const char *cmd, char *args)
     struct mach_header_64* amfi_header = xnu_pf_get_kext_header(hdr, "com.apple.driver.AppleMobileFileIntegrity");
     xnu_pf_range_t* amfi_text_exec_range = xnu_pf_section(amfi_header, "__TEXT_EXEC", "__text");
     kpf_amfi_kext_patches(amfi_patchset);
-    kpf_trustcache_patch(amfi_patchset);
     if(constraints_string_match)
     {
         kpf_launch_constraints(amfi_patchset);

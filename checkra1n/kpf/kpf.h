@@ -93,6 +93,7 @@ static inline int64_t adrp_off(uint32_t adrp)
 
 /********** ********** ********** ********** ********** Components ********** ********** ********** ********** **********/
 
+extern kpf_component_t kpf_trustcache;
 extern kpf_component_t kpf_vm_prot;
 
 #endif /* KPF_H */
