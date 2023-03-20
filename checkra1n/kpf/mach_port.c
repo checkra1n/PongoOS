@@ -36,7 +36,7 @@ static bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_
     // Only once
     if(found_convert_port_to_map)
     {
-        panic("convert_port_to_map found twice!");
+        panic("kpf_convert_port_to_map: Found twice");
     }
     found_convert_port_to_map = true;
 
@@ -64,7 +64,7 @@ static bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_
     // 15.0 beta 2 through 15.3 final, and then again 16.4 beta 1 onwards
     if(have_zone_require != ((gKernelVersion.xnuMajor > 7938 && gKernelVersion.xnuMajor < 8020) || gKernelVersion.xnuMajor > 8792))
     {
-        panic_at(patchpoint, "zone_require in convert_port_to_map doesn't match expected XNU version");
+        panic_at(patchpoint, "kpf_convert_port_to_map: zone_require doesn't match expected XNU version");
     }
 #endif
     if(have_zone_require)
