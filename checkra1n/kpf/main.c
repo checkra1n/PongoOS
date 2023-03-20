@@ -33,7 +33,7 @@
 #include <kerninfo.h>
 #include <mac.h>
 
-uint32_t offsetof_p_flags, *dyld_hook;
+uint32_t offsetof_p_flags;
 
 #if 0
         // AES, sigh
@@ -154,34 +154,10 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 #endif
 
 // Imports from shellcode.S
-extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], dyld_hook_shellcode[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
+extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
 extern uint32_t nvram_shc[], nvram_shc_end[];
 extern uint32_t kdi_shc[], kdi_shc_orig[], kdi_shc_get[], kdi_shc_addr[], kdi_shc_size[], kdi_shc_new[], kdi_shc_set[], kdi_shc_end[];
 extern uint32_t fsctl_shc[], fsctl_shc_vnode_open[], fsctl_shc_stolen_slowpath[], fsctl_shc_orig_bl[], fsctl_shc_vnode_close[], fsctl_shc_stolen_fastpath[], fsctl_shc_orig_b[], fsctl_shc_end[];
-
-uint32_t* dyld_hook_addr;
-bool kpf_dyld_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
-    // This makes the kernel use a custom dyld path if it is present
-    // it replaces the check for dyld matching "/usr/lib/dyld" with code to
-    // just force it to be either "/usr/lib/dyld" or our custom path if it
-    // is present.
-    if (dyld_hook_addr) {
-        puts("dyld_hook_addr already found; skipping");
-        return false;
-    }
-    uint8_t rn = (opcode_stream[6]>>5)&0x1f;
-    if ((opcode_stream[10]&0xFF00001F) != (0x35000000|rn)) {
-        DEVLOG("Invalid match for dyld patch at 0x%llx (missing CBNZ w%d)", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)), rn);
-        return false;
-    }
-    rn = (opcode_stream[3]>>16)&0x1f;
-    dyld_hook_addr = &opcode_stream[1];
-    opcode_stream[1] = 0;             // BL dyld_hook;
-    opcode_stream[2] = 0xAA0003E0|rn; // MOV x20, x0
-    opcode_stream[3] = 0x14000008;    // B
-    puts("KPF: Patched dyld check");
-    return true;
-}
 
 bool kpf_has_done_mac_mount;
 bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
@@ -509,54 +485,6 @@ void kpf_conversion_patch(xnu_pf_patchset_t* xnu_text_exec_patchset)
     xnu_pf_maskmatch(xnu_text_exec_patchset, "task_conversion_eval", matches_imm, masks_imm, sizeof(matches_imm)/sizeof(uint64_t), false, (void*)kpf_conversion_callback_imm);
 }
 
-void kpf_dyld_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
-    // This patch allows us to use a custom dyld path when it is present
-    // It matches a small number of places then the callback identifies
-    // the correct location for application
-    //
-    // Applied to load_dylinker; replaces:
-    //  if (0 != strcmp(name, DEFAULT_DYLD_PATH)) {
-    //    return (LOAD_BADMACHO);
-    //  }
-    //  with:
-    //  name = dyld_hook()
-    //
-    //  ASM Code we replace looks something like:
-    //
-    //    B.CS  _return_error
-    //    ADRP  X8, #aUsrLibDyld@PAGE ; "/usr/lib/dyld"
-    //    ADD   X8, X8, #aUsrLibDyld@PAGEOFF ; "/usr/lib/dyld"
-    //    MOV   X9, X20
-    //  _next:            // strcmp
-    //    LDRB  W10, [X9]
-    //    LDRB  W11, [X8] ; "/usr/lib/dyld"
-    //    CMP   W10, W11
-    //    B.NE  _return_error
-    //    ADD   X8, X8, #1
-    //    ADD   X9, X9, #1
-    //    CBNZ  W10, _next
-
-    uint64_t matches[] = {
-        0x54000002, // B.CS
-        0x90000000, // ADRP
-        0x91000000, // ADD Xn, Xn, #imm
-        0xAA0003E0, // MOV Xn, Xy
-        0x39400000, // LDRB Wa
-        0x39400000, // LDBR Wb
-        0x6B00001F  // CMP Wa, Wb
-    };
-    uint64_t masks[] = {
-        0xFF00000F,
-        0x9F000000,
-        0xFF000000,
-        0xFFE0FFE0,
-        0xFFFFC000,
-        0xFFFFC000,
-        0xFFE0FC1F
-    };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "dyld_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_dyld_callback);
-}
-
 static bool found_launch_constraints = false;
 bool kpf_launch_constraints_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
@@ -761,30 +689,6 @@ void kpf_mac_dounmount_patch_0(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xFFFFFFFF,
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "dounmount_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_mac_dounmount_callback);
-}
-uint32_t* shellcode_area;
-bool kpf_find_shellcode_area_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
-{
-    if(shellcode_area)
-    {
-        DEVLOG("kpf_find_shellcode_area_callback: already ran, skipping...");
-        return false;
-    }
-    shellcode_area = opcode_stream;
-    puts("KPF: Found shellcode area, copying...");
-    xnu_pf_disable_patch(patch);
-    return true;
-}
-void kpf_find_shellcode_area(xnu_pf_patchset_t* xnu_text_exec_patchset) {
-    // find a place inside of the executable region that has no opcodes in it (just zeros/padding)
-    uint32_t count = (sandbox_shellcode_end - sandbox_shellcode) + (nvram_shc_end - nvram_shc) + (kdi_shc_end - kdi_shc) + (fsctl_shc_end - fsctl_shc);
-    uint64_t matches[count];
-    uint64_t masks[count];
-    for (int i=0; i<count; i++) {
-        matches[i] = 0;
-        masks[i] = 0xFFFFFFFF;
-    }
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "find_shellcode_area", matches, masks, count, true, (void*)kpf_find_shellcode_area_callback);
 }
 
 static bool found_vm_map_protect = false;
@@ -2276,6 +2180,46 @@ void kpf_root_livefs_patch(xnu_pf_patchset_t* patchset) {
 }
 #endif
 
+static uint32_t shellcode_count;
+static uint32_t *shellcode_area;
+
+static bool kpf_find_shellcode_area_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    // For anything else we wouldn't want to disable the patch to make sure that
+    // we only match what we want to, but this is literally just empty space.
+    xnu_pf_disable_patch(patch);
+    shellcode_area = opcode_stream;
+    puts("KPF: Found shellcode area");
+    return true;
+}
+
+static void kpf_find_shellcode_area(xnu_pf_patchset_t *xnu_text_exec_patchset)
+{
+    // Find a place inside of the executable region that has no opcodes in it (just zeros/padding)
+    uint32_t count = shellcode_count;
+    // TODO: get rid of this
+    {
+        count += (sandbox_shellcode_end - sandbox_shellcode) + (nvram_shc_end - nvram_shc) + (kdi_shc_end - kdi_shc) + (fsctl_shc_end - fsctl_shc);
+    }
+    uint64_t matches[count];
+    uint64_t masks[count];
+    for(size_t i = 0; i < count; ++i)
+    {
+        matches[i] = 0;
+        masks[i] = 0xffffffff;
+    }
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "shellcode_area", matches, masks, count, true, (void*)kpf_find_shellcode_area_callback);
+}
+
+static kpf_component_t kpf_shellcode =
+{
+    .patches =
+    {
+        { NULL, "__TEXT_EXEC", "__text", XNU_PF_ACCESS_32BIT, kpf_find_shellcode_area },
+        {},
+    },
+};
+
 static int kpf_compare_patches(const void *a, const void *b)
 {
     kpf_patch_t *one = *(kpf_patch_t**)a,
@@ -2322,8 +2266,11 @@ void command_kpf(const char *cmd, char *args)
 
     kpf_component_t* const kpf_components[] =
     {
+        &kpf_dyld,
         &kpf_mach_port,
+        &kpf_shellcode,
         &kpf_trustcache,
+        &kpf_vfs,
         &kpf_vm_prot,
     };
 
@@ -2368,15 +2315,15 @@ void command_kpf(const char *cmd, char *args)
     kpf_has_done_mac_mount = false;
     vnode_gaddr = NULL;
     vfs_context_current = NULL;
-    shellcode_area = NULL;
     offsetof_p_flags = -1;
 
     struct mach_header_64* hdr = xnu_header();
     xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
 
 #ifdef DEV_BUILD
-    xnu_pf_range_t* text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
+    xnu_pf_range_t *text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
     kpf_kernel_version_init(text_const_range);
+    free(text_const_range);
 #endif
 
     // extern struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, const char* kext_bundle_id);
@@ -2412,9 +2359,24 @@ void command_kpf(const char *cmd, char *args)
 
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
     {
-        if(kpf_components[i]->init)
+        kpf_component_t *component = kpf_components[i];
+        if(component->init)
         {
-            kpf_components[i]->init(text_cstring_range);
+            component->init(text_cstring_range);
+        }
+    }
+
+    shellcode_count = 0;
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
+    {
+        kpf_component_t *component = kpf_components[i];
+        if((component->shc_size != NULL) != (component->shc_emit != NULL))
+        {
+            panic("KPF component %zu has mismatching shc_size/shc_emit", i);
+        }
+        if(component->shc_size)
+        {
+            shellcode_count += component->shc_size();
         }
     }
 
@@ -2567,14 +2529,12 @@ void command_kpf(const char *cmd, char *args)
         xnu_pf_patchset_destroy(xnu_plk_data_const_patchset);
     }
 
-    kpf_dyld_patch(xnu_text_exec_patchset);
     kpf_conversion_patch(xnu_text_exec_patchset);
     kpf_mac_mount_patch(xnu_text_exec_patchset);
     kpf_mac_dounmount_patch_0(xnu_text_exec_patchset);
     kpf_vm_map_protect_patch(xnu_text_exec_patchset);
     kpf_mac_vm_fault_enter_patch(xnu_text_exec_patchset);
     kpf_nvram_unlock(xnu_text_exec_patchset);
-    kpf_find_shellcode_area(xnu_text_exec_patchset);
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
     if(rootvp_string_match) // Union mounts no longer work
     {
@@ -2595,14 +2555,12 @@ void command_kpf(const char *cmd, char *args)
     if (!found_amfi_mac_syscall) panic("no amfi_mac_syscall");
     if (!dounmount_found) panic("no dounmount");
     if (!repatch_ldr_x19_vnode_pathoff) panic("no repatch_ldr_x19_vnode_pathoff");
-    if (!shellcode_area) panic("no shellcode area?");
     if (!has_found_sbops) panic("no sbops?");
     if (!amfi_ret) panic("no amfi_ret?");
     if (!vnode_lookup) panic("no vnode_lookup?");
     DEVLOG("Found vnode_lookup: 0x%llx", xnu_rebase_va(xnu_ptr_to_va(vnode_lookup)));
     if (!vnode_put) panic("no vnode_put?");
     DEVLOG("Found vnode_put: 0x%llx", xnu_rebase_va(xnu_ptr_to_va(vnode_put)));
-    if (!dyld_hook_addr) panic("no dyld_hook_addr?");
     if (offsetof_p_flags == -1) panic("no p_flags?");
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
@@ -2672,7 +2630,6 @@ void command_kpf(const char *cmd, char *args)
     // Identify where the LDR/STR insns that will need to be patched will be
     uint32_t* repatch_sandbox_shellcode_setuid_patch = sandbox_shellcode_setuid_patch - shellcode_from + shellcode_to;
     uint64_t* repatch_sandbox_shellcode_ptrs = (uint64_t*)(sandbox_shellcode_ptrs - shellcode_from + shellcode_to);
-    dyld_hook = dyld_hook_shellcode - shellcode_from + shellcode_to;
 
     while(shellcode_from < shellcode_end)
     {
@@ -2694,12 +2651,6 @@ void command_kpf(const char *cmd, char *args)
 
     uint32_t* repatch_vnode_shellcode = &shellcode_area[4];
     *repatch_vnode_shellcode = repatch_ldr_x19_vnode_pathoff;
-
-    delta = (dyld_hook) - dyld_hook_addr;
-    delta &= 0x03ffffff;
-    delta |= 0x94000000;
-    *dyld_hook_addr = delta;
-    DEVLOG("dyld_hook_addr: 0x%llx -> 0x%llx base 0x%llx", xnu_ptr_to_va(dyld_hook_addr), xnu_ptr_to_va(dyld_hook), xnu_ptr_to_va(shellcode_to));
 
     if(nvram_patchpoint)
     {
@@ -2840,6 +2791,18 @@ void command_kpf(const char *cmd, char *args)
 
         *snapshotString = 'x';
         puts("KPF: Disabled snapshot temporarily");
+    }
+
+    // TODO: tmp
+    shellcode_area = shellcode_to;
+
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
+    {
+        kpf_component_t *component = kpf_components[i];
+        if(component->shc_emit)
+        {
+            shellcode_area += component->shc_emit(shellcode_area);
+        }
     }
 
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)

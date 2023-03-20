@@ -136,44 +136,6 @@ pre_execve_hook$orig:
 ldr x16, orig
 br x16
 
-// Function logic
-// const char *dyld_path(void) {
-//   void *vnode = vnode_lookup(vfs_context_current(), cr_dyld_path);
-//   if (vnode) {
-//     vnode_put(vnode);
-//     return cr_dyld_path;
-//   }
-//   return dyld_path;
-// }
-_dyld_hook_shellcode:
-sub sp, sp, #0x20
-stp x29, x30, [sp]
-ldr x16, vfs
-blr x16
-mov x3, x0
-adr x0, cr_dyld_path
-mov w1, #0
-add x2, sp, #0x10 // &vp
-ldr x16, vnode_lookup
-blr x16
-cbnz x0, dyld_hook$missing
-ldr x0, [sp, #0x10] // vp
-ldr x16, vnode_put
-blr x16
-adr x0, cr_dyld_path
-b dyld_hook$epilog
-dyld_hook$missing:
-adr x0, dyld_path
-dyld_hook$epilog:
-ldp x29, x30, [sp]
-add sp, sp, #0x20
-ret
-
-cr_dyld_path:
-.string "/fs/gen/dyld"
-.align 2
-dyld_path:
-.string "/usr/lib/dyld"
 .align 3
 _sandbox_shellcode_ptrs:
 orig:
@@ -189,6 +151,54 @@ vnode_put:
 pattern:
 .quad 0x746E65766573662E // .fsevent
 _sandbox_shellcode_end:
+
+
+
+// Function logic
+// const char* dyld_hook(void)
+// {
+//     void *vnode;
+//     errno_t ret = vnode_lookup(alt_dyld_path, 0, &vnode, vfs_context_current());
+//     if(ret == 0)
+//     {
+//         vnode_put(vnode);
+//         return alt_dyld_path;
+//     }
+//     return dyld_path;
+// }
+.globl _dyld_shc
+.globl _dyld_shc_ctx
+.globl _dyld_shc_lookup
+.globl _dyld_shc_put
+.globl _dyld_shc_end
+.align 2
+_dyld_shc:
+    stp x29, x30, [sp, -0x20]!
+_dyld_shc_ctx:
+    bl . // vfs_context_current
+    mov x3, x0
+    add x2, sp, 0x18
+    mov w1, 0
+    adr x0, L_alt_dyld_path
+_dyld_shc_lookup:
+    bl . // vnode_lookup
+    cbnz w0, L_dyld_shc_no_hook
+    ldr x0, [sp, 0x18]
+_dyld_shc_put:
+    bl . // vnode_put
+    adr x0, L_alt_dyld_path
+    b L_dyld_shc_epilog
+L_dyld_shc_no_hook:
+    adr x0, L_dyld_path
+L_dyld_shc_epilog:
+    ldp x29, x30, [sp], 0x20
+    ret
+L_alt_dyld_path:
+    .asciz "/fs/gen/dyld"
+L_dyld_path:
+    .asciz "/usr/lib/dyld"
+.align 2
+_dyld_shc_end:
 
 
 
