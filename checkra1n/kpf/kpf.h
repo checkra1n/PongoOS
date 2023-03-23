@@ -112,6 +112,7 @@ extern struct kernel_version
 
 extern kpf_component_t kpf_dyld;
 extern kpf_component_t kpf_mach_port;
+extern kpf_component_t kpf_nvram;
 extern kpf_component_t kpf_trustcache;
 extern kpf_component_t kpf_vfs;
 extern kpf_component_t kpf_vm_prot;
