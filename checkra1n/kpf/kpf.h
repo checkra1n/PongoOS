@@ -66,7 +66,7 @@ typedef const struct
 // shc_emit returns the actual number of instructions that were emitted.
 typedef const struct
 {
-    void     (*init)(xnu_pf_range_t *cstring);
+    void     (*init)(struct mach_header_64 *hdr, xnu_pf_range_t *cstring);
     void     (*finish)(struct mach_header_64 *hdr);
     uint32_t (*shc_size)(void);
     uint32_t (*shc_emit)(uint32_t *shellcode_area);
@@ -110,6 +110,7 @@ extern struct kernel_version
 
 /********** ********** ********** ********** ********** Components ********** ********** ********** ********** **********/
 
+extern kpf_component_t kpf_developer_mode;
 extern kpf_component_t kpf_dyld;
 extern kpf_component_t kpf_mach_port;
 extern kpf_component_t kpf_nvram;

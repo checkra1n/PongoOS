@@ -495,7 +495,7 @@ static void kpf_task_conversion_eval_patch(xnu_pf_patchset_t *xnu_text_exec_patc
     xnu_pf_maskmatch(xnu_text_exec_patchset, "task_conversion_eval", matches_imm, masks_imm, sizeof(matches_imm)/sizeof(uint64_t), false, (void*)kpf_task_conversion_eval_callback_imm);
 }
 
-static void kpf_mach_port_init(xnu_pf_range_t *cstring)
+static void kpf_mach_port_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring)
 {
     const char kmap_port_string[] = "userspace has control access to a"; // iOS 14 had broken panic strings
     const char *kmap_port_string_match = memmem(cstring->cacheable_base, cstring->size, kmap_port_string, sizeof(kmap_port_string) - 1); // don't match null byte
