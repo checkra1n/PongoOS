@@ -410,13 +410,15 @@ static void kpf_task_conversion_eval_patch(xnu_pf_patchset_t *xnu_text_exec_patc
     //
     // to find this with r2 run the following cmd:
     // /x 000040b900005036000040b900005036:0000c0ff0000f8ff0000c0ff0000f8fe
-    uint64_t matches[] = {
+    uint64_t matches[] =
+    {
         0xb9400000, // ldr x*, [x*]
         0x36500000, // tbz w*, 0xa, *
         0xb9400000, // ldr x*, [x*]
         0x36500000, // tbz w*, 0xa, *
     };
-    uint64_t masks[] = {
+    uint64_t masks[] =
+    {
         0xffc00000,
         0xfff80000,
         0xffc00000,
@@ -435,7 +437,8 @@ static void kpf_task_conversion_eval_patch(xnu_pf_patchset_t *xnu_text_exec_patc
     // 0xfffffff007193668      20fcff35       cb(n)z w0, 0x...
     //
     // /x e00300aa0000009400000034e00310aa0000009400000034:ffffe0ff000000fc1f0000fffffff0ff000000fc1f0000fe
-    uint64_t matches_alt[] = {
+    uint64_t matches_alt[] =
+    {
         0xaa0003e0, // mov x0, xN
         0x94000000, // bl 0x{same}
         0x34000000, // cbz w0, 0x...
@@ -443,7 +446,8 @@ static void kpf_task_conversion_eval_patch(xnu_pf_patchset_t *xnu_text_exec_patc
         0x94000000, // bl 0x{same}
         0x34000000, // cb(n)z w0, 0x...
     };
-    uint64_t masks_alt[] = {
+    uint64_t masks_alt[] =
+    {
         0xffe0ffff,
         0xfc000000,
         0xff00001f,
@@ -466,7 +470,8 @@ static void kpf_task_conversion_eval_patch(xnu_pf_patchset_t *xnu_text_exec_patc
     // 0xfffffff00719f1c8      88031036       tbz w8, 2, 0xfffffff00719f238
     //
     // /x 002400121f14007101000054000440f91f0000eb010000540004403900001036:00fcffff1ffcffff1f0000ff00fcffff1ffce0ff1f0000ff0004c0ff0000f8fe
-    uint64_t matches_imm[] = {
+    uint64_t matches_imm[] =
+    {
         0x12002400, // and w*, w*, 0x3ff
         0x7100141f, // cmp w*, 5
         0x54000001, // b.ne 0x...
@@ -476,7 +481,8 @@ static void kpf_task_conversion_eval_patch(xnu_pf_patchset_t *xnu_text_exec_patc
         0x39400400, // ldrb w*, [x*, 0x... & 0x1]
         0x36100000, // tbz w*, 2, 0x...
     };
-    uint64_t masks_imm[] = {
+    uint64_t masks_imm[] =
+    {
         0xfffffc00,
         0xfffffc1f,
         0xff00001f,
