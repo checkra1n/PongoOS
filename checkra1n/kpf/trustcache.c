@@ -80,11 +80,10 @@ static bool kpf_trustcache_new_callback(struct xnu_pf_patch *patch, uint32_t *op
     }
 
     // Just replace the entire func, no prisoners today.
-    start[0] = 0xb4000062; // cbz x2, .+0xc
-    start[1] = 0xd2800028; // mov x8, 0x1
-    start[2] = 0xf9000048; // str x8, [x2]
-    start[3] = 0x52800000; // mov w0, 0
-    start[4] = 0xd65f03c0; // ret
+    start[0] = 0xd2800020; // mov x0, 1
+    start[1] = 0xb4000042; // cbz x2, .+0x8
+    start[2] = 0xf9000040; // str x0, [x2]
+    start[3] = RET;        // ret
 
     puts("KPF: Found trustcache");
     return true;
