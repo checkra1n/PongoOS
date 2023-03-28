@@ -32,16 +32,44 @@ static bool need_developer_mode_patch = false;
 
 static bool kpf_developer_mode_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
-    static bool found_developer_mode = false;
-    if(found_developer_mode)
-    {
-        panic("kpf_developer_mode: Found twice");
-    }
-    found_developer_mode = true;
+    static uint32_t *enable_developer_mode  = NULL,
+                    *disable_developer_mode = NULL;
 
-    uint32_t *func = follow_call(opcode_stream);
-    func[0] = 0x52800020; // mov w0, 1
-    func[1] = RET;
+    uint32_t adrp = opcode_stream[0],
+             add  = opcode_stream[1];
+    const char *str = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(adrp) + ((add >> 10) & 0xfff));
+    // Enable
+    if(strcmp(str, "AMFI: Enabling developer mode since we are in mobile obliteration\n") == 0)
+    {
+        if(enable_developer_mode)
+        {
+            panic("kpf_developer_mode: Found enable twice");
+        }
+        enable_developer_mode = follow_call(opcode_stream + 3);
+    }
+    // Disable
+    else if(strcmp(str, "AMFI: Disable developer mode since we couldn't get mobile obliteration status\n") == 0)
+    {
+        if(disable_developer_mode)
+        {
+            panic("kpf_developer_mode: Found disable twice");
+        }
+        disable_developer_mode = follow_call(opcode_stream + 3);
+    }
+    // Ignore the rest
+    else
+    {
+        return false;
+    }
+
+    // Only return success once we found both enable and disable
+    if(!enable_developer_mode || !disable_developer_mode)
+    {
+        return false;
+    }
+
+    // Now that we have both, just redirect disable to enable :P
+    disable_developer_mode[0] = 0x14000000 | ((enable_developer_mode - disable_developer_mode) & 0x03ffffff); // uint32 takes care of >> 2
 
     puts("KPF: Found developer mode");
     return true;
@@ -50,27 +78,29 @@ static bool kpf_developer_mode_callback(struct xnu_pf_patch *patch, uint32_t *op
 static void kpf_developer_mode_patch(xnu_pf_patchset_t *amfi_text_exec_patchset)
 {
     // Force developer mode on.
-    // Find marker, dereference query function, patch it.
+    // Find calls to enable_developer_mode and disable_developer_mode in AMFI,
+    // dereference the latter and patch it to call the former instead.
+    // Same match on both callsites, just with different strings:
     //
-    // 0xfffffff0057007c8      af4a0094       bl developer_mode_state
-    // 0xfffffff0057007cc      08128052       mov w8, 0x90
-    // 0xfffffff0057007d0      8803088a       and x8, x28, x8
-    // 0xfffffff0057007d4      c0000037       tbnz w0, 0, 0xfffffff0057007ec
+    // 0xfffffff0056f9820      40b9ff90       adrp x0, string@PAGE
+    // 0xfffffff0056f9824      00442b91       add x0, x0, string@PAGEOFF
+    // 0xfffffff0056f9828      29650094       bl IOLog
+    // 0xfffffff0056f982c      99660094       bl (en|dis)able_developer_mode
     //
-    // /x 00000094081280520002088a00000037:000000fcffffffff00feffff1f00f8ff
+    // /x
     uint64_t matches[] =
     {
-        0x94000000, // bl developer_mode_state
-        0x52801208, // mov w8, 0x90
-        0x8a080200, // and xN, x{16-31}, x8
-        0x37000000, // tbnz w0, 0, 0x...
+        0x90000000,
+        0x91000000,
+        0x94000000,
+        0x94000000,
     };
     uint64_t masks[] =
     {
+        0x9f00001f,
+        0xffc003ff,
         0xfc000000,
-        0xffffffff,
-        0xfffffe00,
-        0xfff8001f,
+        0xfc000000,
     };
     xnu_pf_maskmatch(amfi_text_exec_patchset, "developer_mode", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_developer_mode_callback);
 }
