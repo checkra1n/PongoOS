@@ -35,11 +35,14 @@ static bool kpf_developer_mode_callback(struct xnu_pf_patch *patch, uint32_t *op
     static uint32_t *enable_developer_mode  = NULL,
                     *disable_developer_mode = NULL;
 
+    const char enable[]  = "AMFI: Enabling developer mode since ",
+               disable[] = "AMFI: Disable developer mode since ";
+
     uint32_t adrp = opcode_stream[0],
              add  = opcode_stream[1];
     const char *str = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(adrp) + ((add >> 10) & 0xfff));
     // Enable
-    if(strcmp(str, "AMFI: Enabling developer mode since we are in mobile obliteration\n") == 0)
+    if(strncmp(str, enable, sizeof(enable) - 1) == 0)
     {
         if(enable_developer_mode)
         {
@@ -48,7 +51,7 @@ static bool kpf_developer_mode_callback(struct xnu_pf_patch *patch, uint32_t *op
         enable_developer_mode = follow_call(opcode_stream + 3);
     }
     // Disable
-    else if(strcmp(str, "AMFI: Disable developer mode since we couldn't get mobile obliteration status\n") == 0)
+    else if(strncmp(str, disable, sizeof(disable) - 1) == 0)
     {
         if(disable_developer_mode)
         {
@@ -87,7 +90,7 @@ static void kpf_developer_mode_patch(xnu_pf_patchset_t *amfi_text_exec_patchset)
     // 0xfffffff0056f9828      29650094       bl IOLog
     // 0xfffffff0056f982c      99660094       bl (en|dis)able_developer_mode
     //
-    // /x
+    // /x 00000090000000910000009400000094:1f00009fff03c0ff000000fc000000fc
     uint64_t matches[] =
     {
         0x90000000,
