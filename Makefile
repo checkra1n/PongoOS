@@ -128,8 +128,8 @@ KPF_C                       := $(wildcard $(RA1N)/*.c) $(wildcard $(RA1N)/*.S)
 
 .PHONY: all always clean distclean
 
-# Preserve intermediate files
-.SECONDARY:
+# Preserve all dependencies, and rebuild if they're missing
+.NOTINTERMEDIATE:
 
 all: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo | $(BUILD)
 
