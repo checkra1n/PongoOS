@@ -193,56 +193,6 @@ bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     return true;
 }
 
-static bool found_launch_constraints = false;
-bool kpf_launch_constraints_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    if(found_launch_constraints)
-    {
-        panic("Found launch constraints more than once");
-    }
-    found_launch_constraints = true;
-
-    uint32_t *stp = find_prev_insn(opcode_stream, 0x200, 0xa9007bfd, 0xffc07fff); // stp x29, x30, [sp, ...]
-    if(!stp)
-    {
-        panic_at(opcode_stream, "Launch constraints: failed to find stack frame");
-    }
-
-    uint32_t *start = find_prev_insn(stp, 10, 0xa98003e0, 0xffc003e0); // stp xN, xM, [sp, ...]!
-    if(!start)
-    {
-        start = find_prev_insn(stp, 10, 0xd10003ff, 0xffc003ff); // sub sp, sp, ...
-        if(!start)
-        {
-            panic_at(stp, "Launch constraints: failed to find start of function");
-        }
-    }
-
-    start[0] = 0x52800000; // mov w0, 0
-    start[1] = RET;
-    return true;
-}
-
-void kpf_launch_constraints(xnu_pf_patchset_t *patchset)
-{
-    // Disable launch constraints
-    uint64_t matches[] = {
-        0x52806088, // mov w8, 0x304
-        0x14000000, // b 0x...
-        0x52802088, // mov w8, 0x104
-        0x14000000, // b 0x...
-        0x52804088, // mov w8, 0x204
-    };
-    uint64_t masks[] = {
-        0xffffffff,
-        0xfc000000,
-        0xffffffff,
-        0xfc000000,
-        0xffffffff,
-    };
-    xnu_pf_maskmatch(patchset, "launch_constraints", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_launch_constraints_callback);
-}
-
 void kpf_mac_mount_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // This patch makes sure that we can remount the rootfs and that we can UNION mount
     // we first search for a pretty unique instruction movz/orr w9, 0x1ffe
@@ -1839,6 +1789,7 @@ void command_kpf(const char *cmd, char *args)
     {
         &kpf_developer_mode,
         &kpf_dyld,
+        &kpf_launch_constraints,
         &kpf_mach_port,
         &kpf_nvram,
         &kpf_shellcode,
@@ -1910,8 +1861,6 @@ void command_kpf(const char *cmd, char *args)
     const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
     const char cryptex_string[] = "/private/preboot/Cryptexes";
     const char *cryptex_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, cryptex_string, sizeof(cryptex_string));
-    const char constraints_string[] = "mac_proc_check_launch_constraints";
-    const char *constraints_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, constraints_string, sizeof(constraints_string));
 #if 0
     const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
@@ -1927,7 +1876,6 @@ void command_kpf(const char *cmd, char *args)
 #endif
     // 16.0 beta 1 onwards
     if((cryptex_string_match != NULL) != (gKernelVersion.darwinMajor >= 22)) panic("Cryptex presence doesn't match expected Darwin version");
-    if((constraints_string_match != NULL) != (gKernelVersion.darwinMajor >= 22)) panic("Launch constraints presence doesn't match expected Darwin version");
 #endif
 
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
@@ -2012,10 +1960,6 @@ void command_kpf(const char *cmd, char *args)
     struct mach_header_64* amfi_header = xnu_pf_get_kext_header(hdr, "com.apple.driver.AppleMobileFileIntegrity");
     xnu_pf_range_t* amfi_text_exec_range = xnu_pf_section(amfi_header, "__TEXT_EXEC", "__text");
     kpf_amfi_kext_patches(amfi_patchset);
-    if(constraints_string_match)
-    {
-        kpf_launch_constraints(amfi_patchset);
-    }
     xnu_pf_emit(amfi_patchset);
     xnu_pf_apply(amfi_text_exec_range, amfi_patchset);
     xnu_pf_patchset_destroy(amfi_patchset);
