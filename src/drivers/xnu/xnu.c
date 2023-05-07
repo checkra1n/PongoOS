@@ -298,7 +298,7 @@ xnu_pf_range_t* xnu_pf_range_from_va(uint64_t va, uint64_t size) {
     range->device_base = ((uint8_t*)(va - gBootArgs->virtBase + gBootArgs->physBase));
     return range;
 }
-xnu_pf_range_t* xnu_pf_segment(struct mach_header_64* header, char* segment_name) {
+xnu_pf_range_t* xnu_pf_segment(struct mach_header_64* header, const char* segment_name) {
     struct segment_command_64* seg = macho_get_segment(header, segment_name);
     if (!seg) return NULL;
 
@@ -307,7 +307,7 @@ xnu_pf_range_t* xnu_pf_segment(struct mach_header_64* header, char* segment_name
     return xnu_pf_range_from_va(xnu_slide_hdr_va(header, seg->vmaddr), seg->filesize);
 }
 
-xnu_pf_range_t* xnu_pf_section(struct mach_header_64* header, void* segment_name, char* section_name) {
+xnu_pf_range_t* xnu_pf_section(struct mach_header_64* header, const char* segment_name, const char* section_name) {
     struct segment_command_64* seg = macho_get_segment(header, segment_name);
     if (!seg) return NULL;
     struct section_64* sec = macho_get_section(seg, section_name);
