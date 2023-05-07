@@ -75,11 +75,11 @@ struct kpfinfo {
     char bootargs[MAX_BOOTARGS_LEN];
 };
 
-#define checkrain_set_option(options, option, enabled) do { \
-    if (enabled)                                            \
-        options = (checkrain_option_t)(options | option);   \
-    else                                                    \
-        options = (checkrain_option_t)(options & ~option);  \
+#define checkrain_set_option(options, option, enabled) do {     \
+    if (enabled)                                                \
+        options = (checkrain_option_t)((options) | option);     \
+    else                                                        \
+        options = (checkrain_option_t)((options) & ~option);    \
 } while (0);
 
 static inline bool checkrain_option_enabled(checkrain_option_t flags, checkrain_option_t opt)
