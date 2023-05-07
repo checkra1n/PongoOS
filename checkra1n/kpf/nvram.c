@@ -26,6 +26,7 @@
  */
 
 #include "kpf.h"
+#include <string.h>
 #include <xnu/xnu.h>
 
 extern uint32_t nvram_shc[], nvram_shc_end[];
@@ -266,7 +267,7 @@ static void kpf_nvram_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
     xnu_pf_maskmatch(xnu_text_exec_patchset, "nvram_unlock", matches4, masks4, sizeof(matches4)/sizeof(uint64_t), false, (void*)kpf_nvram_table_callback);
 }
 
-static void kpf_nvram_finish(struct mach_header_64 *hdr)
+static void kpf_nvram_finish(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags)
 {
 #ifdef DEV_BUILD
     // Treat this patch as optional in release

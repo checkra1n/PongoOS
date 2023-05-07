@@ -26,12 +26,15 @@
  */
 
 #include "kpf.h"
-#include <pongo.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <stdlib.h>
+#include <string.h>
 #include <mach-o/loader.h>
 #include <kerninfo.h>
 #include <mac.h>
+#include <pongo.h>
+#include <xnu/xnu.h>
 
 uint32_t offsetof_p_flags;
 
@@ -155,7 +158,6 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 
 // Imports from shellcode.S
 extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
-extern uint32_t kdi_shc[], kdi_shc_orig[], kdi_shc_get[], kdi_shc_addr[], kdi_shc_size[], kdi_shc_new[], kdi_shc_set[], kdi_shc_end[];
 extern uint32_t fsctl_shc[], fsctl_shc_vnode_open[], fsctl_shc_stolen_slowpath[], fsctl_shc_orig_bl[], fsctl_shc_vnode_close[], fsctl_shc_stolen_fastpath[], fsctl_shc_orig_b[], fsctl_shc_end[];
 
 bool kpf_has_done_mac_mount;
@@ -1344,100 +1346,6 @@ void kpf_md0_patches(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "md0_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_md0_callback);
 }
 
-static uint64_t IOMemoryDescriptor_withAddress = 0;
-
-bool kpf_iomemdesc_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    if(IOMemoryDescriptor_withAddress)
-    {
-        panic("Ambiguous callsites to IOMemoryDescriptor::withAddress");
-    }
-    uint32_t *bl = opcode_stream + 2;
-    IOMemoryDescriptor_withAddress = xnu_ptr_to_va(bl) + (sxt32(*bl, 26) << 2);
-    return true;
-}
-
-void kpf_find_iomemdesc(xnu_pf_patchset_t *patchset)
-{
-    uint64_t matches[] =
-    {
-        0x52800601, // mov w1, 0x30
-        0x52800062, // mov w2, 3
-        0x14000000, // b IOMemoryDescriptor::withAddress
-    };
-    uint64_t masks[] =
-    {
-        0xffffffff,
-        0xffffffff,
-        0xfc000000,
-    };
-    xnu_pf_maskmatch(patchset, "iomemdesc", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_iomemdesc_callback);
-
-    matches[0] = 0x321c07e1; // orr w1, wzr, 0x30
-    matches[1] = 0x320007e2; // orr w2, wzr, 3
-    xnu_pf_maskmatch(patchset, "iomemdesc_alt", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_iomemdesc_callback);
-}
-
-static uint32_t *kdi_patchpoint = NULL;
-static uint16_t OSDictionary_getObject_idx = 0, OSDictionary_setObject_idx = 0;
-
-bool kpf_kdi_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    uint64_t page = ((uint64_t)(opcode_stream + 1) & ~0xfffULL) + adrp_off(opcode_stream[1]);
-    uint32_t off = (opcode_stream[2] >> 10) & 0xfff;
-    const char *str = (const char*)(page + off);
-
-    if(strcmp(str, "image-secrets") == 0)
-    {
-        if(!OSDictionary_getObject_idx) // first match
-        {
-            OSDictionary_getObject_idx = (opcode_stream[0] >> 10) & 0xfff;
-        }
-        else // second match
-        {
-            uint32_t *blr = find_next_insn(opcode_stream + 3, 5, 0xd63f0100, 0xffffffff); // blr x8
-            if(!blr)
-            {
-                return false;
-            }
-            uint32_t *bl = find_next_insn(blr + 1, 8, 0x94000000, 0xfc000000); // bl
-            if(!bl || (bl[1] & 0xff00001f) != 0xb5000000) // cbnz x0
-            {
-                return false;
-            }
-            kdi_patchpoint = bl;
-        }
-    }
-    else if(strcmp(str, "netboot-image") == 0)
-    {
-        OSDictionary_setObject_idx = (opcode_stream[0] >> 10) & 0xfff;
-    }
-    else
-    {
-        return false;
-    }
-
-    // Return true once all found
-    return kdi_patchpoint != NULL && OSDictionary_getObject_idx != 0 && OSDictionary_setObject_idx != 0;
-}
-
-void kpf_kdi_kext_patches(xnu_pf_patchset_t *patchset)
-{
-    uint64_t matches[] =
-    {
-        0xf9400108, // ldr x8, [x8, 0x...]
-        0x90000001, // adrp x1, 0x...
-        0x91000021, // add x1, x1, 0x...
-    };
-    uint64_t masks[] =
-    {
-        0xffc003ff,
-        0x9f00001f,
-        0xffc003ff,
-    };
-    xnu_pf_maskmatch(patchset, "kdi", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_kdi_callback);
-}
-
 bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     // cmp xN, xM - wrong match
     if((opcode_stream[2] & 0xffe0ffe0) == 0xeb000300)
@@ -1720,7 +1628,7 @@ static void kpf_find_shellcode_area(xnu_pf_patchset_t *xnu_text_exec_patchset)
     uint32_t count = shellcode_count;
     // TODO: get rid of this
     {
-        count += (sandbox_shellcode_end - sandbox_shellcode) + (kdi_shc_end - kdi_shc) + (fsctl_shc_end - fsctl_shc);
+        count += (sandbox_shellcode_end - sandbox_shellcode) + (fsctl_shc_end - fsctl_shc);
     }
     uint64_t matches[count];
     uint64_t masks[count];
@@ -1768,19 +1676,16 @@ static int kpf_compare_patches(const void *a, const void *b)
     return (int)one->granule - (int)two->granule;
 }
 
-static checkrain_option_t gkpf_flags, checkra1n_flags;
-static bool gkpf_didrun = 0;
+static checkrain_option_t kpf_flags, checkra1n_flags;
 
-static void *overlay_buf;
-static uint32_t overlay_size;
-
-void command_kpf(const char *cmd, char *args)
+static void kpf_cmd(const char *cmd, char *args)
 {
-    if(gkpf_didrun)
+    static bool kpf_didrun = false;
+    if(kpf_didrun)
     {
         puts("checkra1n KPF did run already! Behavior here is undefined.\n");
     }
-    gkpf_didrun = true;
+    kpf_didrun = true;
 
     uint64_t tick_0 = get_ticks();
     uint64_t tick_1;
@@ -1793,6 +1698,7 @@ void command_kpf(const char *cmd, char *args)
         &kpf_mach_port,
         &kpf_nvram,
         &kpf_shellcode,
+        &kpf_overlay,
         &kpf_trustcache,
         &kpf_vfs,
         &kpf_vm_prot,
@@ -1855,7 +1761,7 @@ void command_kpf(const char *cmd, char *args)
     xnu_pf_patchset_t* apfs_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     struct mach_header_64* apfs_header = xnu_pf_get_kext_header(hdr, "com.apple.filesystems.apfs");
     xnu_pf_range_t* apfs_text_exec_range = xnu_pf_section(apfs_header, "__TEXT_EXEC", "__text");
-    xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
+    //xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
 
     const char rootvp_string[] = "rootvp not authenticated after mounting";
     const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
@@ -1883,7 +1789,7 @@ void command_kpf(const char *cmd, char *args)
         kpf_component_t *component = kpf_components[i];
         if(component->init)
         {
-            component->init(hdr, text_cstring_range);
+            component->init(hdr, text_cstring_range, kpf_flags, checkra1n_flags);
         }
     }
 
@@ -1971,25 +1877,6 @@ void command_kpf(const char *cmd, char *args)
     xnu_pf_emit(sandbox_patchset);
     xnu_pf_apply(sandbox_text_exec_range, sandbox_patchset);
     xnu_pf_patchset_destroy(sandbox_patchset);
-
-    // Do this unconditionally on DEV_BUILD
-#ifdef DEV_BUILD
-    bool do_ramfile = true;
-#else
-    bool do_ramfile = overlay_size > 0;
-#endif
-    if(do_ramfile)
-    {
-        struct mach_header_64 *kdi_header = xnu_pf_get_kext_header(hdr, "com.apple.driver.DiskImages");
-        xnu_pf_range_t *kdi_text_exec_range = xnu_pf_section(kdi_header, "__TEXT_EXEC", "__text");
-        xnu_pf_patchset_t *kdi_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
-        kpf_kdi_kext_patches(kdi_patchset);
-        xnu_pf_emit(kdi_patchset);
-        xnu_pf_apply(kdi_text_exec_range, kdi_patchset);
-        xnu_pf_patchset_destroy(kdi_patchset);
-
-        kpf_find_iomemdesc(xnu_text_exec_patchset);
-    }
 
     // TODO
     //struct mach_header_64* accessory_header = xnu_pf_get_kext_header(hdr, "com.apple.iokit.IOAccessoryManager");
@@ -2081,7 +1968,6 @@ void command_kpf(const char *cmd, char *args)
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
     if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
-    if (do_ramfile && !IOMemoryDescriptor_withAddress) panic("Missing patch: iomemdesc");
 
     uint32_t delta = (&shellcode_area[1]) - amfi_ret;
     delta &= 0x03ffffff;
@@ -2214,64 +2100,6 @@ void command_kpf(const char *cmd, char *args)
         *fsctl_patchpoint = 0x14000000 | ((patch_off >> 2) & 0x03ffffff);
     }
 
-    if(overlay_size)
-    {
-        void *ov_static_buf = alloc_static(overlay_size);
-        iprintf("allocated static region for overlay: %p, sz: %x\n", ov_static_buf, overlay_size);
-        memcpy(ov_static_buf, overlay_buf, overlay_size);
-
-        uint64_t overlay_addr = xnu_ptr_to_va(ov_static_buf);
-        uint32_t *shellcode_block = shellcode_to;
-        uint64_t shellcode_addr = xnu_ptr_to_va(shellcode_block);
-        uint64_t patchpoint_addr = xnu_ptr_to_va(kdi_patchpoint);
-        uint64_t orig_func = patchpoint_addr + (sxt32(*kdi_patchpoint, 26) << 2);
-
-        size_t orig_idx = kdi_shc_orig - kdi_shc;
-        size_t get_idx  = kdi_shc_get  - kdi_shc;
-        size_t set_idx  = kdi_shc_set  - kdi_shc;
-        size_t new_idx  = kdi_shc_new  - kdi_shc;
-        size_t addr_idx = kdi_shc_addr - kdi_shc;
-        size_t size_idx = kdi_shc_size - kdi_shc;
-
-        int64_t orig_off  = orig_func - (shellcode_addr + (orig_idx << 2));
-        int64_t new_off   = IOMemoryDescriptor_withAddress - (shellcode_addr + (new_idx << 2));
-        int64_t patch_off = shellcode_addr - patchpoint_addr;
-        if(orig_off > 0x7fffffcLL || orig_off < -0x8000000LL || new_off > 0x7fffffcLL || new_off < -0x8000000LL || patch_off > 0x7fffffcLL || patch_off < -0x8000000LL)
-        {
-            panic("kdi_patch jump too far: 0x%llx/0x%llx/0x%llx", orig_off, new_off, patch_off);
-        }
-
-        shellcode_from = kdi_shc;
-        shellcode_end = kdi_shc_end;
-        while(shellcode_from < shellcode_end)
-        {
-            *shellcode_to++ = *shellcode_from++;
-        }
-
-        shellcode_block[orig_idx] |= (orig_off >> 2) & 0x03ffffff;
-        shellcode_block[get_idx]  |= OSDictionary_getObject_idx << 10;
-        shellcode_block[set_idx]  |= OSDictionary_setObject_idx << 10;
-        shellcode_block[new_idx]  |= (new_off >> 2) & 0x03ffffff;
-        shellcode_block[addr_idx + 0] |= ((overlay_addr >> 48) & 0xffff) << 5;
-        shellcode_block[addr_idx + 1] |= ((overlay_addr >> 32) & 0xffff) << 5;
-        shellcode_block[addr_idx + 2] |= ((overlay_addr >> 16) & 0xffff) << 5;
-        shellcode_block[addr_idx + 3] |= ((overlay_addr >>  0) & 0xffff) << 5;
-        shellcode_block[size_idx + 0] |= ((overlay_size >> 16) & 0xffff) << 5;
-        shellcode_block[size_idx + 1] |= ((overlay_size >>  0) & 0xffff) << 5;
-
-        *kdi_patchpoint = 0x94000000 | ((patch_off >> 2) & 0x03ffffff);
-
-        free(overlay_buf);
-        overlay_buf = NULL;
-        overlay_size = 0;
-
-        checkra1n_flags |= checkrain_option_overlay;
-    }
-    else
-    {
-        checkra1n_flags &= ~checkrain_option_overlay;
-    }
-
     if(!rootvp_string_match) // Only use underlying fs on union mounts
     {
         char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
@@ -2298,7 +2126,7 @@ void command_kpf(const char *cmd, char *args)
     {
         if(kpf_components[i]->finish)
         {
-            kpf_components[i]->finish(hdr);
+            kpf_components[i]->finish(hdr, &checkra1n_flags);
         }
     }
 
@@ -2320,13 +2148,13 @@ void command_kpf(const char *cmd, char *args)
         info->slide = xnu_slide_value(hdr);
         info->flags = checkra1n_flags;
     }
-    if (checkrain_option_enabled(gkpf_flags, checkrain_option_verbose_boot))
+    if (checkrain_option_enabled(kpf_flags, checkrain_option_verbose_boot))
         gBootArgs->Video.v_display = 0;
     tick_1 = get_ticks();
     printf("KPF: Applied patchset in %llu ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
 }
 
-void set_flags(char *args, uint32_t *flags, const char *name)
+static void set_flags(char *args, uint32_t *flags, const char *name)
 {
     if(args[0] != '\0')
     {
@@ -2340,36 +2168,18 @@ void set_flags(char *args, uint32_t *flags, const char *name)
     }
 }
 
-void checkra1n_flags_cmd(const char *cmd, char *args)
+static void checkra1n_flags_cmd(const char *cmd, char *args)
 {
     set_flags(args, &checkra1n_flags, "checkra1n_flags");
 }
 
-void kpf_flags_cmd(const char *cmd, char *args)
+static void kpf_flags_cmd(const char *cmd, char *args)
 {
-    set_flags(args, &gkpf_flags, "kpf_flags");
+    set_flags(args, &kpf_flags, "kpf_flags");
 }
 
-void overlay_cmd(const char* cmd, char* args) {
-    if (gkpf_didrun) {
-        iprintf("KPF ran already, overlay cannot be set anymore\n");
-        return;
-    }
-    if (!loader_xfer_recv_count) {
-        iprintf("please upload an overlay before issuing this command\n");
-        return;
-    }
-    if (overlay_buf)
-        free(overlay_buf);
-    overlay_buf = malloc(loader_xfer_recv_count);
-    if (!overlay_buf)
-        panic("couldn't reserve heap for overlay");
-    overlay_size = loader_xfer_recv_count;
-    memcpy(overlay_buf, loader_xfer_recv_data, overlay_size);
-    loader_xfer_recv_count = 0;
-}
-
-void module_entry() {
+void module_entry(void)
+{
     puts("");
     puts("");
     puts("#==================");
@@ -2393,14 +2203,15 @@ void module_entry() {
     puts("# Cellebrite (ih8sn0w, cjori, ronyrus et al.)");
     puts("#==================");
 
-    preboot_hook = command_kpf;
+    preboot_hook = kpf_cmd;
     command_register("checkra1n_flags", "set flags for checkra1n userland", checkra1n_flags_cmd);
     command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags_cmd);
-    command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", command_kpf);
-    command_register("overlay", "loads an overlay disk image", overlay_cmd);
+    command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", kpf_cmd);
+    command_register("overlay", "loads an overlay disk image", kpf_overlay_cmd);
 }
-char* module_name = "checkra1n-kpf2-12.0,16.2";
+const char *module_name = "checkra1n-kpf2-12.0,16.4";
 
-struct pongo_exports exported_symbols[] = {
-    {.name = 0, .value = 0}
+struct pongo_exports exported_symbols[] =
+{
+    { .name = NULL, .value = NULL },
 };

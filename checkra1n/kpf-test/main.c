@@ -132,6 +132,11 @@ void command_register(const char* name, const char* desc, void (*cb)(const char*
     // nop
 }
 
+void* alloc_static(uint32_t size)
+{
+    return malloc(size);
+}
+
 void invalidate_icache(void)
 {
     // Kinda jank, but we know we're only gonna clean the JIT areas...

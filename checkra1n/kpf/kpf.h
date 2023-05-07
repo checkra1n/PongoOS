@@ -38,10 +38,10 @@
 
 #ifdef DEV_BUILD
 #   define DEVLOG(msg, ...) do { printf(msg "\n", ##__VA_ARGS__); } while(0)
-#   define panic_at(addr, msg, ...) do { panic(msg " (0x%llx)", ##__VA_ARGS__, xnu_ptr_to_va(addr)); } while(0)
+#   define panic_at(addr, msg, ...) do { panic(msg " (0x%llx)", ##__VA_ARGS__, xnu_ptr_to_va((addr))); } while(0)
 #else
 #   define DEVLOG(msg, ...) do {} while (0)
-#   define panic_at(addr, msg, ...) do { panic(msg, ##__VA_ARGS__); } while (0)
+#   define panic_at(addr, msg, ...) do { (void)(addr); panic(msg, ##__VA_ARGS__); } while (0)
 #endif
 
 // Common enough that we want defines for these
@@ -66,8 +66,8 @@ typedef const struct
 // shc_emit returns the actual number of instructions that were emitted.
 typedef const struct
 {
-    void     (*init)(struct mach_header_64 *hdr, xnu_pf_range_t *cstring);
-    void     (*finish)(struct mach_header_64 *hdr);
+    void     (*init)(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags); // Flags are input only
+    void     (*finish)(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags); // Flags are output only
     uint32_t (*shc_size)(void);
     uint32_t (*shc_emit)(uint32_t *shellcode_area);
     kpf_patch_t patches[];
@@ -115,11 +115,14 @@ extern kpf_component_t kpf_dyld;
 extern kpf_component_t kpf_launch_constraints;
 extern kpf_component_t kpf_mach_port;
 extern kpf_component_t kpf_nvram;
+extern kpf_component_t kpf_overlay;
 extern kpf_component_t kpf_trustcache;
 extern kpf_component_t kpf_vfs;
 extern kpf_component_t kpf_vm_prot;
 
 /********** ********** ********** ********** ********** Exports ********** ********** ********** ********** **********/
+
+void kpf_overlay_cmd(const char *cmd, char *args);
 
 uint64_t kpf_vfs__vfs_context_current(void);
 uint64_t kpf_vfs__vnode_lookup(void);
