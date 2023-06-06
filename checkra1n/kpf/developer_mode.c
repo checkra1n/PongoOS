@@ -44,20 +44,30 @@ static bool kpf_developer_mode_callback(struct xnu_pf_patch *patch, uint32_t *op
     // Enable
     if(strncmp(str, enable, sizeof(enable) - 1) == 0)
     {
+        uint32_t *func = follow_call(opcode_stream + 3);
         if(enable_developer_mode)
         {
-            panic("kpf_developer_mode: Found enable twice");
+            if(enable_developer_mode != func)
+            {
+                panic("kpf_developer_mode: Found multiple enable candidates");
+            }
+            return false;
         }
-        enable_developer_mode = follow_call(opcode_stream + 3);
+        enable_developer_mode = func;
     }
     // Disable
     else if(strncmp(str, disable, sizeof(disable) - 1) == 0)
     {
+        uint32_t *func = follow_call(opcode_stream + 3);
         if(disable_developer_mode)
         {
-            panic("kpf_developer_mode: Found disable twice");
+            if(disable_developer_mode != func)
+            {
+                panic("kpf_developer_mode: Found multiple disable candidates");
+            }
+            return false;
         }
-        disable_developer_mode = follow_call(opcode_stream + 3);
+        disable_developer_mode = func;
     }
     // Ignore the rest
     else
