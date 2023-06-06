@@ -32,6 +32,14 @@ static bool need_launch_constraints_patch = false;
 
 static bool kpf_launch_constraints_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
+    uint32_t adrp = opcode_stream[0],
+             add  = opcode_stream[1];
+    const char *str = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(adrp) + ((add >> 10) & 0xfff));
+    if(strcmp(str, "AMFI: Validation Category info: current %s (%d) parent %s (%d) responsible %s (%d) launch type %d\n") != 0)
+    {
+        return false;
+    }
+
     static bool found_launch_constraints = false;
     if(found_launch_constraints)
     {
@@ -39,7 +47,7 @@ static bool kpf_launch_constraints_callback(struct xnu_pf_patch *patch, uint32_t
     }
     found_launch_constraints = true;
 
-    uint32_t *stp = find_prev_insn(opcode_stream, 0x200, 0xa9007bfd, 0xffc07fff); // stp x29, x30, [sp, ...]
+    uint32_t *stp = find_prev_insn(opcode_stream, 0x100, 0xa9007bfd, 0xffc07fff); // stp x29, x30, [sp, ...]
     if(!stp)
     {
         panic_at(opcode_stream, "kpf_launch_constraints: Failed to find stack frame");
@@ -65,23 +73,20 @@ static bool kpf_launch_constraints_callback(struct xnu_pf_patch *patch, uint32_t
 static void kpf_launch_constraints_patch(xnu_pf_patchset_t *patchset)
 {
     // Disable launch constraints.
-    // We just look for a specific marker, seek to the start of the function, and make it return 0.
-    // /x 8860805200000014882080520000001488408052:ffffffff000000fcffffffff000000fcffffffff
+    // We just match against a log string, seek to the start of the function, and make it return 0.
     uint64_t matches[] =
     {
-        0x52806088, // mov w8, 0x304
-        0x14000000, // b 0x...
-        0x52802088, // mov w8, 0x104
-        0x14000000, // b 0x...
-        0x52804088, // mov w8, 0x204
+        0x90000000, // adrp x0, ...
+        0x91000000, // add x0, x0, ...
+        0xf90003f0, // str x{16-31}, [sp]
+        0x94000000, // bl IOLog
     };
     uint64_t masks[] =
     {
-        0xffffffff,
+        0x9f00001f,
+        0xffc003ff,
+        0xfffffff0,
         0xfc000000,
-        0xffffffff,
-        0xfc000000,
-        0xffffffff,
     };
     xnu_pf_maskmatch(patchset, "launch_constraints", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_launch_constraints_callback);
 }
