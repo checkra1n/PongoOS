@@ -92,8 +92,14 @@ void (*sepfw_kpf_hook)(void* sepfw_bytes, size_t sepfw_size);
 void sepfw_kpf(void* sepfw_bytes, size_t sepfw_size) {
     uint32_t* insn_stream = sepfw_bytes;
     for (uint32_t i=0; i < sepfw_size/4; i++) {
-        if (insn_stream[i] == 0xe1810200) {
-            insn_stream[i] = 0xe3a00000;
+        if (insn_stream[i] == 0xe1810200) { // orr r0, r1, r0, lsl 4
+            insn_stream[i] = 0xe3a00000; // mov r0, 0
+#ifdef SEP_DEBUG
+            fiprintf(stderr, "patched out bpr check\n");
+#endif
+            break;
+        } else if (insn_stream[i] == 0xe1930200) { // orrs r0, r3, r0, lsl 4
+            insn_stream[i] = 0xe1500000; // cmp r0, r0
 #ifdef SEP_DEBUG
             fiprintf(stderr, "patched out bpr check\n");
 #endif
