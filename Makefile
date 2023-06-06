@@ -22,7 +22,7 @@
 #
 
 CHECKRA1N_VERSION           ?= beta 0.12.4
-PONGO_VERSION               ?= 2.6.1-$(shell git rev-parse HEAD | cut -c1-8)
+PONGO_VERSION               ?= 2.6.2-$(shell git rev-parse HEAD | cut -c1-8)
 PONGO_BUILD                 := $(shell git rev-parse HEAD)
 
 ifdef CHECKRA1N_EXTRAVERSION
