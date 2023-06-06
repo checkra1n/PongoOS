@@ -379,11 +379,21 @@ static bool kpf_vm_map_protect_callback(uint32_t *opcode_stream)
     return true;
 }
 
-static bool kpf_vm_map_protect_branch(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+static bool kpf_vm_map_protect_branch(uint32_t *opcode_stream)
 {
-    int32_t off = sxt32(opcode_stream[2] >> 5, 19);
-    opcode_stream[2] = 0x14000000 | (uint32_t)off;
-    return kpf_vm_map_protect_callback(opcode_stream + 2 + off); // uint32 takes care of << 2
+    int32_t off = sxt32(*opcode_stream >> 5, 19);
+    *opcode_stream = 0x14000000 | (uint32_t)off;
+    return kpf_vm_map_protect_callback(opcode_stream + off); // uint32 takes care of << 2
+}
+
+static bool kpf_vm_map_protect_branch_long(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    return kpf_vm_map_protect_branch(opcode_stream + 2);
+}
+
+static bool kpf_vm_map_protect_branch_short(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    return kpf_vm_map_protect_branch(opcode_stream + 1);
 }
 
 static bool kpf_vm_map_protect_inline(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
@@ -472,6 +482,12 @@ static void kpf_vm_map_protect_patch(xnu_pf_patchset_t* xnu_text_exec_patchset)
     // 0xfffffff007afe524      a1000054       b.ne 0xfffffff007afe538
     // 0xfffffff007afe528      88000035       cbnz w8, 0xfffffff007afe538
     //
+    // Or this, since iOS 17:
+    //
+    // 0xfffffff0072c5f84      5f01376a       bics wzr, w10, w23
+    // 0xfffffff0072c5f88      61010054       b.ne 0xfffffff0072c5fb4
+    // 0xfffffff0072c5f8c      4801b837       tbnz w8, 0x17, 0xfffffff0072c5fb4
+    //
     // And then there's a weird carveout from iOS 15.2 to 15.7.x that has stuff inlined in variations of:
     //
     // [and w{0-15}, w{0-15}, 0x800000]                                                 | [tst x{0-15}, 0x800000]
@@ -492,6 +508,7 @@ static void kpf_vm_map_protect_patch(xnu_pf_patchset_t* xnu_text_exec_patchset)
     // /x 00061f121f180071010000540000a837:10feffff1ffeffff1f0000ff1000f8ff
     // /x e003302a1f041f72010000540000a837:f0fff0ff1ffeffff1f0000ff1000e8ff
     // /x e003302a1f041f720100005400000035:f0fff0ff1ffeffff1f0000ff100000ff
+    // /x 1f00306a010000540000a837:1ffef0ff1f0000ff1000e8ff
     // /x e003302a00041f12:f0fff0ff10feffff
     uint64_t matches_old[] = {
         0x121f0600, // and w{0-15}, w{16-31}, 6
@@ -505,7 +522,7 @@ static void kpf_vm_map_protect_patch(xnu_pf_patchset_t* xnu_text_exec_patchset)
         0xff00001f,
         0xfff80010,
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_map_protect", matches_old, masks_old, sizeof(matches_old)/sizeof(uint64_t), false, (void*)kpf_vm_map_protect_branch);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_map_protect", matches_old, masks_old, sizeof(matches_old)/sizeof(uint64_t), false, (void*)kpf_vm_map_protect_branch_long);
 
     uint64_t matches_new[] = {
         0x2a3003e0, // mvn w{0-15}, w{16-31}
@@ -519,11 +536,23 @@ static void kpf_vm_map_protect_patch(xnu_pf_patchset_t* xnu_text_exec_patchset)
         0xff00001f,
         0xffe80010,
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_map_protect", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_vm_map_protect_branch);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_map_protect", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_vm_map_protect_branch_long);
 
     matches_new[3] = 0x35000000; // cbnz w{0-15}, 0x...
     masks_new[3]   = 0xff000010;
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_map_protect", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_vm_map_protect_branch);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_map_protect", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_vm_map_protect_branch_long);
+
+    uint64_t matches17[] = {
+        0x6a30001f, // bics wzr, w{0-15}, w{16-31}
+        0x54000001, // b.ne 0x...
+        0x37a80000, // tbnz w{0-15}, {0x15 | 0x17}, 0x...
+    };
+    uint64_t masks17[] = {
+        0xfff0fe1f,
+        0xff00001f,
+        0xffe80010,
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_map_protect", matches17, masks17, sizeof(matches17)/sizeof(uint64_t), false, (void*)kpf_vm_map_protect_branch_short);
 
     uint64_t matches_inline[] = {
         0x2a3003e0, // mvn w{0-15}, w{16-31}
