@@ -1412,27 +1412,23 @@ bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stre
     // 0xfffffff00759c9b0      087969f8       ldr x8, [x8, x9, lsl 3]
     // 0xfffffff00759c9b4      e0c30291       add x0, sp, 0xb0
     // 0xfffffff00759c9b8      00013fd6       blr x8
-    if
-    (
-        (
-            (opcode_stream[2] & 0xffc003e0) == 0xa90003e0 && // stp xN, xM, [sp, ...]
-            ((opcode_stream[2] & 0x1f) == (opcode_stream[1] & 0x1f) || ((opcode_stream[2] >> 10) & 0x1f) == (opcode_stream[1] & 0x1f)) // match reg
-        ) ||
-        (
-            (opcode_stream[2] & 0xffc003e0) == 0xF90003E0 && // str xN, [sp, ...]
-            (opcode_stream[2] & 0x1f) == (opcode_stream[1] & 0x1f) // match reg
-        )
-    )
+    uint32_t reg = opcode_stream[1] & 0x1f;
+    uint32_t op = opcode_stream[2];
+    uint32_t *sp = NULL;
+    if((op & 0xffe07fff) == (0xa9007fe0 | reg)) // stp xN, xzr, [sp, 0x...]
     {
-        // add x0, sp, 0x...
-        uint32_t *sp = find_next_insn(opcode_stream + 3, 0x10, 0x910003e0, 0xffc003ff);
-        if(sp && (sp[1] & 0xfffffc1f) == 0xd63f0000) // blr
-        {
-            puts("KPF: Found vnop_rootvp_auth");
-            // Replace the call with mov x0, 0
-            sp[1] = 0xd2800000;
-            return true;
-        }
+        sp = find_next_insn(opcode_stream + 3, 0x10, 0x910003e0, 0xffc003ff); // add x0, sp, 0x...
+    }
+    else if((op & 0xffe07fff) == (0xa9207fa0 | reg)) // stp xN, xzr, [x29, -0x...]
+    {
+        sp = find_next_insn(opcode_stream + 3, 0x10, 0xd10003a0, 0xffc003ff); // sub x0, x29, 0x...
+    }
+    if(sp && (sp[1] & 0xfffffc1f) == 0xd63f0000) // blr
+    {
+        puts("KPF: Found vnop_rootvp_auth");
+        // Replace the call with mov x0, 0
+        sp[1] = 0xd2800000;
+        return true;
     }
     return false;
 }
