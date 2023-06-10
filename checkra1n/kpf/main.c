@@ -158,7 +158,6 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 
 // Imports from shellcode.S
 extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
-extern uint32_t fsctl_shc[], fsctl_shc_vnode_open[], fsctl_shc_stolen_slowpath[], fsctl_shc_orig_bl[], fsctl_shc_vnode_close[], fsctl_shc_stolen_fastpath[], fsctl_shc_orig_b[], fsctl_shc_end[];
 
 bool kpf_has_done_mac_mount;
 bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
@@ -1446,89 +1445,6 @@ void kpf_vnop_rootvp_auth_patch(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "vnop_rootvp_auth", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)vnop_rootvp_auth_callback);
 }
 
-static bool found_fsctl_internal = false, found_vnode_open_close = false;
-static uint32_t *fsctl_patchpoint = NULL;
-static uint64_t vnode_open_addr = 0, vnode_close_addr = 0;
-bool fsctl_dev_by_role_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    if(found_fsctl_internal)
-    {
-        panic("Found fsctl_internal twice!");
-    }
-    found_fsctl_internal = true;
-
-    uint32_t *stackframe = find_prev_insn(opcode_stream - 1, 0x20, 0xa9007bfd, 0xffc07fff); // stp x29, x30, [sp, ...]
-    if(!stackframe)
-    {
-        panic_at(opcode_stream, "fsctl_dev_by_role: Failed to find stack frame");
-    }
-
-    uint32_t *start = find_prev_insn(stackframe - 1, 8, 0xd10003ff, 0xffc003ff); // sub sp, sp, ...
-    if(!start)
-    {
-        panic_at(stackframe, "fsctl_dev_by_role: Failed to find start of function");
-    }
-
-    fsctl_patchpoint = start;
-    return true;
-}
-bool vnode_open_close_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    if(found_vnode_open_close)
-    {
-        panic("Found vnode_open/vnode_close twice!");
-    }
-    found_vnode_open_close = true;
-
-    uint32_t *vnode_open = find_next_insn(opcode_stream + 2, 3, 0x94000000, 0xfc000000);
-    if(!vnode_open)
-    {
-        panic_at(opcode_stream, "vnode_open_close: Failed to find vnode_open");
-    }
-
-    uint32_t *vnode_close = find_next_insn(vnode_open + 1, 0x20, 0xaa1003e2, 0xfff0ffff); // mov x2, x{x16-31}
-    if(
-        !vnode_close ||
-        (vnode_close[ 1] & 0xfc000000) != 0x94000000 || // bl
-         vnode_close[-1]               != 0x52800001 || // mov w1, 0
-        (vnode_close[-2] & 0xfff0ffff) != 0xaa1003e0 ||
-        (vnode_close[-3] & 0xffc00210) != 0x91000210 || // add x{16-31}, x{16-31}, ...
-        (vnode_close[-4] & 0x9f000010) != 0x90000010    // adrp x{16-31}, ...
-    )
-    {
-        panic_at(vnode_open, "vnode_open_close: Failed to find vnode_close");
-    }
-    vnode_close++;
-
-    vnode_open_addr  = xnu_ptr_to_va(vnode_open)  + (sxt32(*vnode_open,  26) << 2);
-    vnode_close_addr = xnu_ptr_to_va(vnode_close) + (sxt32(*vnode_close, 26) << 2);
-    return true;
-}
-void kpf_fsctl_dev_by_role(xnu_pf_patchset_t *patchset)
-{
-    // /x 002088520000b072:e0ffffffe0ffffff
-    uint64_t matches[] = {
-        0x52882000, // mov wN, 0x4100
-        0x72b00000, // movk wN, 0x8000, lsl 16
-    };
-    uint64_t masks[] = {
-        0xffffffe0,
-        0xffffffe0,
-    };
-    xnu_pf_maskmatch(patchset, "fsctl_dev_by_role", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)fsctl_dev_by_role_callback);
-
-    // /x 61c0805202308052
-    uint64_t vn_matches[] = {
-        0x5280c061, // mov w1, 0x603
-        0x52803002, // mov w2, 0x180
-    };
-    uint64_t vn_masks[] = {
-        0xffffffff,
-        0xffffffff,
-    };
-    xnu_pf_maskmatch(patchset, "vnode_open_close", vn_matches, vn_masks, sizeof(vn_masks)/sizeof(uint64_t), true, (void*)vnode_open_close_callback);
-}
-
 #if 0
 bool root_livefs_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     puts("KPF: Found root_livefs");
@@ -1570,7 +1486,7 @@ static void kpf_find_shellcode_area(xnu_pf_patchset_t *xnu_text_exec_patchset)
     uint32_t count = shellcode_count;
     // TODO: get rid of this
     {
-        count += (sandbox_shellcode_end - sandbox_shellcode) + (fsctl_shc_end - fsctl_shc);
+        count += (sandbox_shellcode_end - sandbox_shellcode);
     }
     uint64_t matches[count];
     uint64_t masks[count];
@@ -1877,7 +1793,6 @@ static void kpf_cmd(const char *cmd, char *args)
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
     if(rootvp_string_match) // Union mounts no longer work
     {
-        kpf_fsctl_dev_by_role(xnu_text_exec_patchset);
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
     }
 
@@ -1982,54 +1897,6 @@ static void kpf_cmd(const char *cmd, char *args)
 
     uint32_t* repatch_vnode_shellcode = &shellcode_area[4];
     *repatch_vnode_shellcode = repatch_ldr_x19_vnode_pathoff;
-
-    if(rootvp_string_match)
-    {
-        uint32_t *shellcode_block = shellcode_to;
-        uint64_t shellcode_addr = xnu_ptr_to_va(shellcode_block);
-        uint64_t patchpoint_addr = xnu_ptr_to_va(fsctl_patchpoint);
-        uint64_t orig_func = patchpoint_addr + 4;
-
-        size_t slow_idx  = fsctl_shc_stolen_slowpath - fsctl_shc;
-        size_t fast_idx  = fsctl_shc_stolen_fastpath - fsctl_shc;
-        size_t open_idx  = fsctl_shc_vnode_open      - fsctl_shc;
-        size_t close_idx = fsctl_shc_vnode_close     - fsctl_shc;
-        size_t bl_idx    = fsctl_shc_orig_bl         - fsctl_shc;
-        size_t b_idx     = fsctl_shc_orig_b          - fsctl_shc;
-
-        int64_t open_off  = vnode_open_addr  - (shellcode_addr + (open_idx  << 2));
-        int64_t close_off = vnode_close_addr - (shellcode_addr + (close_idx << 2));
-        int64_t bl_off    = orig_func - (shellcode_addr + (bl_idx << 2));
-        int64_t b_off     = orig_func - (shellcode_addr + (b_idx  << 2));
-        int64_t patch_off = shellcode_addr - patchpoint_addr;
-        if(
-            open_off  > 0x7fffffcLL || open_off  < -0x8000000LL ||
-            close_off > 0x7fffffcLL || close_off < -0x8000000LL ||
-            bl_off    > 0x7fffffcLL || bl_off    < -0x8000000LL ||
-            b_off     > 0x7fffffcLL || b_off     < -0x8000000LL ||
-            patch_off > 0x7fffffcLL || patch_off < -0x8000000LL
-        )
-        {
-            panic("fsctl_patch jump too far: 0x%llx/0x%llx/0x%llx/0x%llx/0x%llx", open_off, close_off, bl_off, b_off, patch_off);
-        }
-
-        shellcode_from = fsctl_shc;
-        shellcode_end = fsctl_shc_end;
-        while(shellcode_from < shellcode_end)
-        {
-            *shellcode_to++ = *shellcode_from++;
-        }
-
-        uint32_t stolen = *fsctl_patchpoint;
-        shellcode_block[slow_idx]   = stolen;
-        shellcode_block[fast_idx]   = stolen;
-        shellcode_block[open_idx]  |= (open_off  >> 2) & 0x03ffffff;
-        shellcode_block[close_idx] |= (close_off >> 2) & 0x03ffffff;
-        shellcode_block[bl_idx]    |= (bl_off    >> 2) & 0x03ffffff;
-        shellcode_block[b_idx]     |= (b_off     >> 2) & 0x03ffffff;
-
-        *fsctl_patchpoint = 0x14000000 | ((patch_off >> 2) & 0x03ffffff);
-    }
 
     if(!rootvp_string_match) // Only use underlying fs on union mounts
     {
