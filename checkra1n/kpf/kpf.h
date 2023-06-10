@@ -110,6 +110,7 @@ extern struct kernel_version
 
 /********** ********** ********** ********** ********** Components ********** ********** ********** ********** **********/
 
+extern kpf_component_t kpf_bindfs;
 extern kpf_component_t kpf_developer_mode;
 extern kpf_component_t kpf_dyld;
 extern kpf_component_t kpf_launch_constraints;

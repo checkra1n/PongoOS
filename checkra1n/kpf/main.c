@@ -1529,89 +1529,6 @@ void kpf_fsctl_dev_by_role(xnu_pf_patchset_t *patchset)
     xnu_pf_maskmatch(patchset, "vnode_open_close", vn_matches, vn_masks, sizeof(vn_masks)/sizeof(uint64_t), true, (void*)vnode_open_close_callback);
 }
 
-static bool found_shared_region_root_dir = false;
-bool shared_region_root_dir_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    // Make sure regs match
-    if(opcode_stream[0] != opcode_stream[3] || (opcode_stream[2] & 0x1f) != (opcode_stream[5] & 0x1f))
-    {
-        DEVLOG("shared_region_root_dir: reg mismatch");
-        return false;
-    }
-    uint32_t reg = opcode_stream[5] & 0x1f;
-    // There's a cmp+b.cond afterwards, but there can be a load from stack in between,
-    // so we find that dynamically.
-    uint32_t *cmp = find_next_insn(opcode_stream + 6, 2, 0xeb00001f, 0xffe0fc1f);
-    if(!cmp || (((cmp[0] >> 5) & 0x1f) != reg && ((cmp[0] >> 16) & 0x1f) != reg) ||
-        (cmp[1] & 0xff00001e) != 0x54000000 // Mask out lowest bit to catch both b.eq and b.ne
-    )
-    {
-        DEVLOG("shared_region_root_dir: Failed to find cmp/b.cond");
-        return false;
-    }
-    // Now that we're sure this is a match, check that we haven't matched already
-    if(found_shared_region_root_dir)
-    {
-        panic("Multiple matches for shared_region_root_dir");
-    }
-    // The thing we found isn't what we actually want to patch though.
-    // The check right here is fine, but there's one further down that's
-    // much harder to identify, so we use this as a landmark.
-    uint32_t *ldr1 = find_next_insn(cmp + 2, 120, 0xf9406c00, 0xfffffc00); // ldr xN, [xM, 0xd8]
-    if(!ldr1 || ((*ldr1 >> 5) & 0x1f) == 0x1f) // no stack loads
-    {
-        panic_at(cmp, "shared_region_root_dir: Failed to find ldr1");
-    }
-    uint32_t *ldr2 = find_next_insn(ldr1 + 1, 2, 0xf9406c00, 0xfffffc00); // ldr xN, [xM, 0xd8]
-    if(!ldr2 || ((*ldr2 >> 5) & 0x1f) == 0x1f) // no stack loads
-    {
-        panic_at(ldr1, "shared_region_root_dir: Failed to find ldr2");
-    }
-    size_t idx = 2;
-    uint32_t reg1 = (*ldr1 & 0x1f),
-             reg2 = (*ldr2 & 0x1f),
-             cmp2 = ldr2[1],
-             bcnd = ldr2[idx];
-    if(cmp2 != (0xeb00001f | (reg1 << 16) | (reg2 << 5)) && cmp2 != (0xeb00001f | (reg1 << 5) | (reg2 << 16)))
-    {
-        panic_at(ldr2 + 1, "shared_region_root_dir: Bad cmp");
-    }
-    if((bcnd & 0xbfc003f0) == 0xb94003f0) // ldr x{16-31}, [sp, ...]
-    {
-        bcnd = ldr2[++idx];
-    }
-    if((bcnd & 0xff00001e) != 0x54000000) // Mask out lowest bit to catch both b.eq and b.ne
-    {
-        panic_at(ldr2 + idx, "shared_region_root_dir: Bad b.cond");
-    }
-    ldr2[1] = 0xeb00001f; // cmp x0, x0
-    found_shared_region_root_dir = true;
-    return true;
-}
-
-void kpf_shared_region_root_dir_patch(xnu_pf_patchset_t* patchset) {
-    // Doing bind mounts means the shared cache is not on the volume mounted at /.
-    // XNU has a check to require that though, so we patch that out.
-    // This finds the inlined call to vm_shared_region_root_dir and subsequent NULL check.
-    // /x e00310aa00000094100e40f9e00310aa00000094100000b4:fffff0ff000000fc10fefffffffff0ff000000fc100000ff
-    uint64_t matches[] = {
-        0xaa1003e0, // mov x0, x{16-31}
-        0x94000000, // bl IOLockLock
-        0xf9400210, // ldr x{16-31}, [x{16-31}, .*]
-        0xaa1003e0, // mov x0, x{16-31}
-        0x94000000, // bl IOLockUnlock
-        0xb4000010, // cbz x{16-31}, ...
-    };
-    uint64_t masks[] = {
-        0xfff0ffff,
-        0xfc000000,
-        0xffc00210,
-        0xfff0ffff,
-        0xfc000000,
-        0xff000010,
-    };
-    xnu_pf_maskmatch(patchset, "shared_region_root_dir", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)shared_region_root_dir_callback);
-}
-
 #if 0
 bool root_livefs_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     puts("KPF: Found root_livefs");
@@ -1717,6 +1634,7 @@ static void kpf_cmd(const char *cmd, char *args)
 
     kpf_component_t* const kpf_components[] =
     {
+        &kpf_bindfs,
         &kpf_developer_mode,
         &kpf_dyld,
         &kpf_launch_constraints,
@@ -1790,8 +1708,6 @@ static void kpf_cmd(const char *cmd, char *args)
 
     const char rootvp_string[] = "rootvp not authenticated after mounting";
     const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
-    const char cryptex_string[] = "/private/preboot/Cryptexes";
-    const char *cryptex_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, cryptex_string, sizeof(cryptex_string));
 #if 0
     const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
@@ -1799,14 +1715,10 @@ static void kpf_cmd(const char *cmd, char *args)
 #endif
 
 #ifdef DEV_BUILD
-    // 15.0 beta 1 onwards
-    if((rootvp_string_match != NULL) != (gKernelVersion.darwinMajor >= 21)) panic("rootvp_auth panic doesn't match expected Darwin version");
 #if 0
     // 15.0 beta 1 onwards, but only iOS/iPadOS
     if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
 #endif
-    // 16.0 beta 1 onwards
-    if((cryptex_string_match != NULL) != (gKernelVersion.darwinMajor >= 22)) panic("Cryptex presence doesn't match expected Darwin version");
 #endif
 
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
@@ -1967,12 +1879,6 @@ static void kpf_cmd(const char *cmd, char *args)
     {
         kpf_fsctl_dev_by_role(xnu_text_exec_patchset);
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
-        if(!cryptex_string_match)
-        {
-            kpf_shared_region_root_dir_patch(xnu_text_exec_patchset);
-        }
-        // Signal to ramdisk that we can't have union mounts
-        checkra1n_flags |= checkrain_option_bind_mount;
     }
 
     xnu_pf_emit(xnu_text_exec_patchset);
