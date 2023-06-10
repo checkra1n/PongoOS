@@ -26,8 +26,12 @@
  */
 
 #include "kpf.h"
-#include <string.h>
+#include <pongo.h>
 #include <xnu/xnu.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 extern uint32_t nvram_shc[], nvram_shc_end[];
 

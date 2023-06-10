@@ -26,7 +26,11 @@
  */
 
 #include "kpf.h"
+#include <pongo.h>
 #include <xnu/xnu.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 extern uint32_t dyld_shc[], dyld_shc_ctx[], dyld_shc_lookup[], dyld_shc_put[], dyld_shc_end[];

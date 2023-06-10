@@ -26,7 +26,11 @@
  */
 
 #include "kpf.h"
+#include <pongo.h>
 #include <xnu/xnu.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 
 static bool found_trustcache = false;
 

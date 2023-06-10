@@ -26,11 +26,14 @@
  */
 
 #include "kpf.h"
-#include <stdlib.h>
-#include <string.h>
 #include <kerninfo.h>
 #include <pongo.h>
 #include <xnu/xnu.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 extern uint32_t kdi_shc[], kdi_shc_orig[], kdi_shc_get[], kdi_shc_addr[], kdi_shc_size[], kdi_shc_new[], kdi_shc_set[], kdi_shc_end[];
 

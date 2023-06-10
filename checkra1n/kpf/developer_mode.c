@@ -26,7 +26,13 @@
  */
 
 #include "kpf.h"
+#include <pongo.h>
 #include <xnu/xnu.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static bool need_developer_mode_patch = false;
 

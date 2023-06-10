@@ -26,7 +26,12 @@
  */
 
 #include "kpf.h"
+#include <pongo.h>
 #include <xnu/xnu.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 static bool need_convert_port_to_map_patch = false;
 static bool found_convert_port_to_map = false;

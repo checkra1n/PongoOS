@@ -26,7 +26,10 @@
  */
 
 #include "kpf.h"
+#include <pongo.h>
 #include <xnu/xnu.h>
+#include <stdint.h>
+#include <string.h>
 
 static bool need_launch_constraints_patch = false;
 
