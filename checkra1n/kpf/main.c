@@ -1341,39 +1341,6 @@ void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "vnode_lookup", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)vnode_lookup_callback);
 }
 
-bool kpf_md0_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
-{
-    // Find: cmp wN, 0x64
-    uint32_t *cmp = find_next_insn(opcode_stream, 10, 0x7101901f, 0xfffffc1f);
-    if(!cmp)
-    {
-        return false;
-    }
-    // Change first cmp to short-circuit
-    *opcode_stream = (*opcode_stream & 0xffc003ff) | (0x64 << 10);
-    return true;
-}
-
-void kpf_md0_patches(xnu_pf_patchset_t* patchset) {
-    // This patch turns all md0 checks in kexts into dd0 checks so that they don't think we're restoring.
-    // For that we search for the sequence below (example from i7 13.3):
-    // 0xfffffff00617fa98      1fb50171       cmp w8, 0x6d
-    // 0xfffffff00617fa9c      21010054       b.ne 0xfffffff00617fac0
-    // 0xfffffff00617faa0      e8274039       ldrb w8, [sp, 9]
-    // 0xfffffff00617faa4      1f910171       cmp w8, 0x64
-    // 0xfffffff00617faa8      c1000054       b.ne 0xfffffff00617fac0
-
-    // We can only match the first "cmp" here, because there can be
-    // a varying number of instructions between the two "cmp"s.
-    uint64_t matches[] = {
-        0x7101b41f, // cmp wN, 0x6d
-    };
-    uint64_t masks[] = {
-        0xfffffc1f,
-    };
-    xnu_pf_maskmatch(patchset, "md0_patch", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_md0_callback);
-}
-
 bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     // cmp xN, xM - wrong match
     if((opcode_stream[2] & 0xffe0ffe0) == 0xeb000300)
@@ -1558,6 +1525,7 @@ static void kpf_cmd(const char *cmd, char *args)
         &kpf_nvram,
         &kpf_shellcode,
         &kpf_overlay,
+        &kpf_ramdisk,
         &kpf_trustcache,
         &kpf_vfs,
         &kpf_vm_prot,
@@ -1733,13 +1701,6 @@ static void kpf_cmd(const char *cmd, char *args)
 
     // TODO
     //struct mach_header_64* accessory_header = xnu_pf_get_kext_header(hdr, "com.apple.iokit.IOAccessoryManager");
-
-    xnu_pf_patchset_t* kext_text_exec_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
-    kpf_md0_patches(kext_text_exec_patchset);
-    xnu_pf_emit(kext_text_exec_patchset);
-    xnu_pf_apply_each_kext(hdr, kext_text_exec_patchset);
-    xnu_pf_patchset_destroy(kext_text_exec_patchset);
-
 
     xnu_pf_range_t* text_exec_range = xnu_pf_section(hdr, "__TEXT_EXEC", "__text");
     struct mach_header_64* first_kext = xnu_pf_get_first_kext(hdr);
@@ -1928,26 +1889,19 @@ static void kpf_cmd(const char *cmd, char *args)
         }
     }
 
-    struct kerninfo *info = NULL;
-    if (ramdisk_buf) {
-        puts("KPF: Found ramdisk, appending kernelinfo");
-
-        // XXX: Why 0x10000?
-        ramdisk_buf = realloc(ramdisk_buf, ramdisk_size + 0x10000);
-        info = (struct kerninfo*)(ramdisk_buf+ramdisk_size);
-        bzero(info, sizeof(struct kerninfo));
-
-        *(uint32_t*)(ramdisk_buf) = ramdisk_size;
-        ramdisk_size += 0x10000;
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
+    {
+        if(kpf_components[i]->bootprep)
+        {
+            kpf_components[i]->bootprep(hdr, checkra1n_flags);
+        }
     }
-    if (info) {
-        info->size = sizeof(struct kerninfo);
-        info->base = xnu_slide_value(hdr) + 0xFFFFFFF007004000ULL;
-        info->slide = xnu_slide_value(hdr);
-        info->flags = checkra1n_flags;
-    }
-    if (checkrain_option_enabled(kpf_flags, checkrain_option_verbose_boot))
+
+    if(checkrain_option_enabled(kpf_flags, checkrain_option_verbose_boot))
+    {
         gBootArgs->Video.v_display = 0;
+    }
+
     tick_1 = get_ticks();
     printf("KPF: Applied patchset in %llu ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
 }

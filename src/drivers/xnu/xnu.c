@@ -1130,7 +1130,8 @@ void xnu_boot(void)
     gBootArgs->topOfKernelData = gTopOfKernelData;
 }
 
-void xnu_init(void) {
+void xnu_init(void)
+{
     command_register("xargs", "prints or sets xnu boot-args", pongo_boot_xargs);
     //command_register("loadx", "loads xnu", pongo_copy_xnu);
     command_register("bootx", "boots xnu (patched, if such a module is loaded)", pongo_boot_hook);
@@ -1139,24 +1140,31 @@ void xnu_init(void) {
     command_register("xfb", "gives xnu access to the framebuffer (for -v or -s)", flip_video_display);
 }
 
-void xnu_hook(void) {
-    if (preboot_hook) preboot_hook();
+void xnu_hook(void)
+{
+    if(preboot_hook)
+    {
+        preboot_hook();
+    }
 }
 
-void xnu_loadrd(void) {
-    if (ramdisk_size) {
-        dt_node_t* memory_map = (dt_node_t*)dt_find(gDeviceTree, "memory-map");
-        if (!memory_map) panic("invalid devicetree: no memory_map!");
-        struct memmap* map = dt_alloc_memmap(memory_map, "RAMDisk");
-        if (!map) panic("invalid devicetree: dt_alloc_memmap failed");
+void xnu_loadrd(void)
+{
+    if(ramdisk_size)
+    {
+        dt_node_t *memory_map = dt_node(gDeviceTree, "/chosen/memory-map");
+        struct memmap *map = dt_alloc_memmap(memory_map, "RAMDisk");
+        if(!map)
+        {
+            panic("Failed to allocate RAMDisk memory map");
+        }
 
-        void* rd_static_buf = alloc_static(ramdisk_size);
-        iprintf("allocated static region for rdsk: %p, sz: %x\n", rd_static_buf, ramdisk_size);
+        uint32_t rd_static_size = (ramdisk_size + 0xfff) & ~0xfffULL;
+        void *rd_static_buf = alloc_static(rd_static_size);
+        iprintf("allocated static region for rdsk: %p, sz: 0x%x\n", rd_static_buf, rd_static_size);
+
         memcpy(rd_static_buf, ramdisk_buf, ramdisk_size);
-
-        struct memmap md0map;
-        md0map.addr = ((uint64_t)rd_static_buf) + 0x800000000 - kCacheableView;
-        md0map.size = ramdisk_size;
-        memcpy(map, &md0map, 0x10);
+        map->addr = ((uint64_t)rd_static_buf) + 0x800000000 - kCacheableView;
+        map->size = rd_static_size;
     }
 }

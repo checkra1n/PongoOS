@@ -59,15 +59,16 @@ typedef const struct
     void (*patch)(xnu_pf_patchset_t *patchset); // NULL = end of list
 } kpf_patch_t;
 
-// Order of invocations: init, shc_size, patches, shc_emit, finish.
-// Both init and finish may be NULL independently.
+// Order of invocations: init, shc_size, patches, shc_emit, finish, bootprep.
+// All of init, finish and bootprep may be NULL independently.
 // shc_size and shc_emit must either both be NULL or non-NULL.
 // shc_size returns the maximum number of instructions to be emitted.
 // shc_emit returns the actual number of instructions that were emitted.
 typedef const struct
 {
     void     (*init)(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags); // Flags are input only
-    void     (*finish)(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags); // Flags are output only
+    void     (*finish)(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags); // Flags are to be treated as output only
+    void     (*bootprep)(struct mach_header_64 *hdr, checkrain_option_t checkra1n_flags); // Flags are input only
     uint32_t (*shc_size)(void);
     uint32_t (*shc_emit)(uint32_t *shellcode_area);
     kpf_patch_t patches[];
@@ -117,6 +118,7 @@ extern kpf_component_t kpf_launch_constraints;
 extern kpf_component_t kpf_mach_port;
 extern kpf_component_t kpf_nvram;
 extern kpf_component_t kpf_overlay;
+extern kpf_component_t kpf_ramdisk;
 extern kpf_component_t kpf_trustcache;
 extern kpf_component_t kpf_vfs;
 extern kpf_component_t kpf_vm_prot;
