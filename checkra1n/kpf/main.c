@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <mach-o/loader.h>
-#include <kerninfo.h>
+#include <paleinfo.h>
 #include <mac.h>
 #include <pongo.h>
 #include <xnu/xnu.h>
@@ -1501,7 +1501,22 @@ static int kpf_compare_patches(const void *a, const void *b)
     return (int)one->granule - (int)two->granule;
 }
 
-static checkrain_option_t kpf_flags, checkra1n_flags;
+static palerain_option_t palera1n_flags;
+
+kpf_component_t* const kpf_components[] = {
+    &kpf_bindfs,
+    &kpf_developer_mode,
+    &kpf_dyld,
+    &kpf_launch_constraints,
+    &kpf_mach_port,
+    &kpf_nvram,
+    &kpf_shellcode,
+    &kpf_overlay,
+    &kpf_ramdisk,
+    &kpf_trustcache,
+    &kpf_vfs,
+    &kpf_vm_prot,
+};
 
 static void kpf_cmd(const char *cmd, char *args)
 {
@@ -1514,22 +1529,6 @@ static void kpf_cmd(const char *cmd, char *args)
 
     uint64_t tick_0 = get_ticks();
     uint64_t tick_1;
-
-    kpf_component_t* const kpf_components[] =
-    {
-        &kpf_bindfs,
-        &kpf_developer_mode,
-        &kpf_dyld,
-        &kpf_launch_constraints,
-        &kpf_mach_port,
-        &kpf_nvram,
-        &kpf_shellcode,
-        &kpf_overlay,
-        &kpf_ramdisk,
-        &kpf_trustcache,
-        &kpf_vfs,
-        &kpf_vm_prot,
-    };
 
     size_t npatches = 0;
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
@@ -1610,7 +1609,7 @@ static void kpf_cmd(const char *cmd, char *args)
         kpf_component_t *component = kpf_components[i];
         if(component->init)
         {
-            component->init(hdr, text_cstring_range, kpf_flags, checkra1n_flags);
+            component->init(hdr, text_cstring_range, palera1n_flags);
         }
     }
 
@@ -1885,7 +1884,7 @@ static void kpf_cmd(const char *cmd, char *args)
     {
         if(kpf_components[i]->finish)
         {
-            kpf_components[i]->finish(hdr, &checkra1n_flags);
+            kpf_components[i]->finish(hdr, &palera1n_flags);
         }
     }
 
@@ -1893,11 +1892,11 @@ static void kpf_cmd(const char *cmd, char *args)
     {
         if(kpf_components[i]->bootprep)
         {
-            kpf_components[i]->bootprep(hdr, checkra1n_flags);
+            kpf_components[i]->bootprep(hdr, palera1n_flags);
         }
     }
 
-    if(checkrain_option_enabled(kpf_flags, checkrain_option_verbose_boot))
+    if(palera1n_flags & palerain_option_verbose_boot)
     {
         gBootArgs->Video.v_display = 0;
     }
@@ -1906,28 +1905,23 @@ static void kpf_cmd(const char *cmd, char *args)
     printf("KPF: Applied patchset in %llu ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
 }
 
-static void set_flags(char *args, uint32_t *flags, const char *name)
+static void set_flags(char *args, palerain_option_t *flags, const char *name)
 {
     if(args[0] != '\0')
     {
-        uint32_t val = strtoul(args, NULL, 16);
-        printf("Setting %s to 0x%08x\n", name, val);
+        palerain_option_t val = strtoul(args, NULL, 16);
+        printf("Setting %s to 0x%016llx\n", name, val);
         *flags = val;
     }
     else
     {
-        printf("%s: 0x%08x\n", name, *flags);
+        printf("%s: 0x%016llx\n", name, *flags);
     }
 }
 
-static void checkra1n_flags_cmd(const char *cmd, char *args)
+static void palera1n_flags_cmd(const char *cmd, char *args)
 {
-    set_flags(args, &checkra1n_flags, "checkra1n_flags");
-}
-
-static void kpf_flags_cmd(const char *cmd, char *args)
-{
-    set_flags(args, &kpf_flags, "kpf_flags");
+    set_flags(args, &palera1n_flags, "palera1n_flags");
 }
 
 void module_entry(void)
@@ -1955,9 +1949,17 @@ void module_entry(void)
     puts("# Cellebrite (ih8sn0w, cjori, ronyrus et al.)");
     puts("#==================");
 
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
+    {
+        kpf_component_t *component = kpf_components[i];
+        if(component->pre_init)
+        {
+            component->pre_init();
+        }
+    }
+
     preboot_hook = kpf_cmd;
-    command_register("checkra1n_flags", "set flags for checkra1n userland", checkra1n_flags_cmd);
-    command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags_cmd);
+    command_register("palera1n_flags", "set flags for checkra1n userland", palera1n_flags_cmd);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", kpf_cmd);
     command_register("overlay", "loads an overlay disk image", kpf_overlay_cmd);
 }

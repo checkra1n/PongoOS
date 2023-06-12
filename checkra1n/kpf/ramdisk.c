@@ -26,7 +26,7 @@
  */
 
 #include "kpf.h"
-#include <kerninfo.h>
+#include <paleinfo.h>
 #include <pongo.h>
 #include <xnu/xnu.h>
 #include <stdbool.h>
@@ -70,7 +70,7 @@ static void kpf_rootdev_patch(xnu_pf_patchset_t *xnu_text_exec_patchset)
     // A ton of kexts check for "rd=md*" and "rootdev=md*" in order to determine whether we're restoring.
     // We previously tried to patch all of those, but that is really tedious to do, and it's basically
     // impossible to determine whether you found all instances.
-    // What we do now is just change the place that actually boots off the ramdisk from "rootdev" to "nootdev",
+    // What we do now is just change the place that actually boots off the ramdisk from "rootdev" to "spartan",
     // and then patch the boot-args string to reflect that.
     //
     // Because codegen orders function args differently across versions and may or may not inline stuff,
@@ -98,7 +98,54 @@ static void kpf_ramdisk_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
     }
 }
 
-static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags)
+static char rootdev[16] = { '\0' };
+static uint32_t partid = 1;
+
+static void kpf_ramdisk_rootdev_cmd(const char *cmd, char *args) {
+    // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk1
+    
+    size_t root_matching_len = 0;
+    dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
+    if (!chosen) panic("invalid devicetree: no device!");
+    uint32_t* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
+    if (!root_matching) panic("invalid devicetree: no prop!");
+
+    char str[0x100]; // max size = 0x100
+    memset(&str, 0x0, 0x100);
+
+    if (args[0] != '\0') {
+        snprintf(str, 0x100, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", args);
+        snprintf(rootdev, 16, "%s", args);
+        
+        memset(root_matching, 0x0, 0x100);
+        memcpy(root_matching, str, 0x100);
+        printf("set new entry: %016llx: BSD Name: %s\n", (uint64_t)root_matching, args);
+    } else {
+        size_t max_fs_entries_len = 0;
+        dt_node_t* fstab = dt_find(gDeviceTree, "fstab");
+        if (!fstab) panic("invalid devicetree: no fstab!");
+        uint32_t* max_fs_entries = dt_prop(fstab, "max_fs_entries", &max_fs_entries_len);
+        if (!max_fs_entries) panic("invalid devicetree: no prop!");
+        uint32_t* patch = (uint32_t*)max_fs_entries;
+        printf("fstab max_fs_entries: %016llx: %08x\n", (uint64_t)max_fs_entries, patch[0]);
+        dt_node_t* baseband = dt_find(gDeviceTree, "baseband");
+
+        if (baseband) partid = patch[0] + 1U;
+        else partid = patch[0];
+        if (socnum == 0x7000 || socnum == 0x7001) partid--;
+
+        snprintf(str, 0x100, "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key><dict><key>Partition ID</key><integer>%u</integer></dict></dict>", partid);
+        memset(root_matching, 0x0, 0x100);
+        memcpy(root_matching, str, 0x100);
+        printf("set new entry: %016llx: Partition ID: %u\n", (uint64_t)root_matching, partid);
+    }
+}
+
+static void kpf_ramdisk_pre_init(void) {
+    command_register("rootfs", "set rootfs in dt and paleinfo", kpf_ramdisk_rootdev_cmd);
+}
+
+static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, palerain_option_t palera1n_flags)
 {
     char *bootargs = (char*)((uintptr_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView);
     rootdev_bootarg = strstr(bootargs, "rootdev=");
@@ -106,6 +153,13 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
     {
         rootdev_bootarg = NULL;
     }
+    const char cryptex_string[] = "/private/preboot/Cryptexes";
+    const char *cryptex_string_match = memmem(cstring->cacheable_base, cstring->size, cryptex_string, sizeof(cryptex_string));
+    if (rootdev[0] == '\0') {
+        if (cryptex_string_match != NULL) snprintf(rootdev, 16, "disk1s%u", partid);
+        else snprintf(rootdev, 16, "disk0s1s%u", partid);
+    }
+
 #ifdef DEV_BUILD
     have_ramdisk = true;
 #else
@@ -113,34 +167,37 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
 #endif
 }
 
-static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, checkrain_option_t checkra1n_flags)
+static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t palera1n_flags)
 {
     if(rootdev_bootarg)
     {
-        rootdev_bootarg[0] = 'n'; // rootdev -> nootdev
+        memcpy(rootdev_bootarg, "spartan", 7); // rootdev -> spartan
     }
 
     if(ramdisk_size)
     {
-        puts("KPF: Found ramdisk, appending kerninfo");
+        puts("KPF: Found ramdisk, appending paleinfo");
         uint64_t slide = xnu_slide_value(hdr);
 
-        ramdisk_buf = realloc(ramdisk_buf, ramdisk_size + sizeof(struct kerninfo));
+        ramdisk_buf = realloc(ramdisk_buf, ramdisk_size + 0x10000);
         if(!ramdisk_buf)
         {
-            panic("Failed to reallocate ramdisk with kerninfo");
+            panic("Failed to reallocate ramdisk with paleinfo");
         }
 
-        *(struct kerninfo*)(ramdisk_buf + ramdisk_size) = (struct kerninfo)
+        struct paleinfo* pinfo_p = (struct paleinfo*)(ramdisk_buf + ramdisk_size);
+        *pinfo_p = (struct paleinfo)
         {
-            .size  = sizeof(struct kerninfo),
-            .base  = slide + 0xfffffff007004000,
-            .slide = slide,
-            .flags = checkra1n_flags,
+            .magic = 'PLSH',
+            .version = 2,
+            .kbase  = slide + 0xfffffff007004000,
+            .kslide = slide,
+            .flags = palera1n_flags,
         };
+        snprintf(pinfo_p->rootdev, 16, "%s", rootdev);
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
-        ramdisk_size += sizeof(struct kerninfo);
+        ramdisk_size += 0x10000;
     }
 }
 
@@ -162,7 +219,7 @@ static uint32_t kpf_ramdisk_emit(uint32_t *shellcode_area)
 
     // We emit a new string because it's possible that strings have
     // been merged with kexts, and we don't wanna patch those.
-    const char str[] = "nootdev";
+    const char str[] = "spartan";
     memcpy(shellcode_area, str, sizeof(str));
 
     uint64_t shellcode_addr  = xnu_ptr_to_va(shellcode_area);
@@ -181,6 +238,7 @@ static uint32_t kpf_ramdisk_emit(uint32_t *shellcode_area)
 
 kpf_component_t kpf_ramdisk =
 {
+    .pre_init = kpf_ramdisk_pre_init,
     .init = kpf_ramdisk_init,
     .bootprep = kpf_ramdisk_bootprep,
     .shc_size = kpf_ramdisk_size,

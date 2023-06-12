@@ -26,7 +26,7 @@
  */
 
 #include "kpf.h"
-#include <kerninfo.h>
+#include <paleinfo.h>
 #include <pongo.h>
 #include <xnu/xnu.h>
 #include <stdbool.h>
@@ -255,7 +255,7 @@ static void kpf_bindfs_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
     }
 }
 
-static void kpf_bindfs_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags)
+static void kpf_bindfs_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, palerain_option_t palera1n_flags)
 {
     const char rootvp_string[] = "rootvp not authenticated after mounting";
     const char *rootvp_string_match = memmem(cstring->cacheable_base, cstring->size, rootvp_string, sizeof(rootvp_string) - 1); // don't match null byte
@@ -271,10 +271,11 @@ static void kpf_bindfs_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring,
     do_bind_mounts = rootvp_string_match != NULL;
 }
 
-static void kpf_bindfs_finish(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags)
+static void kpf_bindfs_finish(struct mach_header_64 *hdr, palerain_option_t *palera1n_flags)
 {
     // Signal to ramdisk whether we can have union mounts
-    checkrain_set_option(*checkra1n_flags, checkrain_option_bind_mount, do_bind_mounts);
+    if (do_bind_mounts)
+        *palera1n_flags |= palerain_option_bind_mount;
 }
 
 static uint32_t kpf_bindfs_size(void)

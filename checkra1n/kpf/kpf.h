@@ -59,16 +59,17 @@ typedef const struct
     void (*patch)(xnu_pf_patchset_t *patchset); // NULL = end of list
 } kpf_patch_t;
 
-// Order of invocations: init, shc_size, patches, shc_emit, finish, bootprep.
-// All of init, finish and bootprep may be NULL independently.
+// Order of invocations: pre_init, init, shc_size, patches, shc_emit, finish, bootprep.
+// All of pre_init, init, finish and bootprep may be NULL independently.
 // shc_size and shc_emit must either both be NULL or non-NULL.
 // shc_size returns the maximum number of instructions to be emitted.
 // shc_emit returns the actual number of instructions that were emitted.
 typedef const struct
 {
-    void     (*init)(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags); // Flags are input only
-    void     (*finish)(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags); // Flags are to be treated as output only
-    void     (*bootprep)(struct mach_header_64 *hdr, checkrain_option_t checkra1n_flags); // Flags are input only
+    void     (*pre_init)(); // this is ran when the kpf module is first loaded
+    void     (*init)(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, palerain_option_t palera1n_flags); // Flags are input only
+    void     (*finish)(struct mach_header_64 *hdr, palerain_option_t *palera1n_flags); // Flags are to be treated as output only
+    void     (*bootprep)(struct mach_header_64 *hdr, palerain_option_t palera1n_flags); // Flags are input only
     uint32_t (*shc_size)(void);
     uint32_t (*shc_emit)(uint32_t *shellcode_area);
     kpf_patch_t patches[];

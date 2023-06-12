@@ -26,7 +26,7 @@
  */
 
 #include "kpf.h"
-#include <kerninfo.h>
+#include <paleinfo.h>
 #include <pongo.h>
 #include <xnu/xnu.h>
 #include <stdbool.h>
@@ -159,7 +159,7 @@ static void kpf_overlay_kdi_patches(xnu_pf_patchset_t *kdi_text_exec_patchset)
     }
 }
 
-static void kpf_overlay_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags)
+static void kpf_overlay_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, palerain_option_t palera1n_flags)
 {
     did_run = true;
 
@@ -173,9 +173,10 @@ static void kpf_overlay_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
     do_shellcode = overlay_size > 0;
 }
 
-static void kpf_overlay_finish(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags)
+static void kpf_overlay_finish(struct mach_header_64 *hdr, palerain_option_t *palera1n_flags)
 {
-    checkrain_set_option(*checkra1n_flags, checkrain_option_overlay, do_shellcode);
+    if (do_shellcode)
+        *palera1n_flags |= palerain_option_overlay;
 }
 
 static uint32_t kpf_overlay_size(void)
