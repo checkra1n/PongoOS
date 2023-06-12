@@ -159,7 +159,7 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 // Imports from shellcode.S
 extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
 
-bool kpf_has_done_mac_mount;
+bool kpf_has_done_mac_mount = false;
 bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     puts("KPF: Found mac_mount");
     uint32_t* mac_mount = &opcode_stream[0];
@@ -201,6 +201,7 @@ void kpf_mac_mount_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // After that we search for a ldrb w8, [x8, 0x71] and replace it with a movz x8, 0
     // at 0x70 there are the flags and MNT_ROOTFS is 0x00004000 -> 0x4000 >> 8 -> 0x40 -> bit 6 -> the check is right below
     // that way we can also perform operations on the rootfs
+    // r2: /x e92f1f32
     uint64_t matches[] = {
         0x321f2fe9, // orr w9, wzr, 0x1ffe
     };
@@ -208,7 +209,11 @@ void kpf_mac_mount_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xFFFFFFFF,
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "mac_mount_patch1", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_mac_mount_callback);
-    matches[0] = 0x5283ffc9; // movz w9, 0x1ffe
+    
+    // ios 16.4 changed the codegen, so we match both
+    // r2: /x c9ff8312:ffffff3f
+    matches[0] = 0x1283ffc9; // movz w/x9, 0x1ffe/-0x1fff
+    masks[0] = 0x3fffffff;
     xnu_pf_maskmatch(xnu_text_exec_patchset, "mac_mount_patch2", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_mac_mount_callback);
 }
 
@@ -1773,7 +1778,7 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
-    if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
+    if (!kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
 
     uint32_t delta = (&shellcode_area[1]) - amfi_ret;
     delta &= 0x03ffffff;
