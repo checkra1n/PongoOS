@@ -1,4 +1,4 @@
-name: CI
+name: Build KPF
 
 on:
   # Trigger on all pushes and pull requests
@@ -40,13 +40,16 @@ jobs:
           git reset --hard origin/$(git branch --show-current)
           git submodule update --recursive --remote
       - name: Compile
-        run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make all
-      - name: Archive
-        uses: actions/upload-artifact@v2
+        run: |
+          EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' DEV_BUILD=1 make build/checkra1n-kpf-pongo -j$(nproc)
+      - name: Upload artifact
+        uses: wangyucode/sftp-upload-action@v1.4.8
         with:
-          name: PongoOS
-          path: |
-            build/checkra1n-kpf-pongo
-            build/Pongo
-            build/Pongo.bin
-            build/PongoConsolidated.bin
+          host: ${{ secrets.NICKCHAN_FTP_HOST }}
+          port: ${{ secrets.NICKCHAN_FTP_PORT }}
+          username: palera1n
+          privateKey: ${{ secrets.NICKCHAN_FTP_KEY }}
+          forceUpload: true
+          dryRun: false
+          localDir: 'build'
+          remoteDir: '/palera1n/artifacts/kpf'
