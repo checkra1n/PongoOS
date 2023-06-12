@@ -210,6 +210,56 @@ void screen_invert() {
 
 uint32_t gLogoBitmap[32] = { 0x0, 0xa00, 0x400, 0x5540, 0x7fc0, 0x3f80, 0x3f80, 0x1f00, 0x1f00, 0x1f00, 0x3f80, 0xffe0, 0x3f80, 0x3f80, 0x3f83, 0x103f9f, 0x18103ffb, 0xe3fffd5, 0x1beabfab, 0x480d7fd5, 0xf80abfab, 0x480d7fd5, 0x1beabfab, 0xe3fffd5, 0x18107ffb, 0x107fdf, 0x7fc3, 0xffe0, 0xffe0, 0xffe0, 0x1fff0, 0x1fff0 };
 
+int isARGB8888() {
+    return gWidth == gRowPixels;
+}
+
+// wat?!
+uint32_t convert_to_ARGB2101010(uint32_t color)
+{
+    uint16_t red   = ((color >> 16) & 0xff) << 2;
+    uint16_t green = ((color >>  8) & 0xff) << 2;
+    uint16_t blue  = ((color      ) & 0xff) << 2;
+    return red << 20 | green << 10 | blue;
+}
+
+void fbinfo() {
+    printf("gRowPixels  : %ld\n", gBootArgs->Video.v_rowBytes >> 2);
+    printf("gWidth      : %ld\n", gBootArgs->Video.v_width);
+    printf("gHeight     : %ld\n", gBootArgs->Video.v_height);
+    printf("fbbase      : %016llx\n", gBootArgs->Video.v_baseAddr);
+    printf("fbsize      : %016llx\n", (gBootArgs->Video.v_height) * (gBootArgs->Video.v_rowBytes >> 2) * 4);
+}
+
+uint32_t nextColor(uint32_t color)
+{
+    uint8_t r = (color >> 16) & 0xff;
+    uint8_t g = (color >>  8) & 0xff;
+    uint8_t b = (color      ) & 0xff;
+    if((r != 0xff) && (b == 0x0))
+    {
+        color += (1 << 16);
+        goto end;
+    }
+    if((r == 0xff) && (b != 0xff))
+    {
+        color += 1;
+        goto end;
+    }
+    if((r != 0x0) && (b == 0xff))
+    {
+        color -= (1 << 16);
+        goto end;
+    }
+    if((r == 0x0) && (b != 0x0))
+    {
+        color -= 1;
+        goto end;
+    }
+end:
+    return color;
+}
+
 void screen_init() {
     gRowPixels = gBootArgs->Video.v_rowBytes >> 2;
     uint16_t width = gWidth = gBootArgs->Video.v_width;
@@ -244,16 +294,23 @@ void screen_init() {
     uint32_t logo_x_begin = (gRowPixels / 2) - (16 * logo_scaler_factor);
     uint32_t logo_y_begin = (height / 2) - (16 * logo_scaler_factor);
 
+    uint32_t mask = 0;
+    uint32_t color = 0xff0000;
+
     for (uint32_t y = 0; y < (32 * logo_scaler_factor); ++y) {
         uint32_t b = gLogoBitmap[y / logo_scaler_factor];
         for (uint32_t x = 0; x < (32 * logo_scaler_factor); ++x) {
             uint32_t ind = logo_x_begin + x + ((logo_y_begin + y) * gRowPixels);
             uint32_t curcolor = gFramebuffer[ind];
             if (b & (1 << (x / logo_scaler_factor))) {
-                curcolor ^= 0xFFFFFFFF;
+                mask = isARGB8888() ? color : convert_to_ARGB2101010(color);
+                mask ^= 0xFFFFFFFF;
+                curcolor ^= mask;
             }
             gFramebuffer[ind] = curcolor;
         }
+        for(int i=0; i<(32 / logo_scaler_factor); i++)
+            color = nextColor(color);
     }
     
     memcpy(gFramebufferCopy, gFramebuffer, fbsize);
@@ -262,5 +319,6 @@ void screen_init() {
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
     command_register("fbclear", "clears the framebuffer output (minus banner)", screen_clear_all);
     command_register("fbinvert", "inverts framebuffer contents", screen_invert);
+    command_register("fbinfo", "show framebuffer info", fbinfo);
     scale_factor = 1;
 }
