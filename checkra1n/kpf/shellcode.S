@@ -29,45 +29,50 @@
 .globl _sandbox_shellcode_end
 .globl _sandbox_shellcode_setuid_patch
 .globl _dyld_hook_shellcode
+
+.globl _vnode_check_open_shc
+.globl _vnode_check_open_shc_ptr
+.globl _vnode_check_open_shc_end
+
 .align 2
 _sandbox_shellcode:
-b sandbox_shellcode_m
-b amfi_execve_hook
-b pre_execve_hook
+    b sandbox_shellcode_m
+    b amfi_execve_hook
+    b pre_execve_hook
 vnode_getpath:
-mov x19, x0
-nop
-mov x0, x19
-ret
+    mov x19, x0
+    nop
+    mov x0, x19
+    ret
 sandbox_shellcode_m: // deny .fsevent accesses
-mov x6, x30
-mov x4, x19
-mov x5, x0
-mov x0, x1
-cbz x0, nopath
-bl vnode_getpath
-cbz x0, nopath
-ldr x7, [x0]
-adr x0, pattern
-ldr x8, [x0]
-mov x0, xzr
-cmp x8, x7
-b.ne nomatch
+    mov x6, x30
+    mov x4, x19
+    mov x5, x0
+    mov x0, x1
+    cbz x0, nopath
+    bl vnode_getpath
+    cbz x0, nopath
+    ldr x7, [x0]
+    adr x0, pattern
+    ldr x8, [x0]
+    mov x0, xzr
+    cmp x8, x7
+    b.ne nomatch
 mov x0, #1
 nomatch:
 nopath:
-mov x19, x4
-br x6
+    mov x19, x4
+    br x6
 amfi_execve_hook: // you can't kill me :P (makes sure amfi doesn't try to kill our binaries)
-ldr x0, [sp, #8] // cs_flags
-ldr w1, [x0]
-orr w1, w1,   #0x04000000 // CS_PLATFORM_BINARY
-orr w1, w1,   #0x000f // CS_VALID | CS_ADHOC | CS_GET_TASK_ALLOW | CS_INSTALLER
-and w1, w1, #(~0x3f00) // clearing CS_HARD | CS_KILL | CS_CHECK_EXPIRATION | CS_RESTRICT | CS_ENFORCEMENT | CS_REQUIRE_LV
-//and w1, w1, #(~0x00000000)
-str w1, [x0]
-mov x0, xzr
-ret
+    ldr x0, [sp, #8] // cs_flags
+    ldr w1, [x0]
+    orr w1, w1,   #0x04000000 // CS_PLATFORM_BINARY
+    orr w1, w1,   #0x000f // CS_VALID | CS_ADHOC | CS_GET_TASK_ALLOW | CS_INSTALLER
+    and w1, w1, #(~0x3f00) // clearing CS_HARD | CS_KILL | CS_CHECK_EXPIRATION | CS_RESTRICT | CS_ENFORCEMENT | CS_REQUIRE_LV
+    //and w1, w1, #(~0x00000000)
+    str w1, [x0]
+    mov x0, xzr
+    ret
 // call signature
 //int mpo_cred_label_update_execve_t(
 //    kauth_cred_t old_cred,
@@ -86,55 +91,55 @@ ret
 //    );
 // setuid patch
 pre_execve_hook:
-cbz x3, pre_execve_hook$orig
-sub sp, sp, #0x400
-stp x29, x30, [sp]
-stp x0, x1, [sp, #0x10]
-stp x2, x3, [sp, #0x20]
-stp x4, x5, [sp, #0x30]
-stp x6, x7, [sp, #0x40]
-ldr x16, vfs
-blr x16 // getting current vfs context
-mov x2, x0
-ldr x0, [sp, #0x28]
-add x1, sp, #0x80
-mov w8, #0x380
-stp xzr, x8, [x1]
-stp xzr, xzr, [x1, 0x10]
-ldr x16, vnode // getting vnode attributes
-blr x16
-cbnz x0, pre_execve_hook$orig$epilog // failed so we just jump out
-mov w2, #0
-ldr w8, [sp, #0xcc] // va_mode
-tbz w8, #11, pre_execve_hook$orig$gid
-ldr w8, [sp, #0xc4] // va_uid
-ldr x0, [sp, #0x18] // this is new_cred->uid
-str w8, [x0, #0x18]
-mov w2, #1 // Mark this as having been setuid or setgid
+    cbz x3, pre_execve_hook$orig
+    sub sp, sp, #0x400
+    stp x29, x30, [sp]
+    stp x0, x1, [sp, #0x10]
+    stp x2, x3, [sp, #0x20]
+    stp x4, x5, [sp, #0x30]
+    stp x6, x7, [sp, #0x40]
+    ldr x16, vfs
+    blr x16 // getting current vfs context
+    mov x2, x0
+    ldr x0, [sp, #0x28]
+    add x1, sp, #0x80
+    mov w8, #0x380
+    stp xzr, x8, [x1]
+    stp xzr, xzr, [x1, 0x10]
+    ldr x16, vnode // getting vnode attributes
+    blr x16
+    cbnz x0, pre_execve_hook$orig$epilog // failed so we just jump out
+    mov w2, #0
+    ldr w8, [sp, #0xcc] // va_mode
+    tbz w8, #11, pre_execve_hook$orig$gid
+    ldr w8, [sp, #0xc4] // va_uid
+    ldr x0, [sp, #0x18] // this is new_cred->uid
+    str w8, [x0, #0x18]
+    mov w2, #1 // Mark this as having been setuid or setgid
 pre_execve_hook$orig$gid:
-ldr w8, [sp, #0xcc]
-tbz w8, #10, pre_execve_hook$orig$p_flags
-mov w2, #1
-ldr w8, [sp, #0xc8]
-ldr x0, [sp, #0x18]
-str w8, [x0, #0x28]
+    ldr w8, [sp, #0xcc]
+    tbz w8, #10, pre_execve_hook$orig$p_flags
+    mov w2, #1
+    ldr w8, [sp, #0xc8]
+    ldr x0, [sp, #0x18]
+    str w8, [x0, #0x28]
 pre_execve_hook$orig$p_flags:
-cbz w2, pre_execve_hook$orig$epilog // didn't change UID or GID
-ldr x0, [sp, #0x20]
+    cbz w2, pre_execve_hook$orig$epilog // didn't change UID or GID
+    ldr x0, [sp, #0x20]
 _sandbox_shellcode_setuid_patch:
-ldr w8, [x0, #0] // Gets replaced with real offset by kpf
-orr w8, w8, #0x100 // Add P_SUGID
-str w8, [x0, #0] // Gets replaced with real offset by kpf
+    ldr w8, [x0, #0] // Gets replaced with real offset by kpf
+    orr w8, w8, #0x100 // Add P_SUGID
+    str w8, [x0, #0] // Gets replaced with real offset by kpf
 pre_execve_hook$orig$epilog:
-ldp x0, x1, [sp, #0x10]
-ldp x2, x3, [sp, #0x20]
-ldp x4, x5, [sp, #0x30]
-ldp x6, x7, [sp, #0x40]
-ldp x29, x30, [sp]
-add sp, sp, #0x400
+    ldp x0, x1, [sp, #0x10]
+    ldp x2, x3, [sp, #0x20]
+    ldp x4, x5, [sp, #0x30]
+    ldp x6, x7, [sp, #0x40]
+    ldp x29, x30, [sp]
+    add sp, sp, #0x400
 pre_execve_hook$orig:
-ldr x16, orig
-br x16
+    ldr x16, orig
+    br x16
 
 .align 3
 _sandbox_shellcode_ptrs:
@@ -150,7 +155,77 @@ vnode_put:
 .quad 0x4141414141414140
 pattern:
 .quad 0x746E65766573662E // .fsevent
+
+.align 2
+_vnode_check_open_shc:
+vnode_check_open_hook:
+    sub  sp, sp, #0x50
+    stp  x22, x21, [sp, #0x20]
+    stp  x20, x19, [sp, #0x30]
+    stp  x29, x30, [sp, #0x40]
+    add  x29, sp, #0x40
+    mov  x19, x3
+    mov  x20, x2
+    mov  x21, x1
+    mov  x22, x0
+    add  x0, sp, #0xc
+    mov  w1, #0x14
+    ldr  x8, proc_selfname      // get proc name
+    blr  x8
+
+    ldp  w8, w9, [sp, #0xc]     // check if procname is 'IDSBlastDoorService' or not.
+    ldp  w10, w11, [sp, #0x14]
+    ldr  w12, [sp, #0x1c]
+    mov  w13, #0x4449
+    movk w13, #0x4253, lsl #16  // 'IDSB'
+    cmp  w8, w13
+    mov  w8, #0x616c
+    movk w8, #0x7473, lsl #16   // 'last'
+    ccmp w9, w8, #0x0, eq
+    mov  w8, #0x6f44
+    movk w8, #0x726f, lsl #16   // 'Door'
+    ccmp w10, w8, #0x0, eq
+    mov  w8, #0x6553
+    movk w8, #0x7672, lsl #16   // 'Serv'
+    ccmp w11, w8, #0x0, eq
+    mov  w8, #0x6369
+    movk w8, #0x65, lsl #16     // 'ice\x00'
+    ccmp w12, w8, #0x0, eq
+    b.eq vnode_check_open_shc$orig  // go to normal checks.
+
+vnode_check_open_shc$shellcode: // go to sandbox_shellcode_m and make sure deny .fsevent accesses
+    mov  x0, x22
+    mov  x1, x21
+    mov  x2, x20
+    mov  x3, x19
+    ldp  x29, x30, [sp, #0x40]
+    ldp  x20, x19, [sp, #0x30]
+    ldp  x22, x21, [sp, #0x20]
+    add  sp, sp, #0x50
+    b    sandbox_shellcode_m
+
+vnode_check_open_shc$orig:
+    mov  x0, x22
+    mov  x1, x21
+    mov  x2, x20
+    mov  x3, x19
+    ldp  x29, x30, [sp, #0x40]
+    ldp  x20, x19, [sp, #0x30]
+    ldp  x22, x21, [sp, #0x20]
+    add  sp, sp, #0x50
+    ldr  x8, vnode_check_open_orig
+    br   x8
+
+_vnode_check_open_shc_ptr:
+proc_selfname:
+.quad 0x5151515151515151
+
+vnode_check_open_orig:
+.quad 0x5252525252525252
+ 
 _sandbox_shellcode_end:
+
+
 
 
 
