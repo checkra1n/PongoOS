@@ -24,7 +24,7 @@
  * SOFTWARE.
  * 
  */
-#import <pongo.h>
+#include <pongo.h>
 
 static bool s8003_probe(struct hal_platform_driver* device_driver, struct hal_platform* device) {
     if (device->cpid == 0x8003) {

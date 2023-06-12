@@ -24,7 +24,7 @@
  * SOFTWARE.
  * 
  */
-#import <pongo.h>
+#include <pongo.h>
 
 
 static uint64_t gmipi_reg;

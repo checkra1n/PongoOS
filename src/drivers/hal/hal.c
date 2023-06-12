@@ -24,7 +24,7 @@
  * SOFTWARE.
  *
  */
-#import <pongo.h>
+#include <pongo.h>
 struct hal_device _gRootDevice = {
     .name = "root"
 };

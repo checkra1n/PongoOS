@@ -190,8 +190,8 @@ typedef enum {
 } vm_protect_t;
 
 #ifdef PONGO_PRIVATE
-#import "vfs.h"
-#import "task.h"
+#include "vfs.h"
+#include "task.h"
 #else
 struct proc;
 struct task;

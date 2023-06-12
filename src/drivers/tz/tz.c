@@ -24,7 +24,7 @@
  * SOFTWARE.
  *
  */
-#import <pongo.h>
+#include <pongo.h>
 
 volatile uint32_t *gTZRegbase;
 
