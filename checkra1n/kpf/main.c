@@ -37,6 +37,7 @@
 #include <xnu/xnu.h>
 
 uint32_t offsetof_p_flags;
+static palerain_option_t palera1n_flags;
 
 #if 0
         // AES, sigh
@@ -934,6 +935,175 @@ bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     *f_apfs_privcheck = 0xeb00001f; // cmp x0, x0
     return true;
 }
+
+#if 0
+bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    puts("KPF: Found root seal broken");
+    
+    opcode_stream[3] = NOP;
+
+    return true;
+}
+
+bool personalized_hash_patched = false;
+bool kpf_personalized_root_hash(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    // ios 16.4 broke this a lot, so we're just gonna find the string and do stuff with that
+    printf("KPF: found kpf_apfs_personalized_hash\n");
+
+    uint32_t* cbz1 = find_prev_insn(opcode_stream, 0x10, 0x34000000, 0x7e000000);
+
+    if (!cbz1) {
+        printf("kpf_apfs_personalized_hash: failed to find first cbz\n");
+        return false;
+    }
+
+    uint32_t* cbz_fail = find_prev_insn(cbz1 + 1, 0x50, 0x34000000, 0x7e000000);
+
+    if (!cbz_fail) {
+        printf("kpf_apfs_personalized_hash: failed to find fail cbz\n");
+        return false;
+    }
+
+    uint64_t addr_fail = xnu_ptr_to_va(cbz_fail) + (sxt32(cbz_fail[0] >> 5, 19) << 2);
+
+    uint32_t *fail_stream = xnu_va_to_ptr(addr_fail);
+        
+    uint32_t *success_stream = opcode_stream;
+    uint32_t *temp_stream = opcode_stream;
+        
+    for (int i = 0; i < 0x500; i++) {
+        if ((temp_stream[0] & 0x9f000000) == 0x90000000 && // adrp
+            (temp_stream[1] & 0xff800000) == 0x91000000) { // add
+                const char *str = get_string(temp_stream);
+                if (strcmp(str, "%s:%d: %s successfully validated on-disk root hash\n") == 0) {
+                    success_stream = find_prev_insn(temp_stream, 0x10, 0x35000000, 0x7f000000);
+
+                    if (success_stream) {
+                        success_stream++;
+                    } else {
+                        success_stream = find_prev_insn(temp_stream, 0x10, 0xf90003e0, 0xffc003e0); // str x*, [sp, #0x*]
+                        
+                        if (!success_stream) {
+                            DEVLOG("kpf_apfs_personalized_hash: failed to find start of block");
+                        }
+                    }
+                    
+                    break;
+                }
+        }
+                
+       temp_stream++;
+    }
+        
+    if (!success_stream) {
+        printf("kpf_apfs_personalized_hash: failed to find success!\n");
+        return false;
+    }
+        
+    uint64_t addr_success = xnu_ptr_to_va(success_stream);
+
+    DEVLOG("addrs: success is 0x%llx, fail is 0x%llx, target is 0x%llx", addr_success, xnu_ptr_to_va(cbz_fail), addr_fail);
+        
+    uint32_t branch_success = 0x14000000 | (((addr_success - addr_fail) >> 2) & 0x03ffffff);
+        
+    DEVLOG("branch is 0x%x (BE)", branch_success);
+
+    fail_stream[0] = branch_success;
+    
+    personalized_hash_patched = true;
+
+    return true;
+}
+
+bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    printf("KPF: Found root authentication required\n");
+    
+    uint32_t* func_start = find_prev_insn(opcode_stream, 0x50, 0xa98003e0, 0xffc003e0); //stp x*, x*, [sp, -0x*]!
+        
+    if (!func_start) {
+        func_start = find_prev_insn(opcode_stream, 0x50, 0xd10000ff, 0xffc003ff); // sub sp, sp, 0x*
+            
+        if (!func_start) {
+            printf("root authentication: failed to find stack marker!\n");
+            return false;
+        }
+    }
+        
+    func_start[0] = 0xd2800000;
+    func_start[1] = RET;
+        
+    return true;
+}
+#endif
+
+bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    if (!opcode_stream) {
+        printf("Missing patch: apfs_vfsop_mount\n");
+        return false;
+    }
+    uint32_t *tbnz = find_prev_insn(opcode_stream, 2, 0x37700000, 0xfff8001f); // tbnz w0, 0xe, *
+    if (!tbnz) {
+        return false;
+    }
+
+    *tbnz = 0x52800000; /* mov w0, 0 */
+    
+    printf("KPF: found apfs_vfsop_mount\n");
+    
+    return true;
+}
+
+#if 0
+bool handled_eval_rootauth = false;
+bool kpf_apfs_rootauth(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    handled_eval_rootauth = true;
+
+    opcode_stream[0] = NOP;
+    opcode_stream[1] = 0x52800000; /* mov w0, 0 */
+
+    printf("KPF: found handle_eval_rootauth\n");
+    return true;
+}
+
+bool kpf_apfs_rootauth_new(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    handled_eval_rootauth = true;
+
+    uint32_t orig_register = (opcode_stream[1] & 0x1f);
+    opcode_stream[0] = NOP;
+    opcode_stream[1] = 0x52800000 | orig_register; /* mov wN, 0 */
+    
+    uint32_t *ret_stream = follow_call(opcode_stream + 2);
+    
+    if (!ret_stream) {
+        printf("KPF: failed to follow branch\n");
+        return false;
+    }
+    
+    uint32_t *mov = ret_stream;
+    while (true) {  
+        mov = find_next_insn(mov, 0x10, 0xaa0003e0, 0xffe0ffff); // mov x0, xN
+
+        if (!mov) {
+            printf("KPF: failed to find mov\n");
+            return false;
+        }
+
+        uint32_t mov_register = (mov[0] >> 16) & 0x1f;
+
+        if (mov_register == orig_register) {
+            break;
+        }
+
+        mov++;
+    }
+    
+    mov[0] = 0xd2800000; /* mov x0, 0 */
+
+    printf("KPF: found handle_eval_rootauth\n");
+    return true;
+}
+#endif
+
 void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
     // we also want to call it so we patch that check out
@@ -952,7 +1122,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     // 0xfffffff00692e6a8      080140f9       ldr x8, [x8]
     // 0xfffffff00692e6ac      1f0008eb       cmp x0, x8 <- cmp (patches to cmp x0, x0)
     // r2 cmd:
-    // /x 0000003908011b3200000039000000b9:000000ffffffffff000000ff000000ff
+    // /x 0000403908011b3200000039000000b9:0000c0bfffffffff0000c0bf000000ff
     uint64_t matches[] = {
         0x39400000, // ldr{b|h} w*, [x*]
         0x321b0108, // orr w8, w8, 0x20
@@ -991,6 +1161,39 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
             0xfff80000,
         };
         xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
+    }
+
+    // if(palera1n_flags & palerain_option_rootful)
+    {   
+        // This patch is not required on rootless, but it is nice to have as still as some
+        // actions over SSH would not be possible without it.
+        // when mounting an apfs volume, there is a check to make sure the volume is not read/write
+        // we just nop the check out
+        // example from iPad 6 16.1.1:
+        // 0xfffffff0064023a8      e8b340b9       ldr w8, [sp, 0xb0]  ; 5
+        // 0xfffffff0064023ac      08791f12       and w8, w8, 0xfffffffe
+        // 0xfffffff0064023b0      e8b300b9       str w8, [sp, 0xb0]
+        // r2: /x a00340b900781f12a00300b9:a003feff00fcffffa003c0ff
+        uint64_t remount_matches[] = {
+            0xb94003a0, // ldr x*, [x29/sp, *]
+            0x121f7800, // and w*, w*, 0xfffffffe
+            0xb90003a0, // str x*, [x29/sp, *]
+        };
+        
+        uint64_t remount_masks[] = {
+            0xfffe03a0,
+            0xfffffc00,
+            0xffc003a0,
+        };
+        
+        xnu_pf_maskmatch(patchset,
+            "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t),
+        !have_union
+#ifndef DEV_BUILD
+        && (palera1n_flags & palerain_option_rootful) != 0
+#endif
+    ,(void *)kpf_apfs_vfsop_mount);
+        
     }
 }
 static uint32_t* amfi_ret;
@@ -1505,8 +1708,6 @@ static int kpf_compare_patches(const void *a, const void *b)
     // Granule
     return (int)one->granule - (int)two->granule;
 }
-
-static palerain_option_t palera1n_flags;
 
 kpf_component_t* const kpf_components[] = {
     &kpf_bindfs,
