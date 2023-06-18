@@ -51,11 +51,30 @@ static bool kpf_convert_port_to_map_callback(struct xnu_pf_patch *patch, uint32_
     {
         // Follow branch (convert to b.al)
         *patchpoint = op | 0xf;
+        patchpoint += sxt32(op >> 5, 19); // uint32 takes care of << 2
     }
     else
     {
         // Don't follow branch
         *patchpoint = NOP;
+        // Continue at next instr
+        ++patchpoint;
+    }
+
+    // New in iOS 15: zone_require just to annoy us
+    bool have_zone_require = (patchpoint[0] & 0xfffffe1f) == 0x52800000 &&  // movz w0, {0-15}
+                             (patchpoint[1] & 0xffffe0ff) == 0x52800001 &&  // movz w1, {0x0-0x100 with granularity 8}
+                             (patchpoint[2] & 0xfc000000) == 0x94000000;    // bl zone_require
+#ifdef DEV_BUILD
+    // This is a whole mess: 15.0 beta 2 through 15.3 final, and then again 16.4 beta 1 through 16.x latest.
+    if(have_zone_require != ((gKernelVersion.xnuMajor > 7938 && gKernelVersion.xnuMajor < 8020) || (gKernelVersion.xnuMajor > 8792 && gKernelVersion.xnuMajor < 10002)))
+    {
+        panic_at(patchpoint, "kpf_convert_port_to_map: zone_require doesn't match expected XNU version");
+    }
+#endif
+    if(have_zone_require)
+    {
+        patchpoint[2] = NOP;
     }
 
     puts("KPF: Found convert_port_to_map");
