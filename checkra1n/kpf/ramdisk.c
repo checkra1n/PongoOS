@@ -109,7 +109,7 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
 #ifdef DEV_BUILD
     have_ramdisk = true;
 #else
-    have_ramdisk = rootdev_bootarg && rootdev_bootarg[8] == 'm' && rootdev_bootarg[9] == 'd';
+    have_ramdisk = rootdev_bootarg != NULL;
 #endif
 }
 
