@@ -143,13 +143,57 @@ static void kpf_fsctl_dev_by_role_patch(xnu_pf_patchset_t *xnu_text_exec_patchse
 
 static bool kpf_shared_region_root_dir_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
+    uint32_t *ldr = opcode_stream + 2;
+    uint32_t op = *ldr;
+    uint32_t reg, mask;
+    // Check if we have another load from stack
+    if((op & 0xffc003e0) == 0xf94003e0) // ldr xN, [sp, 0x...]
+    {
+        reg = op & 0x1f;
+        mask = 0x1f;
+        op = *++ldr;
+    }
+    else
+    {
+        reg = 0x10; // 16-31
+        mask = 0x10;
+    }
+    // Make sure we have another load from +0xd8
+    if((op & (0xfffffc1f | (mask << 5))) != (0xf9406c09 | (reg << 5))) // ldr x9, [xN, 0xd8]
+    {
+        return false;
+    }
+
+    // And our cmp x8, x9
+    uint32_t *cmp = ldr + 1;
+    op = *cmp;
+    if((op & 0xffffffff) != 0xeb09011f) // cmp x8, x9
+    {
+        return false;
+    }
+
+    // Then it's possible there's a load to a high reg from the stack
+    uint32_t *bcond = cmp + 1;
+    op = *bcond;
+    if((op & 0xffc003f0) == 0xf94003f0) // ldr x{16-31}, [sp, 0x...]
+    {
+        op = *++bcond;
+    }
+
+    // And finally our branch
+    if((op & 0xff00001e) != 0x54000000) // b.{eq|ne} 0x...
+    {
+        return false;
+    }
+
+    // Now that we're sure this is the right match, enforce uniqueness.
     static bool found_shared_region_root_dir = false;
     if(found_shared_region_root_dir)
     {
         panic("kpf_shared_region_root_dir: Found twice");
     }
 
-    opcode_stream[4] = 0xeb00001f; // cmp x0, x0
+    *cmp = 0xeb00001f; // cmp x0, x0
     found_shared_region_root_dir = true;
 
     puts("KPF: Found shared region root dir");
@@ -161,6 +205,22 @@ static void kpf_shared_region_root_dir_patch(xnu_pf_patchset_t *xnu_text_exec_pa
     // Doing bind mounts means the shared cache is not on the volume mounted at /.
     // XNU has a check to require that though, so we patch that out.
     //
+    // Variants we need to match against:
+    //
+    // 0xfffffff00764c998      801240f9       ldr x0, [x20, 0x20]
+    // 0xfffffff00764c99c      086c40f9       ldr x8, [x0, 0xd8]
+    // 0xfffffff00764c9a0      696f40f9       ldr x9, [x27, 0xd8]
+    // 0xfffffff00764c9a4      1f0109eb       cmp x8, x9
+    // 0xfffffff00764c9a8      a1f3ff54       b.ne 0xfffffff00764c81c
+    //
+    // 0xfffffff0080320f4      601340f9       ldr x0, [x27, 0x20]
+    // 0xfffffff0080320f8      086c40f9       ldr x8, [x0, 0xd8]
+    // 0xfffffff0080320fc      e92340f9       ldr x9, [sp, 0x40]
+    // 0xfffffff008032100      296d40f9       ldr x9, [x9, 0xd8]
+    // 0xfffffff008032104      1f0109eb       cmp x8, x9
+    // 0xfffffff008032108      f41b40f9       ldr x20, [sp, 0x30]
+    // 0xfffffff00803210c      410f0054       b.ne 0xfffffff0080322f4
+    //
     // 0xfffffff007dcabc8      001140f9       ldr x0, [x8, 0x20]
     // 0xfffffff007dcabcc      086c40f9       ldr x8, [x0, 0xd8]
     // 0xfffffff007dcabd0      e91b40f9       ldr x9, [sp, 0x30]
@@ -168,26 +228,21 @@ static void kpf_shared_region_root_dir_patch(xnu_pf_patchset_t *xnu_text_exec_pa
     // 0xfffffff007dcabd8      1f0109eb       cmp x8, x9
     // 0xfffffff007dcabdc      210f0054       b.ne 0xfffffff007dcadc0
     //
-    // /x 001040f9086c40f9e90340f9296d40f91f0109eb00000054:1ffcffffffffffffff03c0ffffffffffffffffff1e0000ff
+    // Due to the possible variants, we just match against the
+    // first two instructions and check the rest in the callback.
+    //
+    // /x 001040f9086c40f9:1ffcffffffffffff
     uint64_t matches[] =
     {
         0xf9401000, // ldr x0, [x*, 0x20]
         0xf9406c08, // ldr x8, [x0, 0xd8]
-        0xf94003e9, // ldr x9, [sp, 0x...]
-        0xf9406d29, // ldr x9, [x9, 0xd8]
-        0xeb09011f, // cmp x8, x9
-        0x54000000, // b.{eq|ne} 0x...
     };
     uint64_t masks[] =
     {
         0xfffffc1f,
         0xffffffff,
-        0xffc003ff,
-        0xffffffff,
-        0xffffffff,
-        0xff00001e,
     };
-    xnu_pf_maskmatch(xnu_text_exec_patchset, "shared_region_root_dir", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_shared_region_root_dir_callback);
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "shared_region_root_dir", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_shared_region_root_dir_callback);
 }
 
 static void kpf_bindfs_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
