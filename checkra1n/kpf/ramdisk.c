@@ -33,6 +33,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <paleinfo_legacy.h>
 
 static bool have_ramdisk = false;
 static char *rootdev_bootarg = NULL;
@@ -167,6 +168,8 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
 #endif
 }
 
+#define PINFO2PINFO1_MAP(name) { palerain_option_ ## name , palerain1_option_ ## name }
+
 static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t palera1n_flags)
 {
     if(rootdev_bootarg)
@@ -185,16 +188,51 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
             panic("Failed to reallocate ramdisk with paleinfo");
         }
 
-        struct paleinfo* pinfo_p = (struct paleinfo*)(ramdisk_buf + ramdisk_size);
-        *pinfo_p = (struct paleinfo)
-        {
-            .magic = 'PLSH',
-            .version = 2,
-            .kbase  = slide + 0xfffffff007004000,
-            .kslide = slide,
-            .flags = palera1n_flags,
+        struct new_old_info_mapping pkinfo_mapping[] = {
+            { palerain_option_bind_mount, checkrain_option_bind_mount },
+            { palerain_option_overlay, checkrain_option_overlay },
+            { palerain_option_safemode, checkrain_option_safemode },
+            { palerain_option_force_revert, checkrain_option_force_revert },
+            { 0ULL, 0U }
         };
-        snprintf(pinfo_p->rootdev, 16, "%s", rootdev);
+
+        struct new_old_info_mapping pinfo2pinfo1_mapping[] = {
+            PINFO2PINFO1_MAP(rootful),
+            PINFO2PINFO1_MAP(setup_rootful),
+            PINFO2PINFO1_MAP(rootless_livefs),
+            PINFO2PINFO1_MAP(setup_partial_root),
+            PINFO2PINFO1_MAP(jbinit_log_to_file),
+            PINFO2PINFO1_MAP(clean_fakefs),
+            { 0ULL, 0U }
+        };
+
+        uint32_t checkra1n_flags = 0;
+        for (uint8_t i = 0; pkinfo_mapping[i].old_info != 0U; i++) {
+            if (palera1n_flags & pkinfo_mapping[i].new_info)
+                checkra1n_flags |= pkinfo_mapping[i].old_info;
+        }
+
+        uint32_t palera1n1_flags = 0;
+        for (uint8_t i = 0; pinfo2pinfo1_mapping[i].old_info != 0U; i++) {
+            if (palera1n_flags & pinfo2pinfo1_mapping[i].new_info)
+                palera1n1_flags |= pinfo2pinfo1_mapping[i].old_info;
+        }
+
+        *(struct kerninfo*)(ramdisk_buf + ramdisk_size) = (struct kerninfo)
+        {
+            .size  = sizeof(struct kerninfo),
+            .base  = slide + 0xfffffff007004000,
+            .slide = slide,
+            .flags = checkra1n_flags,
+        };
+
+        struct paleinfo1* pinfo1_p = (struct paleinfo1*)(ramdisk_buf + ramdisk_size+ 0x1000);
+        *pinfo1_p = (struct paleinfo1){
+            .magic = PALEINFO_MAGIC,
+            .version = 1,
+            .flags = palera1n1_flags,
+        };
+        snprintf(pinfo1_p->rootdev, 16, "%s", rootdev);
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
         ramdisk_size += 0x10000;
