@@ -10,14 +10,12 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: macos-latest
     steps:
-      - name: Install toolchain
-        run: |
-          echo 'deb https://assets.checkra.in/debian /' | sudo tee /etc/apt/sources.list.d/checkra1n.list
-          sudo apt-key adv --fetch-keys https://assets.checkra.in/debian/archive.key
-          sudo apt-get update
-          sudo apt-get install -y ld64 cctools-strip
+      - name: Install Procursus
+        uses: dhinakg/procursus-action@main
+        with:
+          packages: make
       - name: Voodoo magic
         id: voodoo
         uses: actions/cache@v2
@@ -40,7 +38,7 @@ jobs:
           git reset --hard origin/$(git branch --show-current)
           git submodule update --recursive --remote
       - name: Compile
-        run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make all
+        run: gmake all -j$(sysctl -n hw.ncpu)
       - name: Archive
         uses: actions/upload-artifact@v2
         with:
@@ -49,4 +47,3 @@ jobs:
             build/checkra1n-kpf-pongo
             build/Pongo
             build/Pongo.bin
-            build/PongoConsolidated.bin
