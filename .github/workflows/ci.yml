@@ -41,7 +41,7 @@ jobs:
           git submodule update --recursive --remote
       - name: Compile
         run: |
-          EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' DEV_BUILD=1 make build/checkra1n-kpf-pongo -j$(nproc)
+          EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make build/checkra1n-kpf-pongo -j$(nproc)
       - name: Upload artifact
         uses: wangyucode/sftp-upload-action@v1.4.8
         with:
