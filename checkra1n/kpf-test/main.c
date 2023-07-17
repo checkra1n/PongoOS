@@ -48,6 +48,9 @@
 #   include <pthread.h>
 #endif
 
+#include <paleinfo.h>
+extern palerain_option_t palera1n_flags;
+
 #define SWAP32(x) (((x & 0xff000000) >> 24) | ((x & 0xff0000) >> 8) | ((x & 0xff00) << 8) | ((x & 0xff) << 24))
 
 #define MACH_MAGIC   MH_MAGIC_64
@@ -417,6 +420,8 @@ static void __attribute__((noreturn)) process_kernel(int fd)
     printf("Kernel at 0x%llx, entry at 0x%llx", (uint64_t)mem, (uint64_t)gEntryPoint);
 
     module_entry();
+    // jsut for testing
+    palera1n_flags |= palerain_option_rootful;
     preboot_hook();
 
     exit(0);

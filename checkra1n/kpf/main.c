@@ -37,7 +37,7 @@
 #include <xnu/xnu.h>
 
 uint32_t offsetof_p_flags;
-static palerain_option_t palera1n_flags;
+palerain_option_t palera1n_flags;
 
 #if 0
         // AES, sigh
@@ -1163,8 +1163,13 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
     }
 
-    // if(palera1n_flags & palerain_option_rootful)
-    {   
+    if(
+#ifdef DEV_BUILD
+       gKernelVersion.darwinMajor <= 22 && // this patch is not used on ios 17.
+#endif
+       palera1n_flags & palerain_option_rootful // this patch is not required on rootless
+       )
+    {
         // This patch is not required on rootless, but it is nice to have as still as some
         // actions over SSH would not be possible without it.
         // when mounting an apfs volume, there is a check to make sure the volume is not read/write
