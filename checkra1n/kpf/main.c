@@ -1036,6 +1036,7 @@ bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
 }
 #endif
 
+bool has_found_apfs_vfsop_mount = false;
 bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     if (!opcode_stream) {
         printf("Missing patch: apfs_vfsop_mount\n");
@@ -1047,6 +1048,7 @@ bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     }
 
     *tbnz = 0x52800000; /* mov w0, 0 */
+    has_found_apfs_vfsop_mount = true;
     
     printf("KPF: found apfs_vfsop_mount\n");
     
@@ -1163,12 +1165,11 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
     }
 
+#if !__STDC_HOSTED__
     if(
-#ifdef DEV_BUILD
-       gKernelVersion.darwinMajor <= 22 && // this patch is not used on ios 17.
-#endif
        palera1n_flags & palerain_option_rootful // this patch is not required on rootless
        )
+#endif
     {
         // This patch is not required on rootless, but it is nice to have as still as some
         // actions over SSH would not be possible without it.
@@ -1196,6 +1197,9 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         !have_union
 #ifndef DEV_BUILD
         && (palera1n_flags & palerain_option_rootful) != 0
+#endif
+#if __STDC_HOSTED__
+	&& gKernelVersion.darwinMajor <= 22 // this patch is not used on ios 17.
 #endif
     ,(void *)kpf_apfs_vfsop_mount);
         
@@ -1986,6 +1990,18 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
     if (!kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
+    if (!has_found_apfs_vfsop_mount && rootvp_string_match != NULL) {
+#if __STDC_HOSTED__
+    if (gKernelVersion.darwinMajor <= 22) {
+        puts("Missing patch: apfs_vfsop_mount");
+    } else
+#endif
+      if (palera1n_flags & palerain_option_rootful) {
+        panic("Missing patch: apfs_vfsop_mount");
+      } else {
+        puts("Missing patch: apfs_vfsop_mount");
+      }
+    }
 
     uint32_t delta = (&shellcode_area[1]) - amfi_ret;
     delta &= 0x03ffffff;

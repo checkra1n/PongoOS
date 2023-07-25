@@ -420,8 +420,6 @@ static void __attribute__((noreturn)) process_kernel(int fd)
     printf("Kernel at 0x%llx, entry at 0x%llx", (uint64_t)mem, (uint64_t)gEntryPoint);
 
     module_entry();
-    // jsut for testing
-    palera1n_flags |= palerain_option_rootful;
     preboot_hook();
 
     exit(0);
