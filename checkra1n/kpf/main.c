@@ -1165,15 +1165,14 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
     }
 
-#if !__STDC_HOSTED__
+#ifndef DEV_BUILD
     if(
        palera1n_flags & palerain_option_rootful // this patch is not required on rootless
        )
 #endif
     {
-        // This patch is not required on rootless, but it is nice to have as still as some
-        // actions over SSH would not be possible without it.
-        // when mounting an apfs volume, there is a check to make sure the volume is not read/write
+        // when mounting an apfs volume, there is a check to make sure the volume is
+        // not both root volume and read/write
         // we just nop the check out
         // example from iPad 6 16.1.1:
         // 0xfffffff0064023a8      e8b340b9       ldr w8, [sp, 0xb0]  ; 5
@@ -1195,11 +1194,10 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         xnu_pf_maskmatch(patchset,
             "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t),
         !have_union
-#ifndef DEV_BUILD
-        && (palera1n_flags & palerain_option_rootful) != 0
-#endif
-#if __STDC_HOSTED__
+#ifdef DEV_BUILD
 	&& gKernelVersion.darwinMajor <= 22 // this patch is not used on ios 17.
+#else
+        && (palera1n_flags & palerain_option_rootful) != 0
 #endif
     ,(void *)kpf_apfs_vfsop_mount);
         
