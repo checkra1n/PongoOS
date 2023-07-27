@@ -60,7 +60,7 @@ jobs:
           dpkg --add-architecture arm64
           apt-get update
           apt-get -y --allow-downgrades dist-upgrade
-          apt-get install -y build-essential git libc6:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld
+          apt-get install -y build-essential git libc6:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld xz-utils curl
 
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -70,3 +70,14 @@ jobs:
       - name: Compile KPF test
         run:
           make -C checkra1n/kpf-test KPF_CFLAGS="-target aarch64-linux-gnu -L/usr/aarch64-linux-gnu/lib -I/usr/aarch64-linux-gnu/include -L/usr/lib/gcc-cross/aarch64-linux-gnu/*" kpf-test.linux
+
+      - name: Get kernels
+        run: |
+          curl -LOu ${{ secrets.ACTIONS_RESOURCES_LOGIN }} https://static.palera.in/action-resources/kc.tar.xz
+          xz -cdT 0 kc.tar.xz | tar -x
+      
+      - name: Test KPF
+        run: |
+          for k in ./kernel/xnu-*; do
+            qemu-aarch64 ./checkra1n/kpf-test/kpf-test.linux "${k}";
+          done
