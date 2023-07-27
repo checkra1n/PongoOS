@@ -31,6 +31,7 @@
 #include <stdio.h>              // fopen, fclose, ftell, fseek, fflush, fprintf, stdin, stdout, stderr
 #include <stdlib.h>             // malloc, free
 #include <string.h>             // memset, strcmp, strerror
+#include <inttypes.h>           // PRI*
 
 #define LOG(str, ...) do { fprintf(stderr, str "\n", ##__VA_ARGS__); } while(0)
 
