@@ -60,7 +60,7 @@ jobs:
           dpkg --add-architecture arm64
           apt-get update
           apt-get -y --allow-downgrades dist-upgrade
-          apt-get install -y build-essential git libc6:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld xz-utils curl
+          apt-get install -y build-essential git libc6:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld curl xz-utils
 
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -79,5 +79,6 @@ jobs:
       - name: Test KPF
         run: |
           for k in ./kernel/xnu-*; do
+            echo "${k}";
             qemu-aarch64 ./checkra1n/kpf-test/kpf-test.linux "${k}";
           done

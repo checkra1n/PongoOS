@@ -114,16 +114,20 @@ extern void (*preboot_hook)(void);
 
 void realpanic(const char *str, ...)
 {
-    char *ptr = NULL;
     va_list va;
+#ifdef __APPLE__
+    char *ptr = NULL;
 
     va_start(va, str);
     vasprintf(&ptr, str, va);
     va_end(va);
-
-#ifdef __APPLE__
     panic(ptr);
 #else
+    printf("panic: ");
+    va_start(va, str);
+    vprintf(str, va);
+    va_end(va);
+    printf("\n");
     abort();
 #endif
 }
