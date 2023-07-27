@@ -108,7 +108,7 @@ uint32_t* follow_call(uint32_t *from)
     uint32_t op = *from;
     if((op & 0x7c000000) != 0x14000000)
     {
-        DEVLOG("follow_call 0x%llx is not B or BL", xnu_ptr_to_va(from));
+        DEVLOG("follow_call 0x%" PRIx64 " is not B or BL", xnu_ptr_to_va(from));
         return NULL;
     }
     uint32_t *target = from + sxt32(op, 26);
@@ -123,7 +123,7 @@ uint32_t* follow_call(uint32_t *from)
         uint64_t ptr = *(uint64_t*)(page + ((((uint64_t)target[1] >> 10) & 0xfffULL) << 3));
         target = xnu_va_to_ptr(kext_rebase_va(ptr));
     }
-    DEVLOG("followed call from 0x%llx to 0x%llx", xnu_ptr_to_va(from), xnu_ptr_to_va(target));
+    DEVLOG("followed call from 0x%" PRIx64 " to 0x%" PRIx64 "", xnu_ptr_to_va(from), xnu_ptr_to_va(target));
     return target;
 }
 
@@ -253,13 +253,13 @@ bool kpf_mac_dounmount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_str
         (mov[-2]&0xFFE0FFFF) == 0xAA0003E0 && // MOV X0, Xn
         (mov[-1]&0xFC000000) == 0x94000000) { // BL vnode_getparent
 #if DEBUG_DOUNMOUNT
-        DEVLOG("Dounmount match for call to vnode_getparent at 0x%llx", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)));
+        DEVLOG("Dounmount match for call to vnode_getparent at 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)));
 #endif
         parent_rn = *mov&0x1f;
     }
 
 #if DEBUG_DOUNMOUNT
-    DEVLOG("Dounmount tenative match at 0x%llx", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)));
+    DEVLOG("Dounmount tenative match at 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)));
 #endif
 
     // Check that we have code to release parent_vnode below
@@ -271,7 +271,7 @@ bool kpf_mac_dounmount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_str
         return false;
     }
 #if DEBUG_DOUNMOUNT
-    DEVLOG("Dounmount testing parent lock at 0x%llx", xnu_rebase_va(xnu_ptr_to_va(parent_lock)));
+    DEVLOG("Dounmount testing parent lock at 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(parent_lock)));
 #endif
 
     uint32_t* call;
@@ -403,7 +403,7 @@ static bool kpf_vm_map_protect_branch_short(struct xnu_pf_patch *patch, uint32_t
 
 static bool kpf_vm_map_protect_inline(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
-    DEVLOG("vm_map_protect candidate at 0x%llx", xnu_ptr_to_va(opcode_stream));
+    DEVLOG("vm_map_protect candidate at 0x%" PRIx64 "", xnu_ptr_to_va(opcode_stream));
 
     // Match all possible combo and adjust index to the "csel"
     uint32_t idx = 2;
@@ -578,7 +578,7 @@ bool vm_fault_enter_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
         DEVLOG("vm_fault_enter_callback: already ran, skipping...");
         return false;
     }
-    DEVLOG("Trying vm_fault_enter at 0x%llx", xnu_ptr_to_va(opcode_stream));
+    DEVLOG("Trying vm_fault_enter at 0x%" PRIx64 "", xnu_ptr_to_va(opcode_stream));
     // Should be followed by a TB(N)Z Wx, #2 shortly
     if (!find_next_insn(opcode_stream, 0x18, 0x36100000, 0xFEF80000)) {
         // Wrong place...
@@ -613,7 +613,7 @@ bool vm_fault_enter_callback14(struct xnu_pf_patch* patch, uint32_t* opcode_stre
         DEVLOG("vm_fault_enter_callback: already ran, skipping...");
         return false;
     }
-    DEVLOG("Trying vm_fault_enter at 0x%llx", xnu_ptr_to_va(opcode_stream));
+    DEVLOG("Trying vm_fault_enter at 0x%" PRIx64 "", xnu_ptr_to_va(opcode_stream));
     // r2 /x
     // Make sure this was preceded by a "tbz w[16-31], 2, ..." that jumps to the code we're currently looking at
     uint32_t *tbz = find_prev_insn(opcode_stream, 0x18, 0x36100010, 0xfff80010);
@@ -757,7 +757,7 @@ bool vnode_lookup_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
         (try[1]&0xFC000000) != 0x94000000 ||    // BL _sfree
         (try[3]&0xFF000000) != 0xB4000000 ||    // CBZ
         (try[4]&0xFC000000) != 0x94000000 ) {   // BL _vnode_put
-        DEVLOG("Failed match of vnode_lookup code at 0x%llx", kext_rebase_va(xnu_ptr_to_va(opcode_stream)));
+        DEVLOG("Failed match of vnode_lookup code at 0x%" PRIx64 "", kext_rebase_va(xnu_ptr_to_va(opcode_stream)));
         return false;
     }
     puts("KPF: Found vnode_lookup");
@@ -1002,7 +1002,7 @@ bool kpf_personalized_root_hash(struct xnu_pf_patch *patch, uint32_t *opcode_str
         
     uint64_t addr_success = xnu_ptr_to_va(success_stream);
 
-    DEVLOG("addrs: success is 0x%llx, fail is 0x%llx, target is 0x%llx", addr_success, xnu_ptr_to_va(cbz_fail), addr_fail);
+    DEVLOG("addrs: success is 0x%" PRIx64 ", fail is 0x%" PRIx64 ", target is 0x%" PRIx64 "", addr_success, xnu_ptr_to_va(cbz_fail), addr_fail);
         
     uint32_t branch_success = 0x14000000 | (((addr_success - addr_fail) >> 2) & 0x03ffffff);
         
@@ -1231,7 +1231,7 @@ bool kpf_amfi_sha1(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
 }
 
 void kpf_find_offset_p_flags(uint32_t *proc_issetugid) {
-    DEVLOG("Found kpf_find_offset_p_flags 0x%llx", xnu_ptr_to_va(proc_issetugid));
+    DEVLOG("Found kpf_find_offset_p_flags 0x%" PRIx64 "", xnu_ptr_to_va(proc_issetugid));
     if (!proc_issetugid) {
         panic("kpf_find_offset_p_flags called with no argument");
     }
@@ -1980,9 +1980,9 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!has_found_sbops) panic("no sbops?");
     if (!amfi_ret) panic("no amfi_ret?");
     if (!vnode_lookup) panic("no vnode_lookup?");
-    DEVLOG("Found vnode_lookup: 0x%llx", xnu_rebase_va(xnu_ptr_to_va(vnode_lookup)));
+    DEVLOG("Found vnode_lookup: 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(vnode_lookup)));
     if (!vnode_put) panic("no vnode_put?");
-    DEVLOG("Found vnode_put: 0x%llx", xnu_rebase_va(xnu_ptr_to_va(vnode_put)));
+    DEVLOG("Found vnode_put: 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(vnode_put)));
     if (offsetof_p_flags == -1) panic("no p_flags?");
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
@@ -2128,7 +2128,7 @@ static void kpf_cmd(const char *cmd, char *args)
     }
 
     tick_1 = get_ticks();
-    printf("KPF: Applied patchset in %llu ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
+    printf("KPF: Applied patchset in %" PRIu64 " ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
 }
 
 static void set_flags(char *args, palerain_option_t *flags, const char *name)
@@ -2136,12 +2136,12 @@ static void set_flags(char *args, palerain_option_t *flags, const char *name)
     if(args[0] != '\0')
     {
         palerain_option_t val = strtoul(args, NULL, 16);
-        printf("Setting %s to 0x%016llx\n", name, val);
+        printf("Setting %s to 0x%016" PRIx64 "\n", name, val);
         *flags = val;
     }
     else
     {
-        printf("%s: 0x%016llx\n", name, *flags);
+        printf("%s: 0x%016" PRIx64 "\n", name, *flags);
     }
 }
 

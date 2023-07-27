@@ -53,7 +53,7 @@ void modload_cmd() {
                         if (lc->cmd == LC_SEGMENT_64) {
                             segmentCount++;
                             struct segment_command_64 * sg = (struct segment_command_64*) lc;
-                            //iprintf("found %s, vmaddr %llx, vmsz %llx, fileoff %llx, filesize %llx\n", sg->segname, sg->vmaddr, sg->vmsize, sg->fileoff, sg->filesize);
+                            //iprintf("found %s, vmaddr %" PRIx64 ", vmsz %" PRIx64 ", fileoff %" PRIx64 ", filesize %" PRIx64 "\n", sg->segname, sg->vmaddr, sg->vmsize, sg->fileoff, sg->filesize);
                             if (sg->vmaddr < base_vmaddr) base_vmaddr = sg->vmaddr;
                             if (sg->fileoff + sg->filesize > filesz_expected)
                                 filesz_expected = sg->fileoff + sg->filesize;
@@ -67,7 +67,7 @@ void modload_cmd() {
                         lc = (struct load_command*)(((char*)lc) + lc->cmdsize);
                     }
                     vmsz_needed -= base_vmaddr;
-                    //iprintf("need %llx, got %llx\n", filesz_expected, loader_xfer_recv_count);
+                    //iprintf("need %" PRIx64 ", got %" PRIx64 "\n", filesz_expected, loader_xfer_recv_count);
                     if (!(filesz_expected > loader_xfer_recv_count)) {
                         uint64_t entrypoint = 0;
                         uint8_t * allocto = alloc_contig((vmsz_needed + 0x3FFF) & ~0x3FFF);
@@ -77,7 +77,7 @@ void modload_cmd() {
                         module->vm_end = vma_base + vmsz_needed;
                         uint32_t segmentIndex = 0;
                         
-                        //iprintf("need vm %llx, got %p, base %llx\n", vmsz_needed, allocto, base_vmaddr);
+                        //iprintf("need vm %" PRIx64 ", got %p, base %" PRIx64 "\n", vmsz_needed, allocto, base_vmaddr);
                         struct load_command* lc = (struct load_command*) (mh + 1);
                         for (int i=0; i<mh->ncmds; i++) {
                             if (lc->cmd == LC_SEGMENT_64) {
@@ -98,7 +98,7 @@ void modload_cmd() {
                                 info->prot = prots;
 
                                 for (uint32_t page = 0; page < sg->vmsize; page += PAGE_SIZE) {
-                                    //fiprintf(stderr, "mapping %llx (%llx, %llx), %x\n", vma_base + page + sg->vmaddr - base_vmaddr, sg->vmaddr, sg->vmsize, prots);
+                                    //fiprintf(stderr, "mapping %" PRIx64 " (%" PRIx64 ", %" PRIx64 "), %x\n", vma_base + page + sg->vmaddr - base_vmaddr, sg->vmaddr, sg->vmsize, prots);
                                     uint64_t ppage = vatophys((uint64_t)(allocto + page + sg->vmaddr - base_vmaddr));
                                     vm_space_map_page_physical_prot(&kernel_vm_space, vma_base + page + sg->vmaddr - base_vmaddr, ppage, prots | PROT_KERN_ONLY);
                                 }

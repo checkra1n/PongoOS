@@ -222,7 +222,7 @@ static uint32_t kpf_overlay_emit(uint32_t *shellcode_area)
     int64_t patch_off = shellcode_addr - patchpoint_addr;
     if(orig_off > 0x7fffffcLL || orig_off < -0x8000000LL || new_off > 0x7fffffcLL || new_off < -0x8000000LL || patch_off > 0x7fffffcLL || patch_off < -0x8000000LL)
     {
-        panic("kdi_patch jump too far: 0x%llx/0x%llx/0x%llx", orig_off, new_off, patch_off);
+        panic("kdi_patch jump too far: 0x%" PRIx64 "/0x%" PRIx64 "/0x%" PRIx64 "", orig_off, new_off, patch_off);
     }
 
     memcpy(shellcode_area, kdi_shc, (uintptr_t)kdi_shc_end - (uintptr_t)kdi_shc);

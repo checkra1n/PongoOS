@@ -30,7 +30,7 @@
 
 void print_register(uint64_t value)
 {
-    iprintf("0x%016llx\n", value);
+    iprintf("0x%016" PRIx64 "\n", value);
 }
 
 void command_puts(const char* c)

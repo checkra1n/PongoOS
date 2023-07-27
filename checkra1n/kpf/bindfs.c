@@ -318,7 +318,7 @@ static uint32_t kpf_bindfs_emit(uint32_t *shellcode_area)
         patch_off > 0x7fffffcLL || patch_off < -0x8000000LL
     )
     {
-        panic("fsctl_patch jump too far: 0x%llx/0x%llx/0x%llx/0x%llx/0x%llx", open_off, close_off, bl_off, b_off, patch_off);
+        panic("fsctl_patch jump too far: 0x%" PRIx64 "/0x%" PRIx64 "/0x%" PRIx64 "/0x%" PRIx64 "/0x%" PRIx64 "", open_off, close_off, bl_off, b_off, patch_off);
     }
 
     memcpy(shellcode_area, fsctl_shc, (uintptr_t)fsctl_shc_end - (uintptr_t)fsctl_shc);

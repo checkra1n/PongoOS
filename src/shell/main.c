@@ -153,7 +153,7 @@ void peek_cmd(const char* cmd, char* args) {
 
     uint64_t addr = strtoull(args, NULL, 16);
     uint32_t rv = *((uint32_t*)addr);
-    iprintf("0x%llx: %x (%x %x %x %x)\n", (uint64_t)addr, rv, rv&0xff, (rv>>8)&0xff, (rv>>16)&0xff, (rv>>24)&0xff);
+    iprintf("0x%" PRIx64 ": %x (%x %x %x %x)\n", (uint64_t)addr, rv, rv&0xff, (rv>>8)&0xff, (rv>>16)&0xff, (rv>>24)&0xff);
 }
 void poke_cmd(const char* cmd, char* args) {
     if (! *args) {
@@ -167,7 +167,7 @@ void poke_cmd(const char* cmd, char* args) {
     }
     uint64_t addr = strtoull(args, NULL, 16);
     uint32_t value = strtoul(arg1, NULL, 16);
-    iprintf("writing %x @ 0x%llx\n", value, addr);
+    iprintf("writing %x @ 0x%" PRIx64 "\n", value, addr);
     *((uint32_t*)addr) = value;
 }
 

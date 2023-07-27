@@ -1,2 +1,5 @@
 /kpf-test.ios
 /kpf-test.macos
+/kpf-test.linux
+shellcode_S_linux.S
+xnu_S_linux.S

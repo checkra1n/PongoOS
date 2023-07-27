@@ -63,9 +63,9 @@ void panic(const char* str, ...) {
     for(uint64_t *fp = __builtin_frame_address(0); fp; fp = (uint64_t*)fpcopy[0])
     {
         if (memcpy_trap(fpcopy, fp, 0x10) == 0x10) {
-            iprintf("0x%016llx: fp 0x%016llx, lr 0x%016llx\n", ((uint64_t)fp), fpcopy[0], fpcopy[1]);
+            iprintf("0x%016" PRIx64 ": fp 0x%016" PRIx64 ", lr 0x%016" PRIx64 "\n", ((uint64_t)fp), fpcopy[0], fpcopy[1]);
         } else {
-            iprintf("couldn't access frame at %016llx, stopping here..,\n", (uint64_t)fp);
+            iprintf("couldn't access frame at %016" PRIx64 ", stopping here..,\n", (uint64_t)fp);
             break;
         }
         depth++;

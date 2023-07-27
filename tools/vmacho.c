@@ -471,7 +471,7 @@ int main(int argc, const char **argv)
     {
         if((uintptr_t)cmd + sizeof(*cmd) > (uintptr_t)end || (uintptr_t)cmd + cmd->cmdsize > (uintptr_t)end || (uintptr_t)cmd + cmd->cmdsize < (uintptr_t)cmd)
         {
-            LOG("Bad LC: 0x%llx", (unsigned long long)((uintptr_t)cmd - ufile));
+            LOG("Bad LC: 0x%" PRIx64 "", (unsigned long long)((uintptr_t)cmd - ufile));
             goto out;
         }
 
@@ -505,7 +505,7 @@ int main(int argc, const char **argv)
         uint64_t off = fileoff + size;
         if(off > flen || off < fileoff)
         {
-            LOG("Bad segment: 0x%llx", (unsigned long long)((uintptr_t)cmd - ufile));
+            LOG("Bad segment: 0x%" PRIx64 "", (unsigned long long)((uintptr_t)cmd - ufile));
             goto out;
         }
 
@@ -522,7 +522,7 @@ int main(int argc, const char **argv)
     }
     if(highest < lowest)
     {
-        LOG("Bad memory layout, lowest: 0x%llx, highest: 0x%llx", (unsigned long long)lowest, (unsigned long long)highest);
+        LOG("Bad memory layout, lowest: 0x%" PRIx64 ", highest: 0x%" PRIx64 "", (unsigned long long)lowest, (unsigned long long)highest);
         goto out;
     }
     mlen = (size_t)(highest - lowest);
@@ -609,7 +609,7 @@ int main(int argc, const char **argv)
     }
     fflush(outfile); // In case of stdout
 
-    LOG("Done, base address: 0x%llx", (unsigned long long)lowest);
+    LOG("Done, base address: 0x%" PRIx64 "", (unsigned long long)lowest);
     retval = 0;
 
 out:;

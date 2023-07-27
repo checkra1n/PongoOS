@@ -1864,7 +1864,7 @@ void usb_init(void)
 {
     dt_node_t *chosen = dt_get("/chosen");
     char *srnm = NULL;
-    asprintf(&srnm, "CPID:%04X BDID:%02X ECID:%016llX SRTG:[%s]", socnum, dt_node_u32(chosen, "board-id", 0), dt_node_u64(chosen, "unique-chip-id", 0), "PongoOS-" PONGO_VERSION);
+    asprintf(&srnm, "CPID:%04X BDID:%02X ECID:%016" PRIx64 " SRTG:[%s]", socnum, dt_node_u32(chosen, "board-id", 0), dt_node_u64(chosen, "unique-chip-id", 0), "PongoOS-" PONGO_VERSION);
     string_descriptors[iSerialNumber] = srnm;
 
     gSynopsysOTGBase = 0;

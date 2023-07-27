@@ -67,7 +67,7 @@ int main(void)
     if(addr_check != addr || size_check != 0x4000)
     {
         printf("Bad addr/size returned from mach_vm_region_recurse!\n");
-        printf("Want 0x%llx/0x%llx, have 0x%llx/0x%llx\n", addr, 0x4000ULL, addr_check, size_check);
+        printf("Want 0x%" PRIx64 "/0x%" PRIx64 ", have 0x%" PRIx64 "/0x%" PRIx64 "\n", addr, 0x4000ULL, addr_check, size_check);
         return -1;
     }
 

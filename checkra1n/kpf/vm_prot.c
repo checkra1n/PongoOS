@@ -79,7 +79,7 @@ static bool kpf_aprr_callback(struct xnu_pf_patch *patch, uint32_t *opcode_strea
         )
     )
     {
-        DEVLOG("Ignoring APRR load from thread state at 0x%llx", xnu_ptr_to_va(opcode_stream));
+        DEVLOG("Ignoring APRR load from thread state at 0x%" PRIx64 "", xnu_ptr_to_va(opcode_stream));
         return false;
     }
     // 2. Immediates of two forms:

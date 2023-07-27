@@ -38,7 +38,7 @@
 
 #ifdef DEV_BUILD
 #   define DEVLOG(msg, ...) do { printf(msg "\n", ##__VA_ARGS__); } while(0)
-#   define panic_at(addr, msg, ...) do { panic(msg " (0x%llx)", ##__VA_ARGS__, xnu_ptr_to_va((addr))); } while(0)
+#   define panic_at(addr, msg, ...) do { panic(msg " (0x%" PRIx64 ")", ##__VA_ARGS__, xnu_ptr_to_va((addr))); } while(0)
 #else
 #   define DEVLOG(msg, ...) do {} while (0)
 #   define panic_at(addr, msg, ...) do { (void)(addr); panic(msg, ##__VA_ARGS__); } while (0)

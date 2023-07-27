@@ -287,7 +287,7 @@ volatile char is_in_exception;
 void print_state(uint64_t* state) {
     task_critical_enter();
     for (int i=0; i<31; i++) {
-        fiprintf(stderr, "X%d: %s0x%016llx ", i, i < 10 ? " " : "", state[i]);
+        fiprintf(stderr, "X%d: %s0x%016" PRIx64 " ", i, i < 10 ? " " : "", state[i]);
         if (i == 30) break;
         if ((i & 1) == 1) {
             if ((i & 3) == 3) {
@@ -298,12 +298,12 @@ void print_state(uint64_t* state) {
             }
         }
     }
-    fiprintf(stderr, "SP:  0x%016llx\n", state[0x118/8]);
-    fiprintf(stderr, "ESR: 0x%016llx ", state[0xf8/8]);
-    fiprintf(stderr, "ELR: 0x%016llx ", state[0x100/8]);
+    fiprintf(stderr, "SP:  0x%016" PRIx64 "\n", state[0x118/8]);
+    fiprintf(stderr, "ESR: 0x%016" PRIx64 " ", state[0xf8/8]);
+    fiprintf(stderr, "ELR: 0x%016" PRIx64 " ", state[0x100/8]);
     fflush(stderr);
     screen_putc('\n'); // avoid word wrap on screen
-    fiprintf(stderr, "FAR: 0x%016llx ", state[0x108/8]);
+    fiprintf(stderr, "FAR: 0x%016" PRIx64 " ", state[0x108/8]);
     fiprintf(stderr, "CPSR:        0x%08llx\n", state[0x110/8]);
 
     struct task *t = task_current();
@@ -313,15 +313,15 @@ void print_state(uint64_t* state) {
         fiprintf(stderr, "skipping call stack due to fault in critical section\n");
     } else {
         fiprintf(stderr, "Call stack:\n");
-        fiprintf(stderr, "         registers: fp 0x%016llx, lr 0x%016llx\n", state[29], state[30]);
+        fiprintf(stderr, "         registers: fp 0x%016" PRIx64 ", lr 0x%016" PRIx64 "\n", state[29], state[30]);
         int depth = 0;
         uint64_t fpcopy[2];
         for(uint64_t *fp = (uint64_t*)state[29]; fp; fp = (uint64_t*)fpcopy[0])
         {
             if (memcpy_trap(fpcopy, fp, 0x10) == 0x10) {
-                fiprintf(stderr, "0x%016llx: fp 0x%016llx, lr 0x%016llx\n", ((uint64_t)fp), fpcopy[0], fpcopy[1]);
+                fiprintf(stderr, "0x%016" PRIx64 ": fp 0x%016" PRIx64 ", lr 0x%016" PRIx64 "\n", ((uint64_t)fp), fpcopy[0], fpcopy[1]);
             } else {
-                fiprintf(stderr, "couldn't access frame at %016llx, stopping here..,\n", (uint64_t)fp);
+                fiprintf(stderr, "couldn't access frame at %016" PRIx64 ", stopping here..,\n", (uint64_t)fp);
                 break;
             }
             depth++;

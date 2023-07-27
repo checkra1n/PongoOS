@@ -55,12 +55,12 @@ static void tz_command(const char* cmd, char* args) {
     real[2] = ( (uint64_t)raw[2]      << shift) + 0x800000000ULL;
     real[3] = (((uint64_t)raw[3] + 1) << shift) + 0x800000000ULL;
     iprintf("TZ0 (%s):\n"
-            "    base: %x (%llx)\n"
-            "    end:  %x (%llx)\n"
+            "    base: %x (%" PRIx64 ")\n"
+            "    end:  %x (%" PRIx64 ")\n"
             "\n"
             "TZ1 (%s):\n"
-            "    base: %x (%llx)\n"
-            "    end:  %x (%llx)\n"
+            "    base: %x (%" PRIx64 ")\n"
+            "    end:  %x (%" PRIx64 ")\n"
             "\n",
             gTZRegbase[4] ? "locked" : "unlocked",
             raw[0], real[0],

@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <strings.h>
 #include <paleinfo.h>
+#include <inttypes.h>
 
 #ifdef PONGO_PRIVATE
 #include "framebuffer/fb.h"

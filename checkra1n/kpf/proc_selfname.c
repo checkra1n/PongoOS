@@ -57,7 +57,7 @@ static bool kpf_proc_selfname_callback(struct xnu_pf_patch *patch, uint32_t *opc
     puts("KPF: Found proc_selfname");
     proc_selfname = start;
 #ifdef DEV_BUILD
-    printf("proc_selfname 0x%016llx\n", xnu_ptr_to_va(proc_selfname));
+    printf("proc_selfname 0x%016" PRIx64 "\n", xnu_ptr_to_va(proc_selfname));
 #endif
     return true;
 }

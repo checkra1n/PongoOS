@@ -120,7 +120,7 @@ static void kpf_ramdisk_rootdev_cmd(const char *cmd, char *args) {
         
         memset(root_matching, 0x0, 0x100);
         memcpy(root_matching, str, 0x100);
-        printf("set new entry: %016llx: BSD Name: %s\n", (uint64_t)root_matching, args);
+        printf("set new entry: %016" PRIx64 ": BSD Name: %s\n", (uint64_t)root_matching, args);
     } else {
         size_t max_fs_entries_len = 0;
         dt_node_t* fstab = dt_find(gDeviceTree, "fstab");
@@ -128,7 +128,7 @@ static void kpf_ramdisk_rootdev_cmd(const char *cmd, char *args) {
         uint32_t* max_fs_entries = dt_prop(fstab, "max_fs_entries", &max_fs_entries_len);
         if (!max_fs_entries) panic("invalid devicetree: no prop!");
         uint32_t* patch = (uint32_t*)max_fs_entries;
-        printf("fstab max_fs_entries: %016llx: %08x\n", (uint64_t)max_fs_entries, patch[0]);
+        printf("fstab max_fs_entries: %016" PRIx64 ": %08x\n", (uint64_t)max_fs_entries, patch[0]);
         dt_node_t* baseband = dt_find(gDeviceTree, "baseband");
 
         if (baseband) partid = patch[0] + 1U;
@@ -138,7 +138,7 @@ static void kpf_ramdisk_rootdev_cmd(const char *cmd, char *args) {
         snprintf(str, 0x100, "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key><dict><key>Partition ID</key><integer>%u</integer></dict></dict>", partid);
         memset(root_matching, 0x0, 0x100);
         memcpy(root_matching, str, 0x100);
-        printf("set new entry: %016llx: Partition ID: %u\n", (uint64_t)root_matching, partid);
+        printf("set new entry: %016" PRIx64 ": Partition ID: %u\n", (uint64_t)root_matching, partid);
     }
 }
 
