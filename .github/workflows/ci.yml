@@ -49,3 +49,24 @@ jobs:
           dryRun: false
           localDir: 'upload'
           remoteDir: "/palera1n/artifacts/kpf/${{ steps.branch-name.outputs.ref_branch || github.ref }}"
+
+  test:
+    runs-on: ubuntu-22.04
+    container:
+      image: debian:stable
+    steps:
+      - name: Install packages
+        run: |
+          dpkg --add-architecture arm64
+          apt-get update
+          apt-get -y --allow-downgrades dist-upgrade
+          apt-get install -y build-essential git libc6:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld
+
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+        
+      - name: Compile KPF test
+        run:
+          make -C checkra1n/kpf-test KPF_CFLAGS="-target aarch64-linux-gnu -L/usr/aarch64-linux-gnu/lib -I/usr/aarch64-linux-gnu/include -L/usr/lib/gcc-cross/aarch64-linux-gnu/*" kpf-test.linux
