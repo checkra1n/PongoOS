@@ -1826,21 +1826,18 @@ static void kpf_cmd(const char *cmd, char *args)
     xnu_pf_patchset_t* apfs_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     struct mach_header_64* apfs_header = xnu_pf_get_kext_header(hdr, "com.apple.filesystems.apfs");
     xnu_pf_range_t* apfs_text_exec_range = xnu_pf_section(apfs_header, "__TEXT_EXEC", "__text");
-    //xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
+    xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
 
     const char rootvp_string[] = "rootvp not authenticated after mounting";
     const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
-#if 0
+
     const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
     if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1);
-#endif
 
 #ifdef DEV_BUILD
-#if 0
     // 15.0 beta 1 onwards, but only iOS/iPadOS
     if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
-#endif
 #endif
 
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
@@ -1911,12 +1908,22 @@ static void kpf_cmd(const char *cmd, char *args)
     }
 
     kpf_apfs_patches(apfs_patchset, rootvp_string_match == NULL);
-#if 0
+
     if(livefs_string_match)
     {
+        palera1n_flags |= palerain_option_ssv;
+#if 0
         kpf_root_livefs_patch(apfs_patchset);
-    }
 #endif
+    }
+    if (!(palera1n_flags & palerain_option_rootful) && !(palera1n_flags & palerain_option_rootless)) {
+        if (livefs_string_match) {
+            palera1n_flags |= palerain_option_rootless;
+        } else {
+            palera1n_flags |= palerain_option_rootful;      
+        }
+    }
+
     xnu_pf_emit(apfs_patchset);
     xnu_pf_apply(apfs_text_exec_range, apfs_patchset);
     xnu_pf_patchset_destroy(apfs_patchset);
