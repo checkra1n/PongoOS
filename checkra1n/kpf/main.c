@@ -947,18 +947,16 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     // 0xfffffff00692e6a8      080140f9       ldr x8, [x8]
     // 0xfffffff00692e6ac      1f0008eb       cmp x0, x8 <- cmp (patches to cmp x0, x0)
     // r2 cmd:
-    // /x 0000003908011b3200000039000000b9:000000ffffffffff000000ff000000ff
+    // /x 08011b3200000039000000b9:1ffcffff0000c0bf000000bf
     uint64_t matches[] = {
-        0x39400000, // ldr{b|h} w*, [x*]
-        0x321b0108, // orr w8, w8, 0x20
+        0x321b0008, // orr w8, w*, 0x20
         0x39000000, // str{b|h} w*, [x*]
-        0xb9000000  // str w*, [x*]
+        0xb9000000  // str/ldr w*, [x*]
     };
     uint64_t masks[] = {
+        0xfffffc1f,
         0xbfc00000,
-        0xffffffff,
-        0xbfc00000,
-        0xff000000,
+        0xbf000000,
     };
     xnu_pf_maskmatch(patchset, "apfs_patch_mount", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_mount);
     if(have_union)
