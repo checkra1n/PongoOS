@@ -67,6 +67,7 @@ amfi_execve_hook: // you can't kill me :P (makes sure amfi doesn't try to kill o
     ldr x0, [sp, #8] // cs_flags
     ldr w1, [x0]
     orr w1, w1,   #0x04000000 // CS_PLATFORM_BINARY
+    orr w1, w1,   #0x10000000 // CS_DEBUGGED
     orr w1, w1,   #0x000f // CS_VALID | CS_ADHOC | CS_GET_TASK_ALLOW | CS_INSTALLER
     and w1, w1, #(~0x3f00) // clearing CS_HARD | CS_KILL | CS_CHECK_EXPIRATION | CS_RESTRICT | CS_ENFORCEMENT | CS_REQUIRE_LV
     //and w1, w1, #(~0x00000000)
