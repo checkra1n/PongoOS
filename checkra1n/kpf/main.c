@@ -918,15 +918,31 @@ bool kpf_apfs_patches_rename(struct xnu_pf_patch* patch, uint32_t* opcode_stream
     return true;
 }
 
-bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
+{
+    uint32_t adrp = opcode_stream[0],
+             add  = opcode_stream[1];
+    const char *str = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(adrp) + ((add >> 10) & 0xfff));
+    if(strcmp(str, "%s:%d: not allowed to mount as root\n") != 0)
+    {
+        return false;
+    }
+
+    static bool has_found_f_apfs_privcheck = false;
+    if(has_found_f_apfs_privcheck)
+    {
+        panic("f_apfs_privcheck found twice!");
+    }
+
     // cmp x0, x8
-    uint32_t* f_apfs_privcheck = find_next_insn(opcode_stream, 0x10, 0xeb08001f, 0xFFFFFFFF);
+    uint32_t* f_apfs_privcheck = find_prev_insn(opcode_stream, 0x10, 0xeb08001f, 0xFFFFFFFF);
     if (!f_apfs_privcheck) {
         DEVLOG("kpf_apfs_patches_mount: failed to find f_apfs_privcheck");
         return false;
     }
     puts("KPF: Found APFS mount");
     *f_apfs_privcheck = 0xeb00001f; // cmp x0, x0
+    has_found_f_apfs_privcheck = true;
     return true;
 }
 void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
@@ -947,18 +963,20 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
     // 0xfffffff00692e6a8      080140f9       ldr x8, [x8]
     // 0xfffffff00692e6ac      1f0008eb       cmp x0, x8 <- cmp (patches to cmp x0, x0)
     // r2 cmd:
-    // /x 0000003908011b3200000039000000b9:000000ffffffffff000000ff000000ff
+    // /x 0000009000000091000000942000001200000014:1f00009fff03c0ff000000fc20fc7f9f000000fc
     uint64_t matches[] = {
-        0x39400000, // ldr{b|h} w*, [x*]
-        0x321b0108, // orr w8, w8, 0x20
-        0x39000000, // str{b|h} w*, [x*]
-        0xb9000000  // str w*, [x*]
+        0x90000000, // adrp x0, "%s:%d: not allowed to mount as root\n"@PAGE
+        0x91000000, // add x0, x0, "%s:%d: not allowed to mount as root\n"@PAGEOFF
+        0x94000000, // bl _panic
+        0x12000020, // mov w*, #1 // orr w*, wzr, #1
+        0x14000000, // b ?
     };
     uint64_t masks[] = {
-        0xbfc00000,
-        0xffffffff,
-        0xbfc00000,
-        0xff000000,
+        0x9f00001f,
+        0xffc003ff,
+        0xfc000000,
+        0x9f7ffc20,
+        0xfc000000,
     };
     xnu_pf_maskmatch(patchset, "apfs_patch_mount", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_mount);
     if(have_union)
