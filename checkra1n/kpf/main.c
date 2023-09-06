@@ -1054,16 +1054,21 @@ bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
 
 bool has_found_apfs_vfsop_mount = false;
 bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
-    if (!opcode_stream) {
-        printf("Missing patch: apfs_vfsop_mount\n");
+    uint32_t tbnz_offset = (opcode_stream[1] >> 5) & 0x3fff;
+    uint32_t *tbnz_stream = opcode_stream + 1 + tbnz_offset;
+    uint32_t *adrp = find_next_insn(tbnz_stream, 10, 0x90000000, 0x9f00001f); // adrp
+    if (!adrp) {
         return false;
     }
-    uint32_t *tbnz = find_prev_insn(opcode_stream, 2, 0x37700000, 0xfff8001f); // tbnz w0, 0xe, *
-    if (!tbnz) {
-        return false;
-    }
+    if ((adrp[1] & 0xff80001f) != 0x91000000) return false;
+    uint64_t page = ((uint64_t)adrp & ~0xfffULL) + adrp_off(adrp[0]);
+    uint32_t off = (adrp[1] >> 10) & 0xfff;
+    const char *str = (const char*)(page + off);
+    if (strcmp(str, "%s:%d: %s Updating mount to read/write mode is not allowed\n") != 0) {
+		return false;
+	}
 
-    *tbnz = 0x52800000; /* mov w0, 0 */
+    opcode_stream[1] = 0x52800000; /* mov w0, 0 */
     has_found_apfs_vfsop_mount = true;
     
     printf("KPF: found apfs_vfsop_mount\n");
@@ -1198,15 +1203,13 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         // 0xfffffff0064023b0      e8b300b9       str w8, [sp, 0xb0]
         // r2: /x a00340b900781f12a00300b9:a003feff00fcffffa003c0ff
         uint64_t remount_matches[] = {
-            0xb94003a0, // ldr x*, [x29/sp, *]
-            0x121f7800, // and w*, w*, 0xfffffffe
-            0xb90003a0, // str x*, [x29/sp, *]
+	        0x94000000, // bl
+            0x37700000  // tbnz w0, 0xe, *
         };
         
         uint64_t remount_masks[] = {
-            0xfffe03a0,
-            0xfffffc00,
-            0xffc003a0,
+	        0xfc000000,
+            0xfff8001f
         };
         
         xnu_pf_maskmatch(patchset,
