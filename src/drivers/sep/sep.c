@@ -336,7 +336,11 @@ static bool seprom_config_integrity_tree(bool sync) {
     else // iOS <=12
     {
         // Best we can do, I guess?
-        tree_size = tz0_size() / 0x910;
+        uint64_t tz0_size;
+        if (!tz_get(0, NULL, &tz0_size)) {
+            panic("Failed to get TZ0 size");
+        }
+        tree_size = tz0_size / 0x910;
         if(tree_size >= 0x4000) tree_size = 0x4000;
         else tree_size &= 0x3ff0;
     }
@@ -812,7 +816,11 @@ void seprom_fwload_race() {
     shmshc[ct++] = 0;
     *remote_addr = remote_shared_value_ptr;
 
-    map_range(0xc00000000, tz0_base(), tz0_size(), 3, 2, true);
+    uint64_t tz0_base, tz0_size;
+    if (!tz_get(0, &tz0_base, &tz0_size)) {
+        panic("Failed to get TZ0 bounds");
+    }
+    map_range(0xc00000000, tz0_base, tz0_size, 3, 2, true);
 
     if (!tz_blackbird()) goto out;
 
@@ -827,8 +835,8 @@ void seprom_fwload_race() {
         return;
     }
 
-    void* image_victim = tz0_calculate_encrypted_block_addr(0);
-    __unused void* tz0_shc = image_victim + (victim_offset * 2);
+    void* image_victim = (void*)((uintptr_t)0xc00000000 + tz0_calculate_encrypted_block_offset(0));
+    void* tz0_shc = (void*)((uintptr_t)0xc00000000 + (victim_offset * 2));
 
     memcpy(replay_layout, image_victim, range_size * 2);
 
@@ -883,7 +891,7 @@ out:
 
 void seprom_load_art(void* art, char mode) {
     disable_interrupts();
-    seprom_execute_opcode(6, mode, (vatophys((uint64_t)art)) >> 12);
+    seprom_execute_opcode(7, mode, (vatophys((uint64_t)art)) >> 12);
     event_wait_asserted(&sep_msg_event);
 }
 void seprom_artload() {
@@ -1087,7 +1095,7 @@ void sep_auto(const char* cmd, char* args)
     // - There was no iBoot patch and SEP is in exactly the state XNU expects it in
     // - There was no iBoot patch and while we'd need to pwn, we are powerless to do so
     // - The user did something on the command line. Now it's their responsibility.
-    if(tz0_is_locked())
+    if(tz_locked(0))
     {
         return;
     }
