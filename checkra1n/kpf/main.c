@@ -1146,7 +1146,7 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
 bool kpf_amfi_mac_syscall_low(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     // Unlike the other matches, the case we want is *not* the fallthrough one here.
     // So we need to follow the b.eq for 0x5a here.
-    return kpf_amfi_mac_syscall(patch, opcode_stream + 3 + sxt32(opcode_stream[3] >> 5, 19)); // uint32 takes care of << 2
+    return kpf_amfi_mac_syscall(patch, opcode_stream + 1 + sxt32(opcode_stream[1] >> 5, 19)); // uint32 takes care of << 2
 }
 void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
     // this patch helps us find the return of the amfi function so that we can jump into shellcode from there and modify the cs flags
@@ -1305,26 +1305,20 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
 
     // tvOS/audioOS 16 and bridgeOS 7 apparently got some cases removed, so their codegen looks different again.
     //
-    // 0xfffffff008b0ad48      3f780171       cmp w1, 0x5e
-    // 0xfffffff008b0ad4c      cc030054       b.gt 0xfffffff008b0adc4
     // 0xfffffff008b0ad50      3f680171       cmp w1, 0x5a
     // 0xfffffff008b0ad54      40060054       b.eq 0xfffffff008b0ae1c
     // 0xfffffff008b0ad58      3f6c0171       cmp w1, 0x5b
     // 0xfffffff008b0ad5c      210e0054       b.ne 0xfffffff008b0af20
     //
     // r2:
-    // /x 3f7801710c0000543f680171000000543f6c017101000054:ffffffff1f0000ffffffffff1f0000ffffffffff1f0000ff
+    // /x 3f680171000000543f6c017101000054:ffffffff1f0000ffffffffff1f0000ff
     uint64_t iiii_matches[] = {
-        0x7101783f, // cmp w1, 0x5e
-        0x5400000c, // b.gt
         0x7101683f, // cmp w1, 0x5a
         0x54000000, // b.eq
         0x71016c3f, // cmp w1, 0x5b
         0x54000001, // b.ne
     };
     uint64_t iiii_masks[] = {
-        0xffffffff,
-        0xff00001f,
         0xffffffff,
         0xff00001f,
         0xffffffff,
