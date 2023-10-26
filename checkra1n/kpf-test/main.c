@@ -128,6 +128,7 @@ void realpanic(const char *str, ...)
     vprintf(str, va);
     va_end(va);
     printf("\n");
+    fflush(stdout);
     abort();
 #endif
 }

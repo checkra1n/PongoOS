@@ -78,7 +78,4 @@ jobs:
       
       - name: Test KPF
         run: |
-          for k in ./kernel/xnu-*; do
-            echo "${k}";
-            qemu-aarch64 ./checkra1n/kpf-test/kpf-test.linux "${k}";
-          done
+          qemu-aarch64 ./checkra1n/kpf-test/kpf-test.linux -n kernel;
