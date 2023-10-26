@@ -60,7 +60,7 @@ jobs:
           dpkg --add-architecture arm64
           apt-get update
           apt-get -y --allow-downgrades dist-upgrade
-          apt-get install -y build-essential git libc6:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld curl xz-utils
+          apt-get install -y build-essential git libc6:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld curl zstd
 
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -73,9 +73,8 @@ jobs:
 
       - name: Get kernels
         run: |
-          curl -LOu ${{ secrets.ACTIONS_RESOURCES_LOGIN }} https://static.palera.in/action-resources/kc.tar.xz
-          xz -cdT 0 kc.tar.xz | tar -x
+          curl -Lu ${{ secrets.ACTIONS_RESOURCES_LOGIN }} https://static.palera.in/action-resources/kc.tar.zst | zstd -cdT0 | tar -x
       
       - name: Test KPF
         run: |
-          qemu-aarch64 ./checkra1n/kpf-test/kpf-test.linux -n kernel;
+          qemu-aarch64 ./checkra1n/kpf-test/kpf-test.linux -n kernel2;

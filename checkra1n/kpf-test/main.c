@@ -565,6 +565,8 @@ static int wait_for_child(child_t *children, size_t *num_bad, child_t **slot)
     return -1;
 }
 
+bool test_force_rootful = 0;
+
 int main(int argc, const char **argv)
 {
     int aoff = 1;
@@ -588,6 +590,9 @@ int main(int argc, const char **argv)
                 case 'v':
                     ++verbose;
                     break;
+                case 'f':
+                    test_force_rootful = 1;
+                    break;
                 default:
                     fprintf(stderr, "Bad arg: -%c\n", c);
                     return -1;
@@ -596,7 +601,7 @@ int main(int argc, const char **argv)
     }
     if(argc - aoff != 1)
     {
-        fprintf(stderr, "Usage: %s [-nqv] [file | dir]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-nqvf] [file | dir]\n", argv[0]);
         return -1;
     }
     int fd = open(argv[aoff], O_RDONLY);

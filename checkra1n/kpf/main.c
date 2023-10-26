@@ -39,6 +39,10 @@
 uint32_t offsetof_p_flags;
 palerain_option_t palera1n_flags;
 
+#if __STDC_HOSTED__
+extern bool test_force_rootful;
+#endif
+
 #if 0
         // AES, sigh
         else if((fetch & 0xfffffc00) == 0x510fa000 && (apfs_privcheck[i+1] & 0xfffffc1f) == 0x7100081f && (apfs_privcheck[i+2] & 0xff00001f) == 0x54000003) {
@@ -1215,8 +1219,12 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         xnu_pf_maskmatch(patchset,
             "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t),
         !have_union
-#ifdef DEV_BUILD
-	&& gKernelVersion.darwinMajor <= 22 // this patch is not used on ios 17.
+#if DEV_BUILD
+	&& (gKernelVersion.darwinMajor <= 22
+#if __STDC_HOSTED__
+     || test_force_rootful
+#endif
+     ) // this patch is not used on ios 17.
 #else
         && (palera1n_flags & palerain_option_rootful) != 0
 #endif
@@ -2005,7 +2013,7 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
     if (!has_found_apfs_vfsop_mount && rootvp_string_match != NULL) {
 #if __STDC_HOSTED__
-    if (gKernelVersion.darwinMajor <= 22) {
+    if (gKernelVersion.darwinMajor <= 22 || test_force_rootful) {
         puts("Missing patch: apfs_vfsop_mount");
     } else
 #endif
