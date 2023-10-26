@@ -129,7 +129,7 @@ void realpanic(const char *str, ...)
     va_end(va);
     printf("\n");
     fflush(stdout);
-    abort();
+    exit(6);
 #endif
 }
 
