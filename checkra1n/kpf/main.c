@@ -135,11 +135,13 @@ uint32_t* follow_call(uint32_t *from)
 struct kernel_version gKernelVersion;
 static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 {
-    const char kernelVersionStringMarker[] = "@(#)VERSION: Darwin Kernel Version ";
+    const char* kernelVersionStringMarker = "@(#)VERSION: Darwin Kernel Version ";
     const char *kernelVersionString = memmem(text_const_range->cacheable_base, text_const_range->size, kernelVersionStringMarker, strlen(kernelVersionStringMarker));
     if(kernelVersionString == NULL)
     {
-        panic("No kernel version string found");
+        kernelVersionStringMarker = "Darwin Kernel Version ";
+        kernelVersionString = memmem(text_const_range->cacheable_base, text_const_range->size, kernelVersionStringMarker, strlen(kernelVersionStringMarker));
+        if(kernelVersionString == NULL) panic("No kernel version string found");
     }
     const char *start = kernelVersionString + strlen(kernelVersionStringMarker);
     char *end = NULL;
