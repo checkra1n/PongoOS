@@ -1062,7 +1062,7 @@ bool has_found_apfs_vfsop_mount = false;
 bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     uint32_t tbnz_offset = (opcode_stream[1] >> 5) & 0x3fff;
     uint32_t *tbnz_stream = opcode_stream + 1 + tbnz_offset;
-    uint32_t *adrp = find_next_insn(tbnz_stream, 10, 0x90000000, 0x9f00001f); // adrp
+    uint32_t *adrp = find_next_insn(tbnz_stream, 20, 0x90000000, 0x9f00001f); // adrp
     if (!adrp) {
         return false;
     }
@@ -1070,7 +1070,9 @@ bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     uint64_t page = ((uint64_t)adrp & ~0xfffULL) + adrp_off(adrp[0]);
     uint32_t off = (adrp[1] >> 10) & 0xfff;
     const char *str = (const char*)(page + off);
-    if (strcmp(str, "%s:%d: %s Updating mount to read/write mode is not allowed\n") != 0) {
+    if (
+        strcmp(str, "%s:%d: %s Updating mount to read/write mode is not allowed\n") /* iOS 15.0b5+ */
+      && strcmp(str, "%s:%d: %ss%d:%.0lld Updating mount to read/write mode is not allowed\n")) /* iOS 15.0b1-b4 */ {
 		return false;
 	}
 
