@@ -1,7 +1,7 @@
 /*
- * plooshInit - https://github.com/plooshi/plooshInit
+ * jbinit - https://github.com/palera1n/jbinit
  *
- * This file is part of plooshInit
+ * This file is part of jbinit
  * 
  * SPDX-License-Identifier: MIT
  */
@@ -42,6 +42,9 @@ typedef uint64_t palerain_option_t;
 #define palerain_option_force_revert         (UINT64_C(1) << 24) /* Unjailbreak */
 #define palerain_option_safemode             (UINT64_C(1) << 25) /* Enter safe mode */
 #define palerain_option_verbose_boot         (UINT64_C(1) << 26) /* verbose boot */
+// #define palerain_option_sf_ssh            (UINT64_C(1) << 27) /* safe mode with bootstrap ssh */
+// #define palerain_option_sf_launchdaemons  (UINT64_C(1) << 28) /* safe mode with launchdaemons */
+// #define palerain_option_emerg_mode        (UINT64_C(1) << 28) /* emergency mode (early boot usb shell) */
 
 #define palerain_option_flower_chain         (UINT64_C(1) << 61) /* Flower chain */
 #define palerain_option_test1                (UINT64_C(1) << 62) /* Developer test option 1 */
@@ -57,6 +60,7 @@ struct paleinfo {
     uint64_t kslide; /* kernel slide */
     uint64_t flags; /* unified palera1n flags */
     char rootdev[0x10]; /* ex. disk0s1s8 */
+    /* int8_t loglevel; */
 }__attribute__((packed));
 
 #endif
