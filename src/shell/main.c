@@ -27,14 +27,6 @@
 #include <pongo.h>
 #include <lzma/lzmadec.h>
 
-int _isatty(int a) {
-    return 0;
-}
-
-int __chkstk_darwin() {
-    return 0;
-}
-
 extern volatile char gBootFlag;
 
 
