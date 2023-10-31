@@ -1721,13 +1721,16 @@ bool IOSecureBSDRoot_callback(struct xnu_pf_patch *patch, uint32_t *opcode_strea
 bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
     puts("KPF: Found load_init_program_at_path");
-    opcode_stream += 4;
+    uint32_t* bl = find_next_insn(opcode_stream, 8, 0x94000000, 0xfc000000);
+    if(!bl) return false;
+    opcode_stream = bl;
+    
     mac_execve = follow_call(opcode_stream);
     mac_execve_hook = opcode_stream;
     puts("KPF: Found mac_execve");
     
     uint32_t* prebl = find_prev_insn(opcode_stream, 0x80, 0x52800302, 0xffffffff);
-    uint32_t* bl = find_next_insn(prebl, 10, 0x94000000, 0xfc000000); // bl
+    bl = find_next_insn(prebl, 10, 0x94000000, 0xfc000000); // bl
     
     copyout = follow_call(bl);
     puts("KPF: Found copyout");
@@ -1838,7 +1841,31 @@ void kpf_md0oncores_patch(xnu_pf_patchset_t* patchset)
         0xfc000000,
         0xff000000,
     };
-    xnu_pf_maskmatch(patchset, "load_init_program_at_path", i_matches, i_masks, sizeof(i_masks)/sizeof(uint64_t), true, (void*)load_init_program_at_path_callback);
+    xnu_pf_maskmatch(patchset, "load_init_program_at_path", i_matches, i_masks, sizeof(i_masks)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
+    
+    // just for xnu-7938
+    uint64_t ii_matches[] =
+    {
+        0xa904dff5, // stp  x21, x23, [sp, #0x48]
+        0xa905ffff, // stp  xzr, xzr, [sp, #0x58]
+        0x910123e1, // add  x1, sp, #0x48
+        0x910103e2, // add  x2, sp, #0x40
+        0xaa1303e0, // mov  x0, x19
+        0x94000000, // bl   __mac_execve
+        0x35000000, // cbnz wN, ...
+    };
+    uint64_t ii_masks[] =
+    {
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xfc000000,
+        0xff000000,
+    };
+    xnu_pf_maskmatch(patchset, "load_init_program_at_path", ii_matches, ii_masks, sizeof(ii_masks)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
+
 }
 
 static uint32_t shellcode_count;
