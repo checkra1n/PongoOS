@@ -217,13 +217,146 @@ vnode_check_open_shc$orig:
     ldr  x8, vnode_check_open_orig
     br   x8
 
+.align 3
 _vnode_check_open_shc_ptr:
 proc_selfname:
 .quad 0x5151515151515151
-
 vnode_check_open_orig:
 .quad 0x5252525252525252
  
+.align 2
+.globl _launchd_execve_hook
+.globl _launchd_execve_hook_ptr
+.globl _launchd_execve_hook_end
+.globl _launchd_execve_hook_offset
+_launchd_execve_hook:
+b          launchd_execve_hook$start
+
+launchd_execve_hook$start:
+sub        sp, sp, #0xa0
+stp        x26, x25, [sp, #0x50]
+stp        x24, x23, [sp, #0x60]
+stp        x22, x21, [sp, #0x70]
+stp        x20, x19, [sp, #0x80]
+stp        x29, x30, [sp, #0x90]
+add        x29, sp, #0x90
+mov        x19, x2
+mov        x20, x1
+mov        x21, x0
+stur       wzr, [x29, #-0x44]
+str        xzr, [sp, #0x40]
+
+mrs        x8, tpidr_el1
+_launchd_execve_hook_offset:
+ldr        x0, [x8, #0x0] // Gets replaced with real offset by kpf
+cbz        x0, launchd_execve_hook$current_map$zero
+launchd_execve_hook$current_map$notzero:
+ldrh       w8, [x0, #0x0] // Gets replaced with real offset by kpf
+b          launchd_execve_hook$get_map_page_size
+launchd_execve_hook$current_map$zero:
+mov        w8, #0xe       // 16k page
+launchd_execve_hook$get_map_page_size:
+mov        w1, #0x1
+lsl        w2, w1, w8    // map_page_size
+
+add        x1, sp, #0x40 // &scratch_addr
+mov        w3, #0x1      // VM_FLAGS_ANYWHERE
+mov        x4, #0x0      // VM_KERN_MEMORY_NONE
+ldr        x8, mach_vm_allocate_kernel
+blr        x8
+
+ldr        x22, [sp, #0x40]
+adr        x0, fstype  // 'hfs'
+mov        x1, x22     // scratch_addr
+mov        w2, #0x4    // len
+ldr        x8, copyout
+blr        x8
+cbnz       w0, launchd_execve_hook$panik_1
+
+ldr        x8, [sp, #0x40]
+add        x23, x8, #0x8    // align
+str        x23, [sp, #0x40]
+adr        x0, mountpoint   // '/cores'
+mov        x1, x23          // scratch_addr
+mov        w2, #0x7         // len
+ldr        x8, copyout
+blr        x8
+cbnz       w0, launchd_execve_hook$panik_1
+
+ldr        x8, [sp, #0x40]
+add        x24, x8, #0x8    // align
+str        x24, [sp, #0x40]
+adr        x0, devfs_path   // '/dev/md0'
+mov        x1, x24          // scratch_addr
+mov        w2, #0x9         // len
+ldr        x8, copyout
+blr        x8
+cbnz       w0, launchd_execve_hook$panik_1
+
+ldr        x8, [sp, #0x40]
+add        x1, x8, #0x10    // align
+str        x1, [sp, #0x40]  // scratch_addr
+stp        x24, xzr, [sp, #0x8]
+add        x0, sp, #0x8     // argv64bit
+mov        w2, #0x8         // sizeof(uint64_t)
+ldr        x8, copyout
+blr        x8
+cbnz       w0, launchd_execve_hook$panik_1
+
+stp        x22, x23, [sp, #0x18]
+ldr        x8, [sp, #0x40]
+stp        xzr, x8, [sp, #0x28]
+str        xzr, [sp, #0x38]
+mov        x0, x21       // proc
+add        x1, sp, #0x18 // &muap
+sub        x2, x29, #0x44 // retval
+ldr        x8, mac_mount // call mac_mount
+blr        x8
+cbnz       w0, launchd_execve_hook$panik_2
+
+launchd_execve_hook$orig:
+mov        x0, x21
+mov        x1, x20
+mov        x2, x19
+ldr        x8, mac_execve
+blr        x8
+launchd_execve_hook$ret:
+ldp        x29, x30, [sp, #0x90]
+ldp        x20, x19, [sp, #0x80]
+ldp        x22, x21, [sp, #0x70]
+ldp        x24, x23, [sp, #0x60]
+ldp        x26, x25, [sp, #0x50]
+add        sp, sp, #0xa0
+ret
+
+launchd_execve_hook$panik_1:
+b          launchd_execve_hook$orig // copyout failed
+launchd_execve_hook$panik_2:
+b          launchd_execve_hook$orig // mac_mount failed
+
+.align 3
+_launchd_execve_hook_ptr:
+mac_execve:
+.quad 0x4141414141414141
+mac_mount:
+.quad 0x4242424242424242
+mach_vm_allocate_kernel:
+.quad 0x4343434343434343
+copyout:
+.quad 0x4444444444444444
+
+.align 2
+devfs_path:
+.asciz "/dev/md0"
+.align 2
+fstype:
+.asciz "hfs"
+.align 2
+mountpoint:
+.asciz "/cores"
+
+.align 2
+_launchd_execve_hook_end:
 _sandbox_shellcode_end:
 
 
@@ -270,7 +403,7 @@ L_dyld_shc_epilog:
     ldp x29, x30, [sp], 0x20
     ret
 L_alt_dyld_path:
-    .asciz "/cores/dyld"
+    .asciz "/cores/usr/lib/dyld"
 L_dyld_path:
     .asciz "/usr/lib/dyld"
 .align 2
