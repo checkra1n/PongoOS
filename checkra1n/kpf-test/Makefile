@@ -48,7 +48,8 @@ kpf-test.macos: Makefile $(KPF_C) $(KPF_H)
 
 shellcode_S_linux.S: $(RA1N)/shellcode.S Makefile
 	sed -e 's/_pf_jit/pf_jit/g' -e 's/_dyld_shc/dyld_shc/g' -e 's/_sandbox/sandbox/g' \
-	-e 's/_fsctl_shc/fsctl_shc/g' -e 's/_kdi_shc/kdi_shc/g' -e 's/_nvram_shc/nvram_shc/g' $< > $@
+	-e 's/_fsctl_shc/fsctl_shc/g' -e 's/_kdi_shc/kdi_shc/g' -e 's/_nvram_shc/nvram_shc/g' \
+	-e 's/_launchd_execve_hook/launchd_execve_hook/g' $< > $@
 
 xnu_S_linux.S: $(SRC)/drivers/xnu/xnu.S Makefile
 	sed -e 's/_pf_jit/pf_jit/g' $< > $@
