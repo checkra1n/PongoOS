@@ -403,7 +403,7 @@ L_dyld_shc_epilog:
     ldp x29, x30, [sp], 0x20
     ret
 L_alt_dyld_path:
-    .asciz "/cores/dyld"
+    .asciz "/cores/usr/lib/dyld"
 L_dyld_path:
     .asciz "/usr/lib/dyld"
 .align 2
@@ -481,8 +481,6 @@ L_kdi_shc_ramfile:
     .asciz "ramfile-memory-descriptor"
 .align 2
 _kdi_shc_end:
-
-
 
 .globl _fsctl_shc
 .globl _fsctl_shc_vnode_open

@@ -1709,7 +1709,7 @@ bool IOSecureBSDRoot_callback(struct xnu_pf_patch *patch, uint32_t *opcode_strea
         return false;
     }
     puts("KPF: Found mdevremoveall");
-    DEVLOG("Found mdevremoveall 0x%llx", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)) + 4*4);
+    DEVLOG("Found mdevremoveall 0x%" PRIx64, xnu_rebase_va(xnu_ptr_to_va(opcode_stream)) + 4*4);
     
     uint32_t insn = opcode_stream[4];
     int32_t off = sxt32(insn >> 5, 19);
@@ -2033,6 +2033,10 @@ static void kpf_cmd(const char *cmd, char *args)
     // 15.0 beta 1 onwards, but only iOS/iPadOS
     if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
 #endif
+
+    if (!rootvp_string_match) {
+        strncat((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), " rootdev=md0", 0x270);
+    }
 
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
     {

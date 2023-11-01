@@ -110,7 +110,7 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
     {
         rootdev_bootarg = NULL;
     }
-
+    
     const char constraints_string[] = "mac_proc_check_launch_constraints";
     const char *constraints_string_match = memmem(cstring->cacheable_base, cstring->size, constraints_string, sizeof(constraints_string));
     gHasConstriants = (constraints_string_match != NULL);
@@ -124,11 +124,15 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
 
 static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t palera1n_flags)
 {
+
     if(rootdev_bootarg)
     {
         memcpy(rootdev_bootarg, "spartan", 7); // rootdev -> spartan
     }
 
+#if __STDC_HOSTED__
+    char BSDName[16] = "disk0s1s1";
+#else
     char BSDName[16];
     uint32_t partid = 1;
     /* have SSV and rootful but not setup rootful */
@@ -150,18 +154,19 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
         char* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
         if (!root_matching) panic("invalid devicetree: no prop!");
         snprintf(BSDName, 16, "%s%" PRIu32, gHasConstriants ? "disk1s" : "disk0s1s", partid);
-        if ((palera1n_flags & palerain_option_setup_rootful) == 0)
+        if ((palera1n_flags & (palerain_option_setup_rootful | palerain_option_force_revert)) == 0)
         snprintf(root_matching, root_matching_len, 
             "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>",
             BSDName);
         else
-            printf("KPF: rooting from original rootfs for fakefs setup\n");
+            printf("KPF: rooting from original rootfs for fakefs setup or force revert\n");
         printf("KPF: root BSD Name: %s\n", BSDName);
         printf("KPF: root_matching (raw): %s\n", root_matching);
     } else {
         snprintf(BSDName, 16, "%s%" PRIu32, gHasConstriants ? "disk1s" : "disk0s1s", partid);
         printf("KPF: root BSD Name: %s\n", BSDName);
     }
+#endif
 
     if(ramdisk_size)
     {
