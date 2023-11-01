@@ -101,6 +101,7 @@ static void kpf_ramdisk_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
 static char rootdev[16] = { '\0' };
 static uint32_t partid = 1;
 
+extern palerain_option_t palera1n_flags;
 static void kpf_ramdisk_rootdev_cmd(const char *cmd, char *args) {
     // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk1
     
@@ -134,7 +135,7 @@ static void kpf_ramdisk_rootdev_cmd(const char *cmd, char *args) {
         else partid = patch[0];
         if (socnum == 0x7000 || socnum == 0x7001) partid--;
 
-        snprintf(str, 0x100, "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key><dict><key>Partition ID</key><integer>%u</integer></dict></dict>", partid);
+        snprintf(str, 0x100, "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key><dict><key>Partition ID</key><integer>%u</integer></dict></dict>", palera1n_flags & palerain_option_setup_rootful ? 1 : partid);
         memset(root_matching, 0x0, 0x100);
         memcpy(root_matching, str, 0x100);
         printf("set new entry: %016" PRIx64 ": Partition ID: %u\n", (uint64_t)root_matching, partid);

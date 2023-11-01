@@ -403,7 +403,7 @@ L_dyld_shc_epilog:
     ldp x29, x30, [sp], 0x20
     ret
 L_alt_dyld_path:
-    .asciz "/cores/usr/lib/dyld"
+    .asciz "/cores/dyld"
 L_dyld_path:
     .asciz "/usr/lib/dyld"
 .align 2

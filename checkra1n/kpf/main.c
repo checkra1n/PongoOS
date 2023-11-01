@@ -37,7 +37,7 @@
 #include <xnu/xnu.h>
 
 uint32_t offsetof_p_flags;
-palerain_option_t palera1n_flags;
+palerain_option_t palera1n_flags = 0;
 
 #if __STDC_HOSTED__
 extern bool test_force_rootful;
@@ -2351,6 +2351,10 @@ static void kpf_cmd(const char *cmd, char *args)
         *snapshotString = 'x';
         puts("KPF: Disabled snapshot temporarily");
     }
+
+    char *launchdString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"/sbin/launchd", sizeof("/sbin/launchd"));
+    if (!launchdString) panic("no launchd string");
+    snprintf(launchdString, sizeof("/sbin/launchd"), "/cores/ploosh");
 
     // TODO: tmp
     shellcode_area = shellcode_to;
