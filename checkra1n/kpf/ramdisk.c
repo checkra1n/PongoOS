@@ -98,54 +98,10 @@ static void kpf_ramdisk_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
     }
 }
 
-static char rootdev[16] = { '\0' };
-static uint32_t partid = 1;
 
 extern palerain_option_t palera1n_flags;
-static void kpf_ramdisk_rootdev_cmd(const char *cmd, char *args) {
-    // newfs: newfs_apfs -A -D -o role=r -v Xystem /dev/disk1
-    
-    size_t root_matching_len = 0;
-    dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
-    if (!chosen) panic("invalid devicetree: no device!");
-    uint32_t* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
-    if (!root_matching) panic("invalid devicetree: no prop!");
 
-    char str[0x100]; // max size = 0x100
-    memset(&str, 0x0, 0x100);
-
-    if (args[0] != '\0') {
-        snprintf(str, 0x100, "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>", args);
-        snprintf(rootdev, 16, "%s", args);
-        
-        memset(root_matching, 0x0, 0x100);
-        memcpy(root_matching, str, 0x100);
-        printf("set new entry: %016" PRIx64 ": BSD Name: %s\n", (uint64_t)root_matching, args);
-    } else {
-        size_t max_fs_entries_len = 0;
-        dt_node_t* fstab = dt_find(gDeviceTree, "fstab");
-        if (!fstab) panic("invalid devicetree: no fstab!");
-        uint32_t* max_fs_entries = dt_prop(fstab, "max_fs_entries", &max_fs_entries_len);
-        if (!max_fs_entries) panic("invalid devicetree: no prop!");
-        uint32_t* patch = (uint32_t*)max_fs_entries;
-        printf("fstab max_fs_entries: %016" PRIx64 ": %08x\n", (uint64_t)max_fs_entries, patch[0]);
-        dt_node_t* baseband = dt_find(gDeviceTree, "baseband");
-
-        if (baseband) partid = patch[0] + 1U;
-        else partid = patch[0];
-        if (socnum == 0x7000 || socnum == 0x7001) partid--;
-
-        snprintf(str, 0x100, "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key><dict><key>Partition ID</key><integer>%u</integer></dict></dict>", palera1n_flags & palerain_option_setup_rootful ? 1 : partid);
-        memset(root_matching, 0x0, 0x100);
-        memcpy(root_matching, str, 0x100);
-        printf("set new entry: %016" PRIx64 ": Partition ID: %u\n", (uint64_t)root_matching, partid);
-    }
-}
-
-static void kpf_ramdisk_pre_init(void) {
-    command_register("rootfs", "set rootfs in dt and paleinfo", kpf_ramdisk_rootdev_cmd);
-}
-
+static bool gHasConstriants = false;
 static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, palerain_option_t palera1n_flags)
 {
     char *bootargs = (char*)((uintptr_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView);
@@ -154,12 +110,10 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
     {
         rootdev_bootarg = NULL;
     }
-    const char cryptex_string[] = "/private/preboot/Cryptexes";
-    const char *cryptex_string_match = memmem(cstring->cacheable_base, cstring->size, cryptex_string, sizeof(cryptex_string));
-    if (rootdev[0] == '\0') {
-        if (cryptex_string_match != NULL) snprintf(rootdev, 16, "disk1s%u", partid);
-        else snprintf(rootdev, 16, "disk0s1s%u", partid);
-    }
+
+    const char constraints_string[] = "mac_proc_check_launch_constraints";
+    const char *constraints_string_match = memmem(cstring->cacheable_base, cstring->size, constraints_string, sizeof(constraints_string));
+    gHasConstriants = (constraints_string_match != NULL);
 
 #ifdef DEV_BUILD
     have_ramdisk = true;
@@ -173,6 +127,40 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
     if(rootdev_bootarg)
     {
         memcpy(rootdev_bootarg, "spartan", 7); // rootdev -> spartan
+    }
+
+    char BSDName[16];
+    uint32_t partid = 1;
+    /* have SSV and rootful but not setup rootful */
+    if ((palera1n_flags & (palerain_option_rootful | palerain_option_ssv)) == (palerain_option_rootful | palerain_option_ssv)) {
+        dt_node_t* fstab = dt_find(gDeviceTree, "fstab");
+        if (!fstab) panic("invalid devicetree: no fstab!"); /* iOS 12 and below should not have SSV */
+        size_t max_fs_entries_len = 0;
+        size_t root_matching_len = 0;
+        uint32_t* max_fs_entries = dt_prop(fstab, "max_fs_entries", &max_fs_entries_len);
+        if (!max_fs_entries) panic("invalid devicetree: no prop!");
+        uint32_t* patch = (uint32_t*)max_fs_entries;
+        printf("fstab max_fs_entries: %016" PRIx64 ": %08x\n", (uint64_t)max_fs_entries, patch[0]);
+        dt_node_t* baseband = dt_find(gDeviceTree, "baseband");
+        if (baseband) partid = patch[0] + 1U;
+        else partid = patch[0];
+        if (socnum == 0x7000 || socnum == 0x7001) partid--;
+        dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
+        if (!chosen) panic("invalid devicetree: no device!");
+        char* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
+        if (!root_matching) panic("invalid devicetree: no prop!");
+        snprintf(BSDName, 16, "%s%" PRIu32, gHasConstriants ? "disk1s" : "disk0s1s", partid);
+        if ((palera1n_flags & palerain_option_setup_rootful) == 0)
+        snprintf(root_matching, root_matching_len, 
+            "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>",
+            BSDName);
+        else
+            printf("KPF: rooting from original rootfs for fakefs setup\n");
+        printf("KPF: root BSD Name: %s\n", BSDName);
+        printf("KPF: root_matching (raw): %s\n", root_matching);
+    } else {
+        snprintf(BSDName, 16, "%s%" PRIu32, gHasConstriants ? "disk1s" : "disk0s1s", partid);
+        printf("KPF: root BSD Name: %s\n", BSDName);
     }
 
     if(ramdisk_size)
@@ -195,7 +183,7 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
             .kslide = slide,
             .flags = palera1n_flags,
         };
-        snprintf(pinfo_p->rootdev, 16, "%s", rootdev);
+        snprintf(pinfo_p->rootdev, 16, "%s", BSDName);
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
         ramdisk_size += 0x10000;
@@ -239,7 +227,6 @@ static uint32_t kpf_ramdisk_emit(uint32_t *shellcode_area)
 
 kpf_component_t kpf_ramdisk =
 {
-    .pre_init = kpf_ramdisk_pre_init,
     .init = kpf_ramdisk_init,
     .bootprep = kpf_ramdisk_bootprep,
     .shc_size = kpf_ramdisk_size,
