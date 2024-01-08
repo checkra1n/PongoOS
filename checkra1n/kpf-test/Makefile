@@ -55,7 +55,7 @@ xnu_S_linux.S: $(SRC)/drivers/xnu/xnu.S Makefile
 	sed -e 's/_pf_jit/pf_jit/g' $< > $@
 
 kpf-test.linux: Makefile $(KPF_C) $(KPF_H) shellcode_S_linux.S xnu_S_linux.S
-	$(LINUX_CC) -o $@ main.c -g $(wildcard $(RA1N)/*.c) $(SRC)/drivers/xnu/xnu.c shellcode_S_linux.S xnu_S_linux.S $(KPF_CC_FLAGS_LINUX)
+	$(LINUX_CC) -o $@ main.c -lbsd -g $(wildcard $(RA1N)/*.c) $(SRC)/drivers/xnu/xnu.c shellcode_S_linux.S xnu_S_linux.S $(KPF_CC_FLAGS_LINUX)
 
 clean:
 	rm -f kpf-test.ios kpf-test.macos kpf-test.linux

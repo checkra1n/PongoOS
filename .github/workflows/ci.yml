@@ -60,7 +60,7 @@ jobs:
           dpkg --add-architecture arm64
           apt-get update
           apt-get -y --allow-downgrades dist-upgrade
-          apt-get install -y build-essential git libc6:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld curl zstd
+          apt-get install -y build-essential git libc6:arm64 libbsd0:arm64 libbsd-dev:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld curl zstd
 
       - name: Checkout repository
         uses: actions/checkout@v2
