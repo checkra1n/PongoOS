@@ -2064,9 +2064,9 @@ static void kpf_cmd(const char *cmd, char *args)
     }
 
     xnu_pf_range_t* bootdata_range = xnu_pf_section(hdr, "__BOOTDATA", "__init");
-#ifdef DEV_BUILD
     xnu_pf_range_t* const_klddata_range = xnu_pf_section(hdr, "__KLDDATA", "__const");
 
+#ifdef DEV_BUILD
     if (gKernelVersion.xnuMajor >= 7195 != (const_klddata_range != NULL)) {
         if (gKernelVersion.xnuMajor == 7195 && gKernelVersion.darwinMinor > 4) panic("__KLDDATA __const existence does not match expected Darwin version");
     }
@@ -2080,12 +2080,13 @@ static void kpf_cmd(const char *cmd, char *args)
 #ifdef DEV_BUILD
         // 17.0 beta 1 - 17.3
         if((thid_should_crash_string_match != NULL) != gKernelVersion.xnuMajor >= 10002 && gKernelVersion.xnuMajor < 10063) panic("thid_should_crash string doesn't match expected Darwin version");
-
+#endif
 
         if (const_klddata_range) {
             thid_should_crash_string_match = memmem(const_klddata_range->cacheable_base, const_klddata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
         }
 
+#ifdef DEV_BUILD
         // 17.4 beta 1 onwards
         if(const_klddata_range && ((thid_should_crash_string_match != NULL) != gKernelVersion.xnuMajor >= 10063)) panic("thid_should_crash string doesn't match expected Darwin version");
 #endif
