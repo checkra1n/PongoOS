@@ -1232,12 +1232,12 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         // r2: /x a00340b900781f12a00300b9:a003feff00fcffffa003c0ff
         uint64_t remount_matches[] = {
 	        0x94000000, // bl
-            0x37700000  // tbnz w0, 0xe, *
+            0x37700000,  // tbnz w0, 0xe, *
         };
         
         uint64_t remount_masks[] = {
 	        0xfc000000,
-            0xfff8001f
+            0xfff8001f,
         };
         
         xnu_pf_maskmatch(patchset,
@@ -2043,15 +2043,30 @@ static void kpf_cmd(const char *cmd, char *args)
     }
 
     xnu_pf_range_t* bootdata_range = xnu_pf_section(hdr, "__BOOTDATA", "__init");
+    xnu_pf_range_t* const_klddata_range = xnu_pf_section(hdr, "__KLDDATA", "__const");
+
+#ifdef DEV_BUILD
+    if (gKernelVersion.darwinMajor >= 20 != (const_klddata_range != NULL)) {
+        panic("__KLDDATA __const existence does not match expected Darwin version");
+    }
+#endif
 
     if (bootdata_range) {
         const char thid_should_crash_string[] = "thid_should_crash";
         const char *thid_should_crash_string_match = memmem(bootdata_range->cacheable_base, bootdata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
 
+
 #ifdef DEV_BUILD
-        // 17.0 beta 1 onwards
-        if((thid_should_crash_string_match != NULL) != (gKernelVersion.darwinMajor >= 23)) panic("thid_should_crash string doesn't match expected Darwin version");
+        // 17.0 beta 1 - 17.3
+        if((thid_should_crash_string_match != NULL) != gKernelVersion.xnuMajor >= 10002 && gKernelVersion.xnuMajor < 10063) panic("thid_should_crash string doesn't match expected Darwin version");
 #endif
+
+        if (!thid_should_crash_string_match && const_klddata_range) {
+            thid_should_crash_string_match = memmem(const_klddata_range->cacheable_base, const_klddata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
+        }
+
+        // 17.4 beta 1 onwards
+        if((thid_should_crash_string_match != NULL) != gKernelVersion.xnuMajor >= 10063) panic("thid_should_crash string doesn't match expected Darwin version");
 
         if (thid_should_crash_string_match && !strstr((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), "thid_should_crash="))
         {
