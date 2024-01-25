@@ -1843,7 +1843,7 @@ void kpf_md0oncores_patch(xnu_pf_patchset_t* patchset)
         0xffffffff,
         0xffffffff,
         0xfc000000,
-        0xff000000,
+        0xff00001f,
     };
     xnu_pf_maskmatch(patchset, "load_init_program_at_path", i_matches, i_masks, sizeof(i_masks)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
     
@@ -1866,9 +1866,30 @@ void kpf_md0oncores_patch(xnu_pf_patchset_t* patchset)
         0xffffffff,
         0xffffffff,
         0xfc000000,
-        0xff000000,
+        0xff00001f,
     };
     xnu_pf_maskmatch(patchset, "load_init_program_at_path", ii_matches, ii_masks, sizeof(ii_masks)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
+
+    // xnu-10063
+    uint64_t iii_matches[] = {
+        0xa903dbf5, // stp x21, x22, [sp, #0x38]
+        0xa904ffff, // stp xzr, xzr, [sp, #0x48]
+        0x9100e3e1, // add x1, sp, #0x38
+        0xaa1303e0, // mov x0, x19
+        0x94000000, // bl __mac_execve
+        0x35000000, // cbnz w0, ...
+    };
+
+    uint64_t iii_masks[] =
+    {
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xfc000000,
+        0xff00001f,
+    };
+    xnu_pf_maskmatch(patchset, "load_init_program_at_path", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
 
 }
 
@@ -2043,11 +2064,11 @@ static void kpf_cmd(const char *cmd, char *args)
     }
 
     xnu_pf_range_t* bootdata_range = xnu_pf_section(hdr, "__BOOTDATA", "__init");
+#ifdef DEV_BUILD
     xnu_pf_range_t* const_klddata_range = xnu_pf_section(hdr, "__KLDDATA", "__const");
 
-#ifdef DEV_BUILD
-    if (gKernelVersion.darwinMajor >= 20 != (const_klddata_range != NULL)) {
-        panic("__KLDDATA __const existence does not match expected Darwin version");
+    if (gKernelVersion.xnuMajor >= 7195 != (const_klddata_range != NULL)) {
+        if (gKernelVersion.xnuMajor == 7195 && gKernelVersion.darwinMinor > 4) panic("__KLDDATA __const existence does not match expected Darwin version");
     }
 #endif
 
@@ -2059,15 +2080,15 @@ static void kpf_cmd(const char *cmd, char *args)
 #ifdef DEV_BUILD
         // 17.0 beta 1 - 17.3
         if((thid_should_crash_string_match != NULL) != gKernelVersion.xnuMajor >= 10002 && gKernelVersion.xnuMajor < 10063) panic("thid_should_crash string doesn't match expected Darwin version");
-#endif
 
-        if (!thid_should_crash_string_match && const_klddata_range) {
+
+        if (const_klddata_range) {
             thid_should_crash_string_match = memmem(const_klddata_range->cacheable_base, const_klddata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
         }
 
         // 17.4 beta 1 onwards
-        if((thid_should_crash_string_match != NULL) != gKernelVersion.xnuMajor >= 10063) panic("thid_should_crash string doesn't match expected Darwin version");
-
+        if(const_klddata_range && ((thid_should_crash_string_match != NULL) != gKernelVersion.xnuMajor >= 10063)) panic("thid_should_crash string doesn't match expected Darwin version");
+#endif
         if (thid_should_crash_string_match && !strstr((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), "thid_should_crash="))
         {
             strlcat((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), " thid_should_crash=0", 0x270);
