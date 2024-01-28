@@ -1,4 +1,4 @@
-/*
+m/*
  * pongoOS - https://checkra.in
  *
  * Copyright (C) 2019-2023 checkra1n team
@@ -241,17 +241,17 @@ static void kpf_nvram_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
     // 0xfffffff0077addec      9a0640f9       ldr x26, [x20, 8]             <- this loads the flags / permissions
     //
     // Shortly afterwards, there is a "tbnz w26, 2", which checks for the kernel-only bit. We just get rid of that.
-    // /x 1000009094e210910000009000000091e10310aa0000009460000034000e41f880ffffb5100640f9:1000009f1002c0ff1f00009fff03c0fffffff0ff000000fcffffffff1ffeffffffffffff10feffff
+    // /x 10000090100200910000009000000091e10310aa0000009460000034000c40f880ffffb5100640f9:1000009f1002c0ff1f00009fff03c0fffffff0ff000000fcffffffff1f0ce0ffffffffff10feffff
     uint64_t matches4[] =
     {
         0x90000010, // adrp xN, 0x...
-        0x91000210, // add xN, xN, 0x438
+        0x91000210, // add xN, xN, 0x...
         0x90000000, // adrp x0, 0x...
-        0x91000000, // add x0, x0, 0x32b
+        0x91000000, // add x0, x0, 0x...
         0xaa1003e1, // mov x1, x{16-31}
         0x94000000, // bl sym._strcmp
         0x34000060, // cbz w0, .+12
-        0xf8410e00, // ldr x0, [xN, 0x10]!
+        0xf8400c00, // ldr x0, [xN, ...]!
         0xb5ffff80, // cbnz x0, .-16
         0xf9400610, // ldr x{16-31}, [xN, 8]
     };
@@ -264,7 +264,7 @@ static void kpf_nvram_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
         0xfff0ffff,
         0xfc000000,
         0xffffffff,
-        0xfffffe1f,
+        0xffe00c1f,
         0xffffffff,
         0xfffffe10,
     };
