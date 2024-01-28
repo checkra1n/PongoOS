@@ -1,4 +1,4 @@
-m/*
+/*
  * pongoOS - https://checkra.in
  *
  * Copyright (C) 2019-2023 checkra1n team
