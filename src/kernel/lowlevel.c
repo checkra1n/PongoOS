@@ -608,6 +608,12 @@ static pmgr_reg_t *gPMGRreg = NULL;
 static pmgr_map_t *gPMGRmap = NULL;
 static pmgr_dev_t *gPMGRdev = NULL;
 
+void crash_cmd() {
+    disable_interrupts();
+    ((void (*)(void))0x41414141)();
+    panic("didn't crash?!");
+}
+
 void pmgr_init()
 {
     dt_node_t *pmgr = dt_get("/arm-io/pmgr");
@@ -620,7 +626,7 @@ void pmgr_init()
     gPMGRBase = gIOBase + gPMGRreg[0].addr;
     gWDTBase  = gIOBase + dt_get_u64_prop("wdt", "reg");
     command_register("reset", "resets the device", wdt_reset);
-    command_register("crash", "branches to an invalid address", (void*)0x41414141);
+    command_register("crash", "branches to an invalid address", crash_cmd);
 }
 void interrupt_init() {
     gInterruptBase = dt_get_u32_prop("aic", "reg");
