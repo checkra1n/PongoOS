@@ -1733,11 +1733,11 @@ bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *op
     mac_execve_hook = opcode_stream;
     puts("KPF: Found mac_execve");
     
-    uint32_t* prebl = find_prev_insn(opcode_stream, 0x80, 0x52800302, 0xffffffff);
-    bl = find_next_insn(prebl, 10, 0x94000000, 0xfc000000); // bl
-    
-    copyout = follow_call(bl);
-    puts("KPF: Found copyout");
+    //uint32_t* prebl = find_prev_insn(opcode_stream, 0x80, 0x52800302, 0xffffffff);
+    //bl = find_next_insn(prebl, 10, 0x94000000, 0xfc000000); // bl
+    //
+    //copyout = follow_call(bl);
+    //puts("KPF: Found copyout");
     
     // Most reliable marker of a stack frame seems to be "add x29, sp, 0x...".
     // And this function is HUGE, hence up to 2k insn.
@@ -1751,6 +1751,34 @@ bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *op
     if(!start) start = find_prev_insn(frame, 10, 0xd10003ff, 0xff8003ff);
     if(!start) return false;
     
+    uint32_t* match = opcode_stream;
+    
+    while(1) {
+        if(
+           ((match[0] & 0xfff0ffff) == 0xaa1003e0) && // mov x0, x{16-30}
+           ((match[1] & 0xfc000000) == 0x94000000) && // bl _strlen
+           ((match[2] & 0xfffffff0) == 0x91000410) && // add x{16-30}, x0, #1
+           ((match[3] & 0xfffffe1f) == 0xf100121f) && // cmp x{16-30}, #4
+           ((match[4] & 0xff000000) == 0x54000000) && // b.hs
+           ((match[5] & 0x9f000000) == 0x90000000) && // adrp
+           ((match[6] & 0xff000000) == 0x91000000) && // add
+           ((match[7] & 0xfff0ffff) == 0xaa1003e1) && // mov x1, x{16-30}
+           ((match[8] & 0xfff0ffff) == 0xaa1003e2) && // mov x2, x{16-30}
+           ((match[9] & 0xfc000000) == 0x94000000)    // bl _copyout
+           )
+        {
+            // found
+            match += 9;
+            copyout = follow_call(match);
+            puts("KPF: Found copyout");
+            break;
+        }
+        match--;
+        if(match == start) {
+            panic("copyout not found");
+            return false;
+        }
+    }
     
     /* xxx */
     uint32_t *tpidr_el1 = find_next_insn(start, 0x20, 0xd538d080, 0xffffff80); // search mrs xN, tpidr_el1
