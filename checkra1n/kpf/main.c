@@ -796,6 +796,27 @@ bool vnode_lookup_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     return true;
 }
 
+bool kpf_protobox_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    uint32_t adrp1 = opcode_stream[0],
+             add1  = opcode_stream[1];
+    const char *str1 = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(adrp1) + ((add1 >> 10) & 0xfff));
+
+    uint32_t adrp2 = opcode_stream[4],
+             add2  = opcode_stream[5];
+    const char *str2 = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(adrp2) + ((add2 >> 10) & 0xfff));
+
+    if (!strcmp(str1, "Restore") && !strcmp(str2, "Darwin")) {
+        // Make protobox think this device is in "Restore" mode
+        // This will disable protobox
+        opcode_stream[2] = 0xD2800020; // mov x0, #1
+        printf("KPF: Found and patched protobox check @ 0x%llx\n", xnu_ptr_to_va(opcode_stream));
+        return true;
+    }
+
+    return false;
+}
+
 void kpf_find_shellcode_funcs(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // to find this with r2 run:
     // /x 00008192007fbef2:00ffffff00ffffff
@@ -1601,6 +1622,32 @@ void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
         0xFF000000
     };
     xnu_pf_maskmatch(patchset, "vnode_lookup", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)vnode_lookup_callback);
+
+    // Protobox on is an additional sandbox mechanism in iOS 16+ that introduces syscall masks, which is used to have syscall whitelists on some system processes
+    // When injecting into them or using something like Frida, it can prevent certain functionality
+    // Additionally it makes these processes crash on sandbox violations, meaning that calling even something simple like mach_thread_self in watchdogd will crash the process
+    // We disable it by making the code that enables it think the device is in Restore mode, as this check involves calling is_release_type with a string it's easy to find
+    uint64_t protobox_matches[] = {
+        0x90000000, // adrp x0, "Restore"@PAGE
+        0x91000000, // add x0, "Restore"@PAGEOFF
+        0x94000000, // bl _is_release_type
+        0x37000000, // tbnz w0, #0, ???
+        0x90000000, // adrp x0, "Darwin"@PAGE
+        0x91000000, // add x0, "Darwin"@PAGEOFF
+        0x94000000, // bl _is_release_type
+        0x36000000, // tb(n)z w0, #0, ???
+    }; 
+    uint64_t protobox_masks[] = {
+        0x9f00001f,
+        0xff8003ff,
+        0xfc000000,
+        0xff00001f,
+        0x9f00001f,
+        0xff8003ff,
+        0xfc000000,
+        0xfe00001f,
+    };
+    xnu_pf_maskmatch(patchset, "protobox", protobox_matches, protobox_masks, sizeof(protobox_masks)/sizeof(uint64_t), false, (void *)kpf_protobox_callback);
 }
 
 bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
