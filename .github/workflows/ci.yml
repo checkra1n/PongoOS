@@ -54,6 +54,10 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: debian:stable
+      volumes:
+        - /:/mnt
+      options: --privileged
+
     steps:
       - name: Install packages
         run: |
@@ -66,15 +70,19 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 0
-        
+
       - name: Compile KPF test
         run:
           make -C checkra1n/kpf-test KPF_CFLAGS="-target aarch64-linux-gnu -L/usr/aarch64-linux-gnu/lib -I/usr/aarch64-linux-gnu/include -L/usr/lib/gcc-cross/aarch64-linux-gnu/*" kpf-test.linux
 
+      - name: Free up space
+        run:
+          rm -rf /mnt/usr/share/dotnet /mnt/usr/local/lib/android /mnt/opt/ghc /mnt/opt/hostedtoolcache/CodeQL
+
       - name: Get kernels
         run: |
           curl -Lu ${{ secrets.ACTIONS_RESOURCES_LOGIN }} https://static.palera.in/action-resources/kc.tar.zst | zstd -cdT0 | tar -x
-      
+
       - name: Test KPF
         run: |
           qemu-aarch64 ./checkra1n/kpf-test/kpf-test.linux -n kernel2;
