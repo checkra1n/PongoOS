@@ -1799,7 +1799,8 @@ bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *op
     uint32_t  *start = find_prev_insn(frame, 10, 0xa9a003e0, 0xffe003e0);
     if(!start) start = find_prev_insn(frame, 10, 0xd10003ff, 0xff8003ff);
     if(!start) return false;
-    
+
+#if 0
     uint32_t* match = opcode_stream;
     
     while(1) {
@@ -1828,6 +1829,7 @@ bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *op
             return false;
         }
     }
+#endif
     
     /* xxx */
     uint32_t *tpidr_el1 = find_next_insn(start, 0x20, 0xd538d080, 0xffffff80); // search mrs xN, tpidr_el1
@@ -1873,6 +1875,19 @@ bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *op
     puts("KPF: Found mach_vm_allocate_kernel");
     
     
+    return true;
+}
+
+bool copyout_callsites_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    uint32_t* candidate = follow_call(&opcode_stream[1]);
+    if (!copyout) {
+        copyout = candidate;
+        puts("KPF: Found copyout");
+        return true;
+    }
+    if (candidate != copyout) {
+        panic("KPF: Found multiple copyout candidates");
+    }
     return true;
 }
 
@@ -1968,6 +1983,26 @@ void kpf_md0oncores_patch(xnu_pf_patchset_t* patchset)
     };
     xnu_pf_maskmatch(patchset, "load_init_program_at_path", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
 
+    // Find callsite(s) of copyout function
+    // Might match more than once but as long as they point the same address it's fine
+    // Note: In older iOS versions the cbnz instruction could be cbz, but we don't need it here
+    // /x 0211805200000094f00300aa00000035:ffffffff000000fcf003ffff000000ff
+    uint64_t copyout_matches[] =
+    {
+        0x52801102, // mov w2, #0x88
+        0x94000000, // bl copyout
+        0xaa0003f0, // mov x{16-31}, x0
+        0x35000000  // cbnz wN, ...
+    };
+
+    uint64_t copyout_masks[] =
+    {
+        0xffffffff,
+        0xfc000000,
+        0xffff03f0,
+        0xff000000
+    };
+    xnu_pf_maskmatch(patchset, "copyout_callsites", copyout_matches, copyout_masks, sizeof(copyout_matches)/sizeof(uint64_t), true, (void*)copyout_callsites_callback);
 }
 
 static uint32_t shellcode_count;
