@@ -1598,7 +1598,7 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "amfi_mac_syscall_low", iiii_matches, iiii_masks, sizeof(iiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_mac_syscall_low);
 }
 
-void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
+void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset, const char* constraints_string_match) {
     uint64_t matches[] = {
         0x35000000, // CBNZ
         0x94000000, // BL _vfs_context_current
@@ -1627,27 +1627,29 @@ void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
     // When injecting into them or using something like Frida, it can prevent certain functionality
     // Additionally it makes these processes crash on sandbox violations, meaning that calling even something simple like mach_thread_self in watchdogd will crash the process
     // We disable it by making the code that enables it think the device is in Restore mode, as this check involves calling is_release_type with a string it's easy to find
-    uint64_t protobox_matches[] = {
-        0x90000000, // adrp x0, "Restore"@PAGE
-        0x91000000, // add x0, "Restore"@PAGEOFF
-        0x94000000, // bl _is_release_type
-        0x37000000, // tbnz w0, #0, ???
-        0x90000000, // adrp x0, "Darwin"@PAGE
-        0x91000000, // add x0, "Darwin"@PAGEOFF
-        0x94000000, // bl _is_release_type
-        0x36000000, // tb(n)z w0, #0, ???
-    }; 
-    uint64_t protobox_masks[] = {
-        0x9f00001f,
-        0xff8003ff,
-        0xfc000000,
-        0xff00001f,
-        0x9f00001f,
-        0xff8003ff,
-        0xfc000000,
-        0xfe00001f,
-    };
-    xnu_pf_maskmatch(patchset, "protobox", protobox_matches, protobox_masks, sizeof(protobox_masks)/sizeof(uint64_t), false, (void *)kpf_protobox_callback);
+    if (constraints_string_match && xnu_platform() != PLATFORM_BRIDGEOS) {
+        uint64_t protobox_matches[] = {
+            0x90000000, // adrp x0, "Restore"@PAGE
+            0x91000000, // add x0, "Restore"@PAGEOFF
+            0x94000000, // bl _is_release_type
+            0x37000000, // tbnz w0, #0, ???
+            0x90000000, // adrp x0, "Darwin"@PAGE
+            0x91000000, // add x0, "Darwin"@PAGEOFF
+            0x94000000, // bl _is_release_type
+            0x36000000, // tb(n)z w0, #0, ???
+        };
+        uint64_t protobox_masks[] = {
+            0x9f00001f,
+            0xff8003ff,
+            0xfc000000,
+            0xff00001f,
+            0x9f00001f,
+            0xff8003ff,
+            0xfc000000,
+            0xfe00001f,
+        };
+        xnu_pf_maskmatch(patchset, "protobox", protobox_matches, protobox_masks, sizeof(protobox_masks)/sizeof(uint64_t), true, (void *)kpf_protobox_callback);
+    }
 }
 
 bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
@@ -2129,6 +2131,9 @@ static void kpf_cmd(const char *cmd, char *args)
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
     if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1);
 
+    const char constraints_string[] = "mac_proc_check_launch_constraints";
+    const char *constraints_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, constraints_string, sizeof(constraints_string));
+
 #ifdef DEV_BUILD
     // 15.0 beta 1 onwards, but only iOS/iPadOS
     if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
@@ -2275,7 +2280,7 @@ static void kpf_cmd(const char *cmd, char *args)
     xnu_pf_patchset_t* sandbox_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     struct mach_header_64* sandbox_header = xnu_pf_get_kext_header(hdr, "com.apple.security.sandbox");
     xnu_pf_range_t* sandbox_text_exec_range = xnu_pf_section(sandbox_header, "__TEXT_EXEC", "__text");
-    kpf_sandbox_kext_patches(sandbox_patchset);
+    kpf_sandbox_kext_patches(sandbox_patchset, constraints_string_match);
     xnu_pf_emit(sandbox_patchset);
     xnu_pf_apply(sandbox_text_exec_range, sandbox_patchset);
     xnu_pf_patchset_destroy(sandbox_patchset);
