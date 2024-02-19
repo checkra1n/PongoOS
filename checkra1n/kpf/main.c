@@ -960,6 +960,8 @@ bool mach_traps_alt_callback(struct xnu_pf_patch *patch, uint64_t *mach_traps)
 
 bool has_found_sbops = 0;
 uint64_t* sbops;
+
+bool found_apfs_rename = false;
 bool sb_ops_callback(struct xnu_pf_patch* patch, uint64_t* sbops_stream) {
     puts("KPF: Found sbops");
     sbops = sbops_stream;
@@ -968,8 +970,25 @@ bool sb_ops_callback(struct xnu_pf_patch* patch, uint64_t* sbops_stream) {
     return true;
 }
 bool kpf_apfs_patches_rename(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    if (
+           (opcode_stream[-1] & 0xfec003a0) != 0xf80003a0 /*st(u)r x*, [x29/sp, *]*/ 
+        && (opcode_stream[-1] & 0xffffffff) != 0xaa0003fc /* mov x28, x0 */
+        ) return false;
+
+    if (found_apfs_rename) {
+        panic("APFS rename: Found twice");
+    }
+    found_apfs_rename = true;
     puts("KPF: Found APFS rename");
-    opcode_stream[3] = NOP;
+    if ((opcode_stream[2] & 0xff000000) == 0x36000000) {
+        /* tbz -> b */
+        opcode_stream[2] = 0x14000000 | (uint32_t)sxt32(opcode_stream[2] >> 5, 14);
+    } else if ((opcode_stream[2] & 0xff000000) == 0x37000000) {
+        /* tbnz -> nop */
+        opcode_stream[2] = NOP;
+    } else {
+        panic("KPF: unreachable in apfs_patches_rename");
+    }
     return true;
 }
 
@@ -1176,7 +1195,7 @@ bool kpf_apfs_rootauth_new(struct xnu_pf_patch *patch, uint32_t *opcode_stream) 
 }
 #endif
 
-void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
+void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool support_rootauth) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
     // we also want to call it so we patch that check out
     // example from i7 13.3:
@@ -1210,7 +1229,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         0xfc000000,
     };
     xnu_pf_maskmatch(patchset, "apfs_patch_mount", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_mount);
-    if(have_union)
+    if(!have_ssv)
     {
         // the rename function will prevent us from renaming a snapshot that's on the rootfs, so we will just patch that check out
         // example from i7 13.3
@@ -1218,31 +1237,32 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         // 0xfffffff0068f3d5c      e01f00f9       str x0, [sp, 0x38]
         // 0xfffffff0068f3d60      08c44039       ldrb w8, [x0, 0x31] ; [0x31:4]=
         // 0xfffffff0068f3d64      68043037       tbnz w8, 6, 0xfffffff0068f3df0 <- patch this out
-        // Since iOS 15, the "str" can also be "stur", so we mask out one of the upper bits to catch both,
+        // This patch must not be applied to iOS 15+ because it means people can recovery loop their devices by renaming the snapshot
+        // Since tvOS 15.0, the "str" can also be "stur", so we mask out one of the upper bits to catch both,
         // and we apply a mask of 0x1d to the base register, to catch exactly x29 and sp.
+        // Since tvOS 15.4, the first st(u)r instruction can also be mov x28, x0, so we only check it in the callback
+        // Since tvOS 16.0, the tbnz instruction can also be tbz, which required converting the branch instead of nopping
         // r2 cmd:
-        // /x a00300f8a00300f80000403900003037:a003c0fea003c0fe0000feff0000f8ff
+        // /x a00300f80000403900003037:a003c0fe0000feff0000f8ff
         uint64_t i_matches[] = {
             0xf80003a0, // st(u)r x*, [x29/sp, *]
-            0xf80003a0, // st(u)r x*, [x29/sp, *]
             0x39400000, // ldrb w*, [x*]
-            0x37300000, // tbnz w*, 6, *
+            0x36300000, // tb(n)z w*, 6, *
         };
         uint64_t i_masks[] = {
             0xfec003a0,
-            0xfec003a0,
             0xfffe0000,
-            0xfff80000,
+            0xfef80000,
         };
         xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
     }
 
-#ifndef DEV_BUILD
     if(
-       palera1n_flags & palerain_option_rootful // this patch is not required on rootless
-       )
+        support_rootauth 
+#ifndef DEV_BUILD
+       && palera1n_flags & palerain_option_rootful // this patch is not required on rootless
 #endif
-    {
+    ) {
         // when mounting an apfs volume, there is a check to make sure the volume is
         // not both root volume and read/write
         // we just nop the check out
@@ -1262,18 +1282,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         };
         
         xnu_pf_maskmatch(patchset,
-            "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t),
-        !have_union
-#if DEV_BUILD
-	&& (gKernelVersion.darwinMajor <= 22
-#if __STDC_HOSTED__
-     || test_force_rootful
-#endif
-     ) // this patch is not used on ios 17.
-#else
-        && (palera1n_flags & palerain_option_rootful) != 0
-#endif
-    ,(void *)kpf_apfs_vfsop_mount);
+            "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t), true ,(void *)kpf_apfs_vfsop_mount);
         
     }
 }
@@ -2280,7 +2289,7 @@ static void kpf_cmd(const char *cmd, char *args)
         }
     }
 
-    kpf_apfs_patches(apfs_patchset, rootvp_string_match == NULL);
+    kpf_apfs_patches(apfs_patchset, livefs_string_match != NULL, rootvp_string_match != NULL);
 
     if(livefs_string_match)
     {
