@@ -2547,7 +2547,7 @@ static void kpf_cmd(const char *cmd, char *args)
         *mac_execve_hook = delta;
     }
     
-    if(!rootvp_string_match) // Only use underlying fs on union mounts
+    if(!livefs_string_match) // Only disable snapshot when we can remount realfs
     {
         char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
