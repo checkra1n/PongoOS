@@ -810,7 +810,7 @@ bool kpf_protobox_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
         // Make protobox think this device is in "Restore" mode
         // This will disable protobox
         opcode_stream[2] = 0xD2800020; // mov x0, #1
-        printf("KPF: Found and patched protobox check @ 0x%llx\n", xnu_ptr_to_va(opcode_stream));
+        printf("KPF: Found and patched protobox check @ 0x%" PRIx64 "\n", xnu_ptr_to_va(opcode_stream));
         return true;
     }
 
