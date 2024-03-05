@@ -64,7 +64,7 @@ jobs:
           dpkg --add-architecture arm64
           apt-get update
           apt-get -y --allow-downgrades dist-upgrade
-          apt-get install -y build-essential git libc6:arm64 libbsd0:arm64 libbsd-dev:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld curl zstd
+          apt-get install -y build-essential git libc6:arm64 libbsd0:arm64 libbsd-dev:arm64 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross qemu-user qemu-user-binfmt clang lld curl
 
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -81,7 +81,9 @@ jobs:
 
       - name: Get kernels
         run: |
-          curl -Lu ${{ secrets.ACTIONS_RESOURCES_LOGIN }} https://static.palera.in/action-resources/kc.tar.zst | zstd -cdT0 | tar -x
+          curl -LO https://github.com/pete4abw/lrzip-next/releases/download/v0.12.6/lrzip-next-static-0.12.6
+          chmod +x lrzip-next-static-0.12.6
+          curl -Lu ${{ secrets.ACTIONS_RESOURCES_LOGIN }} https://static.palera.in/action-resources/kc.tar.lrz | ./lrzip-next-static-0.12.6 -d - | tar -x
 
       - name: Test KPF
         run: |
