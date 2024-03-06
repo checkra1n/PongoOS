@@ -81,7 +81,7 @@ jobs:
 
       - name: Get kernels
         run: |
-          curl -sLu ${{ secrets.ACTIONS_RESOURCES_LOGIN }} https://static.palera.in/action-resources/kc.tar.lrz | zstd -cdT0 | tar -x
+          curl -sLu ${{ secrets.ACTIONS_RESOURCES_LOGIN }} https://static.palera.in/action-resources/kc.tar.zst | zstd -cdT0 | tar -x
 
       - name: Test KPF
         run: |
