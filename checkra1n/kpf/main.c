@@ -2523,6 +2523,8 @@ static void kpf_cmd(const char *cmd, char *args)
         uint64_t* repatch_launchd_execve_hook_ptrs = (uint64_t*)(launchd_execve_hook_ptr - shellcode_from + shellcode_to);
         uint32_t* repatch_launchd_execve_hook = (uint32_t*)(launchd_execve_hook - shellcode_from + shellcode_to);
         uint32_t* repatch_launchd_execve_hook_offset = (uint32_t*)(launchd_execve_hook_offset - shellcode_from + shellcode_to);
+        uint32_t* repatch_launchd_execve_hook_pagesize = (uint32_t*)(launchd_execve_hook_pagesize - shellcode_from + shellcode_to);
+
         
         if (repatch_launchd_execve_hook_ptrs[0] != 0x4141414141414141) {
             panic("Shellcode corruption");
@@ -2536,7 +2538,7 @@ static void kpf_cmd(const char *cmd, char *args)
         repatch_launchd_execve_hook_offset[0] |= ((current_map_off >> 3) & 0xfff) << 10;
         repatch_launchd_execve_hook_offset[2] |= ((vm_map_page_size_off >> 2) & 0x7ff) << 11;
         
-        if (socnum != 0x8960 && socnum != 0x7000 && socnum != 0x7001) launchd_execve_hook_pagesize[0] = NOP;
+        if (socnum != 0x8960 && socnum != 0x7000 && socnum != 0x7001) *repatch_launchd_execve_hook_pagesize = NOP;
         uint32_t delta = (&repatch_launchd_execve_hook[0]) - mac_execve_hook;
         delta &= 0x03ffffff;
         delta |= 0x94000000;
