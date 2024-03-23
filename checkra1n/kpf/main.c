@@ -169,7 +169,7 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 
 // Imports from shellcode.S
 extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
-extern uint32_t launchd_execve_hook[], launchd_execve_hook_ptr[], launchd_execve_hook_offset[];
+extern uint32_t launchd_execve_hook[], launchd_execve_hook_ptr[], launchd_execve_hook_offset[], launchd_execve_hook_pagesize[];
 
 uint32_t* _mac_mount = NULL;
 bool kpf_has_done_mac_mount = false;
@@ -2536,6 +2536,7 @@ static void kpf_cmd(const char *cmd, char *args)
         repatch_launchd_execve_hook_offset[0] |= ((current_map_off >> 3) & 0xfff) << 10;
         repatch_launchd_execve_hook_offset[2] |= ((vm_map_page_size_off >> 2) & 0x7ff) << 11;
         
+        if (socnum != 0x8960 && socnum != 0x7000 && socnum != 0x7001) launchd_execve_hook_pagesize[0] = NOP;
         uint32_t delta = (&repatch_launchd_execve_hook[0]) - mac_execve_hook;
         delta &= 0x03ffffff;
         delta |= 0x94000000;

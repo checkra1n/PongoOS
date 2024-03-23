@@ -229,6 +229,7 @@ vnode_check_open_orig:
 .globl _launchd_execve_hook_ptr
 .globl _launchd_execve_hook_end
 .globl _launchd_execve_hook_offset
+.globl _launchd_execve_hook_pagesize
 _launchd_execve_hook:
 b          launchd_execve_hook$start
 
@@ -253,8 +254,14 @@ cbz        x0, launchd_execve_hook$current_map$zero
 launchd_execve_hook$current_map$notzero:
 ldrh       w8, [x0, #0x0] // Gets replaced with real offset by kpf
 b          launchd_execve_hook$get_map_page_size
+_launchd_execve_hook_pagesize:
 launchd_execve_hook$current_map$zero:
+b launchd_execve_hook$current_map$zero_4k // Replaced with NOP by KPF on 16K
+launchd_execve_hook$current_map$zero_16k:
 mov        w8, #0xe       // 16k page
+b launchd_execve_hook$get_map_page_size
+launchd_execve_hook$current_map$zero_4k:
+mov w8, #0xc // 4K page
 launchd_execve_hook$get_map_page_size:
 mov        w1, #0x1
 lsl        w2, w1, w8    // map_page_size
