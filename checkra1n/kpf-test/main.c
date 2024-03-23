@@ -70,6 +70,8 @@ typedef struct load_command       mach_lc_t;
 typedef struct segment_command_64 mach_seg_t;
 typedef struct thread_command     mach_th_t;
 
+uint32_t socnum = 0x8015;
+
 typedef struct boot_args
 {
     uint16_t Revision;
