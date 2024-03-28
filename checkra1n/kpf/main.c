@@ -2143,6 +2143,12 @@ static void kpf_cmd(const char *cmd, char *args)
         }
     }
 
+    if (dt_node_u32(dt_get("/chosen"), "board-id", 0) == 0x02 && socnum == 0x8011) {
+        if (!strstr((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), "AppleEmbeddedUSBArbitrator-force-usbdevice=")) {
+            strlcat((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), " AppleEmbeddedUSBArbitrator-force-usbdevice=1", 0x270);
+        }
+    }
+
     qsort(patches, npatches, sizeof(kpf_patch_t*), kpf_compare_patches);
 
     xnu_pf_patchset_t* xnu_text_exec_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
