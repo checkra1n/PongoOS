@@ -1883,11 +1883,13 @@ bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *op
     mach_vm_allocate_kernel = follow_call(bl);
     puts("KPF: Found mach_vm_allocate_kernel");
     
-    
     return true;
 }
 
 bool copyout_callsites_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    // Don't match inlined copyout
+    if (find_prev_insn(opcode_stream-1, 20, 0x52801102, 0xffffffff)) return false; /* mov w2, #0x88 */
+
     uint32_t* candidate = follow_call(&opcode_stream[1]);
     if (!copyout) {
         copyout = candidate;
@@ -1948,23 +1950,23 @@ void kpf_md0oncores_patch(xnu_pf_patchset_t* patchset)
     };
     xnu_pf_maskmatch(patchset, "load_init_program_at_path", i_matches, i_masks, sizeof(i_masks)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
     
-    // just for xnu-7938
+    // xnu-7090 - xnu-7938
     uint64_t ii_matches[] =
     {
-        0xa904dff5, // stp  x21, x23, [sp, #0x48]
-        0xa905ffff, // stp  xzr, xzr, [sp, #0x58]
-        0x910123e1, // add  x1, sp, #0x48
-        0x910103e2, // add  x2, sp, #0x40
+        0xa9005ff5, // stp  x21, x23, [sp, ...]
+        0xa9007fff, // stp  xzr, xzr, [sp, ...]
+        0x910003e1, // add  x1, sp, ...
+        0x910003e2, // add  x2, sp, ...
         0xaa1303e0, // mov  x0, x19
         0x94000000, // bl   __mac_execve
-        0x35000000, // cbnz wN, ...
+        0x35000000, // cbnz w0, ...
     };
     uint64_t ii_masks[] =
     {
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
-        0xffffffff,
+        0xffc07fff,
+        0xffc07fff,
+        0xffc003ff,
+        0xffc003ff,
         0xffffffff,
         0xfc000000,
         0xff00001f,
@@ -2001,7 +2003,7 @@ void kpf_md0oncores_patch(xnu_pf_patchset_t* patchset)
         0x52801102, // mov w2, #0x88
         0x94000000, // bl copyout
         0xaa0003f0, // mov x{16-31}, x0
-        0x35000000  // cbnz wN, ...
+        0x34000000  // cb(n)z wN, ...
     };
 
     uint64_t copyout_masks[] =
@@ -2009,7 +2011,7 @@ void kpf_md0oncores_patch(xnu_pf_patchset_t* patchset)
         0xffffffff,
         0xfc000000,
         0xffff03f0,
-        0xff000000
+        0xfe000000
     };
     xnu_pf_maskmatch(patchset, "copyout_callsites", copyout_matches, copyout_masks, sizeof(copyout_matches)/sizeof(uint64_t), true, (void*)copyout_callsites_callback);
 }
@@ -2177,6 +2179,8 @@ static void kpf_cmd(const char *cmd, char *args)
     const char rootvp_string[] = "rootvp not authenticated after mounting";
     const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
 
+    bool has_tmpfs = !!xnu_pf_get_kext_header(hdr, "com.apple.filesystems.tmpfs");
+
     const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
     if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1);
@@ -2186,7 +2190,7 @@ static void kpf_cmd(const char *cmd, char *args)
     if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
 #endif
 
-    if (!rootvp_string_match) {
+    if (!has_tmpfs) {
         strlcat((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), " rootdev=md0", 0x270);
     }
 
@@ -2397,9 +2401,11 @@ static void kpf_cmd(const char *cmd, char *args)
     kpf_vm_map_protect_patch(xnu_text_exec_patchset);
     kpf_mac_vm_fault_enter_patch(xnu_text_exec_patchset);
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
-    if(rootvp_string_match) // Union mounts no longer work
+    if(has_tmpfs)
     {
         kpf_md0oncores_patch(xnu_text_exec_patchset);
+    }
+    if (rootvp_string_match) { // Union mounts no longer work
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
     }
 
@@ -2517,7 +2523,7 @@ static void kpf_cmd(const char *cmd, char *args)
     uint32_t* repatch_vnode_shellcode = &shellcode_area[4];
     *repatch_vnode_shellcode = repatch_ldr_x19_vnode_pathoff;
 
-    if(rootvp_string_match)
+    if(has_tmpfs)
     {
         if (!mdevremoveall) panic("no mdevremoveall");
         if (!mac_execve) panic("no mac_execve");

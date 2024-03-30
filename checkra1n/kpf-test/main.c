@@ -160,6 +160,15 @@ uint64_t get_ticks(void)
 #endif
 }
 
+void* dt_get(const char *name)
+{
+    return NULL;
+}
+
+uint32_t dt_node_u32(void *node, const char *prop, uint32_t idx) {
+    return 0;
+}
+
 void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args))
 {
     // nop
