@@ -1133,12 +1133,12 @@ bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     uint32_t off = (adrp[1] >> 10) & 0xfff;
     const char *str = (const char*)(page + off);
     if (!strstr(str, "Updating mount to read/write mode is not allowed\n")) {
-	return false;
+	    return false;
     }
 
     opcode_stream[1] = 0x52800000; /* mov w0, 0 */
     has_found_apfs_vfsop_mount = true;
-    
+
     printf("KPF: found apfs_vfsop_mount\n");
     
     return true;
@@ -1195,7 +1195,7 @@ bool kpf_apfs_rootauth_new(struct xnu_pf_patch *patch, uint32_t *opcode_stream) 
 }
 #endif
 
-void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool support_rootauth) {
+void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool has_tmpfs) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
     // we also want to call it so we patch that check out
     // example from i7 13.3:
@@ -1258,7 +1258,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool support_r
     }
 
     if(
-        support_rootauth 
+        has_tmpfs 
 #ifndef DEV_BUILD
        && palera1n_flags & palerain_option_rootful // this patch is not required on rootless
 #endif
@@ -1273,7 +1273,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool support_r
         // r2: /x a00340b900781f12a00300b9:a003feff00fcffffa003c0ff
         uint64_t remount_matches[] = {
 	        0x94000000, // bl
-            0x37700000,  // tbnz w0, 0xe, *
+            0x37700000, // tbnz w0, 0xe, *
         };
         
         uint64_t remount_masks[] = {
@@ -2294,7 +2294,7 @@ static void kpf_cmd(const char *cmd, char *args)
         }
     }
 
-    kpf_apfs_patches(apfs_patchset, livefs_string_match != NULL, rootvp_string_match != NULL);
+    kpf_apfs_patches(apfs_patchset, livefs_string_match != NULL, has_tmpfs);
 
     if(livefs_string_match)
     {
