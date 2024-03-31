@@ -1195,7 +1195,7 @@ bool kpf_apfs_rootauth_new(struct xnu_pf_patch *patch, uint32_t *opcode_stream) 
 }
 #endif
 
-void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool has_tmpfs) {
+void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool apfs_vfsop_mount_string_match) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
     // we also want to call it so we patch that check out
     // example from i7 13.3:
@@ -1258,7 +1258,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool has_tmpfs
     }
 
     if(
-        has_tmpfs 
+        apfs_vfsop_mount_string_match 
 #ifndef DEV_BUILD
        && palera1n_flags & palerain_option_rootful // this patch is not required on rootless
 #endif
@@ -2179,7 +2179,14 @@ static void kpf_cmd(const char *cmd, char *args)
     const char rootvp_string[] = "rootvp not authenticated after mounting";
     const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
 
-    bool has_tmpfs = !!xnu_pf_get_kext_header(hdr, "com.apple.filesystems.tmpfs");
+    const char apfs_vfsop_mount_string[] = "Updating mount to read/write mode is not allowed\n";
+    const char *apfs_vfsop_mount_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, apfs_vfsop_mount_string, sizeof(apfs_vfsop_mount_string) - 1) : NULL;
+    if(!apfs_vfsop_mount_string_match) apfs_vfsop_mount_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, apfs_vfsop_mount_string, sizeof(apfs_vfsop_mount_string) - 1);
+
+#ifdef DEV_BUILD
+    // 14.0 beta 1 onwards
+    if((apfs_vfsop_mount_string_match != NULL) != (gKernelVersion.darwinMajor >= 20)) panic("apfs_vfsop_mount string doesn't match expected Darwin version");
+#endif
 
     const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
@@ -2190,7 +2197,7 @@ static void kpf_cmd(const char *cmd, char *args)
     if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
 #endif
 
-    if (!has_tmpfs) {
+    if (!apfs_vfsop_mount_string_match) {
         strlcat((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), " rootdev=md0", 0x270);
     }
 
@@ -2294,7 +2301,7 @@ static void kpf_cmd(const char *cmd, char *args)
         }
     }
 
-    kpf_apfs_patches(apfs_patchset, livefs_string_match != NULL, has_tmpfs);
+    kpf_apfs_patches(apfs_patchset, livefs_string_match != NULL, apfs_vfsop_mount_string_match != NULL);
 
     if(livefs_string_match)
     {
@@ -2401,7 +2408,7 @@ static void kpf_cmd(const char *cmd, char *args)
     kpf_vm_map_protect_patch(xnu_text_exec_patchset);
     kpf_mac_vm_fault_enter_patch(xnu_text_exec_patchset);
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
-    if(has_tmpfs)
+    if(apfs_vfsop_mount_string_match)
     {
         kpf_md0oncores_patch(xnu_text_exec_patchset);
     }
@@ -2427,12 +2434,9 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
     if (!kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
-    if (!has_found_apfs_vfsop_mount && rootvp_string_match != NULL) {
-#if __STDC_HOSTED__
-    if (gKernelVersion.darwinMajor <= 22 || test_force_rootful) {
-        panic("Missing patch: apfs_vfsop_mount");
-    } else
-#endif
+
+
+    if (!has_found_apfs_vfsop_mount && apfs_vfsop_mount_string_match != NULL) {
       if (palera1n_flags & palerain_option_rootful) {
         panic("Missing patch: apfs_vfsop_mount");
       } else {
@@ -2523,7 +2527,7 @@ static void kpf_cmd(const char *cmd, char *args)
     uint32_t* repatch_vnode_shellcode = &shellcode_area[4];
     *repatch_vnode_shellcode = repatch_ldr_x19_vnode_pathoff;
 
-    if(has_tmpfs)
+    if(apfs_vfsop_mount_string_match)
     {
         if (!mdevremoveall) panic("no mdevremoveall");
         if (!mac_execve) panic("no mac_execve");
