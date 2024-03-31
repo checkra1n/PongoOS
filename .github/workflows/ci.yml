@@ -28,11 +28,22 @@ jobs:
         run: |
           make
 
-      - name: Prepare upload directory 
+      - name: Prepare upload directory
         run: |
           mkdir upload
           mv build/Pongo.bin upload/
           mv build/checkra1n-kpf-pongo upload/
+
+      - name: Compile KPF and Pongo Development
+        run: |
+          make clean
+          make DEV_BUILD=1
+
+      - name: Prepare upload directory Development
+        run: |
+          mkdir upload
+          mv build/Pongo.bin upload/Pongo.bin.development
+          mv build/checkra1n-kpf-pongo upload/checkra1n-kpf-pongo.development
 
       - name: Get branch name
         id: branch-name
