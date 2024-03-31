@@ -41,7 +41,6 @@ jobs:
 
       - name: Prepare upload directory Development
         run: |
-          mkdir upload
           mv build/Pongo.bin upload/Pongo.bin.development
           mv build/checkra1n-kpf-pongo upload/checkra1n-kpf-pongo.development
 
