@@ -1144,6 +1144,42 @@ bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
     return true;
 }
 
+bool kpf_apfs_root_snapshot_name(struct xnu_pf_patch *patch, uint32_t *opcode_stream)  {
+    const char *str = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) 
+        + adrp_off(opcode_stream[0]) + ((opcode_stream[1] >> 10) & 0xfff));
+    if (strcmp(str, "0123456789ABCDEF") != 0) return false;
+
+    uint32_t* b_cond = find_next_insn(opcode_stream, 20, 0x54000000, 0xff000000); // b.cond
+    if (!b_cond) {
+        panic("kpf_apfs_root_snapshot_name_inlined: failed to find b.cond");
+    }
+    uint32_t* dest_addr = b_cond + 1;
+
+    /*
+     * addr_reg holds a pointer to a buffer as follows:
+     * com.apple.os.update- ... to be filled in with hash
+     *                     ^
+     *             pointer in addr_reg
+     * We seek back to the start of the string, write "orig-fs\x00"
+     * into it, then skip the loop for filling in the buffer 
+     * character-by-character.
+    */
+
+    uint32_t addr_reg = (opcode_stream[9] >> 5) & 0x1f; // strb wN, [addr_reg, xN, lsl]
+    uint32_t scratch_reg = addr_reg - 1;
+    uint32_t imm12 = 20;
+    opcode_stream[0] = 0xd1000000 | imm12 << 10 | addr_reg << 5 | scratch_reg; // sub scratch_reg, addr_reg, #0x14
+    opcode_stream[1] = 0x10000080 | addr_reg; // adr addr_reg, #0x10
+    opcode_stream[2] = 0xf9400000 | addr_reg << 5 | addr_reg; // ldr addr_reg, [addr_reg]
+    opcode_stream[3] = 0xf9000000 | addr_reg | scratch_reg << 5; // str addr_reg, [scratch_reg]
+    opcode_stream[4] = 0x14000000 | ((dest_addr - &opcode_stream[4]) & 0x3fffffff); // b dest_addr
+    opcode_stream[5] = 0x6769726f; // orig
+    opcode_stream[6] = 0x0073662d; // -fs\x00
+    
+    printf("KPF: found apfs_root_snapshot_name\n");
+    return true;
+}
+
 #if 0
 bool handled_eval_rootauth = false;
 bool kpf_apfs_rootauth(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
@@ -1284,6 +1320,64 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool apfs_vfso
         xnu_pf_maskmatch(patchset,
             "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t), true ,(void *)kpf_apfs_vfsop_mount);
         
+    }
+
+#if __STDC_HOSTED__ == 0
+    if ((palera1n_flags & palerain_option_ssv) == 0 && (palera1n_flags & palerain_option_force_revert))
+#endif
+    {
+        // This patch is required because on md0oncores, the rootfs is mounted by the kernel
+        // However, when force reverting on platforms without SSV we want to mount the snapshot
+        // of the real filesystem, so as to cleanup uicache properly. Here, we change the
+        // snapshot that the kernel boots from to orig-fs
+        // Example from Apple TV HD 17.2:
+        //        0xfffffff006ae3528      09008052       movz w9, 0
+        //        0xfffffff006ae352c      0a0080d2       movz x10, 0
+        //        0xfffffff006ae3530      8b520091       add x11, x20, 0x14
+        //        0xfffffff006ae3534      ac85ffb0       adrp x12, 0xfffffff005b98000
+        //        0xfffffff006ae3538      8c990691       add x12, x12, 0x1a6
+        //   ┌──> 0xfffffff006ae353c      4dfd41d3       lsr x13, x10, 1
+        //   ╎    0xfffffff006ae3540      6d6a6d38       ldrb w13, [x19, x13] ; 0xd4000000da ; 910533066970
+        //   ╎    0xfffffff006ae3544      ee03292a       mvn w14, w9
+        //   ╎    0xfffffff006ae3548      ce017e92       and x14, x14, 4
+        //   ╎    0xfffffff006ae354c      ad25ce9a       lsr x13, x13, x14
+        //   ╎    0xfffffff006ae3550      ad0d4092       and x13, x13, 0xf
+        //   ╎    0xfffffff006ae3554      8d696d38       ldrb w13, [x12, x13] ; 0xd4000000d3 ; 910533066963
+        //   ╎    0xfffffff006ae3558      6d692a38       strb w13, [x11, x10]
+        //   ╎    0xfffffff006ae355c      4a050091       add x10, x10, 1
+        //   ╎    0xfffffff006ae3560      29110011       add w9, w9, 4
+        //   ╎    0xfffffff006ae3564      1f010aeb       cmp x8, x10
+        //   └──< 0xfffffff006ae3568      a1feff54       b.ne 0xfffffff006ae353c
+        // r2: /x 000000900000009100fc41d300686038e003202a00001e120024c01a000c00120008603800682038:0000009f0000c0ff00fcffff00fce0ffe0ffe0ff00fc9f7f00fce07f00fc9f7f001ce0ff00fce0ff
+        // This call is sometimes inlined, hence why the patch is somewhat complicated
+        uint64_t root_snapshot_matches[] = {
+            0x90000000, // adrp xN, ...
+            0x91000000, // add xN, xN, ...
+            0xd341fc00, // lsr xN, xN, #0x1
+            0x38606800, // ldrb wN, [xN, xN, lsl]
+            0x2a2003e0, // mvn xN, xN
+            0x121e0000, // and rN, rN, #0x4
+            0x1ac02400, // lsr xN, xN, xN
+            0x12000c00, // and rN, rN, #0xf
+            0x38600800, // ldrb wN, [xN, xN, ...]
+            0x38206800  // strb wN, [xN, xN, lsl]
+        };
+
+        uint64_t root_snapshot_masks[] = {
+            0x9f000000,
+            0xffc00000,
+            0xfffffc00,
+            0xffe0fc00,
+            0xffe0ffe0,
+            0x7f9ffc00,
+            0x7fe0fc00,
+            0x7f9ffc00,
+            0xffe01c00,
+            0xffe0fc00
+        };
+
+        xnu_pf_maskmatch(patchset,
+        "apfs_root_snapshot_name", root_snapshot_matches, root_snapshot_masks, sizeof(root_snapshot_matches) / sizeof(uint64_t), true ,(void *)kpf_apfs_root_snapshot_name);
     }
 }
 static uint32_t* amfi_ret;
