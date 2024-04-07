@@ -2304,9 +2304,10 @@ static void kpf_cmd(const char *cmd, char *args)
     }
 #endif
 
+    const char *thid_should_crash_string_match = NULL;
     if (bootdata_range) {
         const char thid_should_crash_string[] = "thid_should_crash";
-        const char *thid_should_crash_string_match = memmem(bootdata_range->cacheable_base, bootdata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
+        thid_should_crash_string_match = memmem(bootdata_range->cacheable_base, bootdata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
 
         if (const_klddata_range && !thid_should_crash_string_match) {
             thid_should_crash_string_match = memmem(const_klddata_range->cacheable_base, const_klddata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
@@ -2660,6 +2661,22 @@ static void kpf_cmd(const char *cmd, char *args)
         char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) panic("no snapshot string");
+
+#if __STDC_HOSTED__ == 0
+        if (thid_should_crash_string_match != NULL) {
+            size_t root_snapshot_name_len = 0;
+            dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
+            if (!chosen) panic("invalid devicetree: no device!");
+            char* snapshotString2 = dt_prop(chosen, "root-snapshot-name", &root_snapshot_name_len);
+            if (!snapshotString2) panic("invalid devicetree: no prop!");
+
+            if ((palera1n_flags & palerain_option_ssv) == 0 && (palera1n_flags & palerain_option_force_revert)) {
+                memcpy(snapshotString2, "orig-fs", sizeof("orig-fs"));
+            } else {
+                *snapshotString2 = 'x';
+            }
+        }
+#endif
 
         *snapshotString = 'x';
         puts("KPF: Disabled snapshot temporarily");
