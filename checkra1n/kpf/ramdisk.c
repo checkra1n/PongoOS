@@ -153,7 +153,8 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
         if (!chosen) panic("invalid devicetree: no device!");
         char* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
         if (!root_matching) panic("invalid devicetree: no prop!");
-        snprintf(BSDName, 16, "%s%" PRIu32, gHasConstriants ? "disk1s" : "disk0s1s", partid);
+        snprintf(BSDName, 16, "%s%" PRIu32, gHasConstriants ? (xnu_platform() == PLATFORM_TVOS ? "disk2s" : "disk1s") : "disk0s1s", partid);
+
         if ((palera1n_flags & (palerain_option_setup_rootful | palerain_option_force_revert)) == 0)
         snprintf(root_matching, root_matching_len, 
             "<dict ID=\"0\"><key>IOProviderClass</key><string ID=\"1\">IOService</string><key>BSD Name</key><string ID=\"2\">%s</string></dict>",
