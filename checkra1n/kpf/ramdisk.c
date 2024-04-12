@@ -37,6 +37,7 @@
 static bool have_ramdisk = false;
 static char *rootdev_bootarg = NULL;
 static uint32_t *rootdev_patchpoint = NULL;
+static int32_t fakefs_offset = 0;
 
 static bool kpf_rootdev_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
@@ -102,6 +103,8 @@ static void kpf_ramdisk_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
 extern palerain_option_t palera1n_flags;
 
 static bool gHasConstriants = false;
+extern struct kernel_version gKernelVersion;
+
 static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, palerain_option_t palera1n_flags)
 {
     char *bootargs = (char*)((uintptr_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView);
@@ -114,6 +117,11 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
     const char constraints_string[] = "mac_proc_check_launch_constraints";
     const char *constraints_string_match = memmem(cstring->cacheable_base, cstring->size, constraints_string, sizeof(constraints_string));
     gHasConstriants = (constraints_string_match != NULL);
+
+    if (gKernelVersion.xnuMajor >= 10002 /* iOS 17 */
+    && strstr(gKernelVersion.kernel_version_string, "root:xnu-10002.0.40.") == NULL /* iOS 17.0 beta 1 */) {
+        if (xnu_platform() == PLATFORM_IOS) fakefs_offset = 1;
+    }
 
 #ifdef DEV_BUILD
     have_ramdisk = true;
@@ -149,6 +157,7 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
         if (baseband) partid = patch[0] + 1U;
         else partid = patch[0];
         if (socnum == 0x7000 || socnum == 0x7001) partid--;
+        partid += fakefs_offset;
         dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
         if (!chosen) panic("invalid devicetree: no device!");
         char* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);

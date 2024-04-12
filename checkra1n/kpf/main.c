@@ -135,7 +135,6 @@ uint32_t* follow_call(uint32_t *from)
     return target;
 }
 
-#ifdef DEV_BUILD
 struct kernel_version gKernelVersion;
 static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 {
@@ -147,6 +146,7 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
         kernelVersionString = memmem(text_const_range->cacheable_base, text_const_range->size, kernelVersionStringMarker, strlen(kernelVersionStringMarker));
         if(kernelVersionString == NULL) panic("No kernel version string found");
     }
+    gKernelVersion.kernel_version_string = kernelVersionString;
     const char *start = kernelVersionString + strlen(kernelVersionStringMarker);
     char *end = NULL;
     errno = 0;
@@ -165,7 +165,6 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
     if(errno) panic("Error parsing kernel version");
     printf("Detected Kernel version Darwin: %d.%d.%d xnu: %d\n", gKernelVersion.darwinMajor, gKernelVersion.darwinMinor, gKernelVersion.darwinRevision, gKernelVersion.xnuMajor);
 }
-#endif
 
 // Imports from shellcode.S
 extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
@@ -2260,11 +2259,9 @@ static void kpf_cmd(const char *cmd, char *args)
     struct mach_header_64* hdr = xnu_header();
     xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
 
-#ifdef DEV_BUILD
     xnu_pf_range_t *text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
     kpf_kernel_version_init(text_const_range);
     free(text_const_range);
-#endif
 
     // extern struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, const char* kext_bundle_id);
 
