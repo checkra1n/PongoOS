@@ -16,10 +16,10 @@ KPF_H                   := $(wildcard $(RA1N)/*.h) $(wildcard $(INC)/*.h) $(wild
 KPF_C                   := main.c $(wildcard $(RA1N)/*.c) $(wildcard $(RA1N)/*.S) $(SRC)/drivers/xnu/xnu.c $(SRC)/drivers/xnu/xnu.S
 KPF_LD_FLAGS            := -Wl,-fatal_warnings -Wl,-dead_strip $(KPF_LDFLAGS)
 KPF_CC_FLAGS            := -std=gnu17 -Wall -Wno-strict-prototypes -Werror=incompatible-function-pointer-types -O3 -flto -I$(INC) -I$(SRC)/kernel -I$(SRC)/drivers -DCHECKRA1N_VERSION='"x.y.z"' -Diprintf=printf -Dpanic=realpanic \
-                           '-Djit_set_exec(m)=void pthread_jit_write_protect_np(int); pthread_jit_write_protect_np(m)' -DOVERRIDE_CACHEABLE_VIEW=0x800000000ULL -DDEV_BUILD -D_GNU_SOURCE $(KPF_CFLAGS) $(KPF_LD_FLAGS)
+                           '-Djit_set_exec(m)=void pthread_jit_write_protect_np(int); pthread_jit_write_protect_np(m)' -DOVERRIDE_CACHEABLE_VIEW=0x800000000ULL -DDEV_BUILD -D_GNU_SOURCE -DKPF_TEST $(KPF_CFLAGS) $(KPF_LD_FLAGS)
 KPF_LD_FLAGS_LINUX      := 
 KPF_CC_FLAGS_LINUX      := -std=gnu17 -Wall -Wno-strict-prototypes -O3 -flto -I$(INC) -I$(SRC)/kernel -I$(SRC)/drivers -DCHECKRA1N_VERSION='"x.y.z"' -Diprintf=printf -Dpanic=realpanic \
-                           -DOVERRIDE_CACHEABLE_VIEW=0x800000000ULL '-Djit_set_exec(m)=void pthread_jit_write_protect_np(int);' -DDEV_BUILD -D_GNU_SOURCE -Iinclude $(KPF_CFLAGS) $(KPF_LD_FLAGS_LINUX)
+                           -DOVERRIDE_CACHEABLE_VIEW=0x800000000ULL '-Djit_set_exec(m)=void pthread_jit_write_protect_np(int);' -DDEV_BUILD -D_GNU_SOURCE -DKPF_TEST -Iinclude $(KPF_CFLAGS) $(KPF_LD_FLAGS_LINUX)
 
 ifeq ($(HOST_OS),Darwin)
 	IOS_CC              ?= xcrun -sdk iphoneos clang --target=arm64-apple-ios7.0

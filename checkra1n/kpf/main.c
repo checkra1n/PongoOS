@@ -39,7 +39,7 @@
 uint32_t offsetof_p_flags;
 palerain_option_t palera1n_flags = 0;
 
-#if __STDC_HOSTED__
+#if defined(KPF_TEST)
 extern bool test_force_rootful;
 
 #if __has_include(<bsd/string.h>)
@@ -1322,8 +1322,11 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool apfs_vfso
         
     }
 
-#if __STDC_HOSTED__ == 0
-    if ((palera1n_flags & palerain_option_ssv) == 0 && (palera1n_flags & palerain_option_force_revert))
+#if !defined(KPF_TEST)
+    if ((palera1n_flags & palerain_option_ssv) == 0 
+    && (palera1n_flags & palerain_option_force_revert)
+    && (palera1n_flags & palerain_option_rootful)
+    )
 #endif
     {
         // This patch is required because on md0oncores, the rootfs is mounted by the kernel
@@ -2286,6 +2289,14 @@ static void kpf_cmd(const char *cmd, char *args)
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
     if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1);
 
+    if(livefs_string_match)
+    {
+        palera1n_flags |= palerain_option_ssv;
+#if 0
+        kpf_root_livefs_patch(apfs_patchset);
+#endif
+    }
+
 #ifdef DEV_BUILD
     // 15.0 beta 1 onwards, but only iOS/iPadOS
     if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
@@ -2398,13 +2409,6 @@ static void kpf_cmd(const char *cmd, char *args)
 
     kpf_apfs_patches(apfs_patchset, livefs_string_match != NULL, apfs_vfsop_mount_string_match != NULL);
 
-    if(livefs_string_match)
-    {
-        palera1n_flags |= palerain_option_ssv;
-#if 0
-        kpf_root_livefs_patch(apfs_patchset);
-#endif
-    }
     if (!(palera1n_flags & palerain_option_rootful) && !(palera1n_flags & palerain_option_rootless)) {
         if (livefs_string_match) {
             palera1n_flags |= palerain_option_rootless;
@@ -2662,7 +2666,7 @@ static void kpf_cmd(const char *cmd, char *args)
         if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) panic("no snapshot string");
 
-#if __STDC_HOSTED__ == 0
+#if !defined(KPF_TEST)
         if (thid_should_crash_string_match != NULL) {
             size_t root_snapshot_name_len = 0;
             dt_node_t* chosen = dt_find(gDeviceTree, "chosen");

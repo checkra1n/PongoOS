@@ -130,7 +130,7 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
         memcpy(rootdev_bootarg, "spartan", 7); // rootdev -> spartan
     }
 
-#if __STDC_HOSTED__
+#if defined(KPF_TEST)
     char BSDName[16] = "disk0s1s1";
 #else
     char BSDName[16];
