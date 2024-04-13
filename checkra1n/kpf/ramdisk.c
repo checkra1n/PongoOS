@@ -130,6 +130,26 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
 #endif
 }
 
+static const char* disk_prefix(void) {
+    if (gKernelVersion.darwinMajor >= 19) {
+        if (xnu_platform() == PLATFORM_TVOS) {
+            if (gHasConstriants) {
+                return "disk2s";
+            } else {
+                return "disk0s2s";
+            }
+        } else {
+            if (gHasConstriants) {
+                return "disk1s";
+            } else {
+                return "disk0s1s";
+            }
+        }
+    } else {
+        return "disk0s1s";
+    }
+}
+
 static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t palera1n_flags)
 {
 
@@ -162,7 +182,7 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
         if (!chosen) panic("invalid devicetree: no device!");
         char* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
         if (!root_matching) panic("invalid devicetree: no prop!");
-        snprintf(BSDName, 16, "%s%" PRIu32, gHasConstriants ? (xnu_platform() == PLATFORM_TVOS ? "disk2s" : "disk1s") : "disk0s1s", partid);
+        snprintf(BSDName, 16, "%s%" PRIu32, disk_prefix(), partid);
         /* Don't root from fakefs during fakefs setup or force revert */
         if ((palera1n_flags & (palerain_option_setup_rootful | palerain_option_force_revert)) == 0)
         snprintf(root_matching, root_matching_len, 
@@ -173,7 +193,7 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
         printf("KPF: root BSD Name: %s\n", BSDName);
         printf("KPF: root_matching (raw): %s\n", root_matching);
     } else {
-        snprintf(BSDName, 16, "%s%" PRIu32, gHasConstriants ? "disk1s" : "disk0s1s", partid);
+        snprintf(BSDName, 16, "%s%" PRIu32, disk_prefix() , partid);
         printf("KPF: root BSD Name: %s\n", BSDName);
     }
 #endif
