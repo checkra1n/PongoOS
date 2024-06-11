@@ -1321,12 +1321,14 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool apfs_vfso
         
     }
 
+    if (
 #if !defined(KPF_TEST)
-    if ((palera1n_flags & palerain_option_ssv) == 0 
+    (palera1n_flags & palerain_option_ssv) == 0
     && (palera1n_flags & palerain_option_force_revert)
-    && (palera1n_flags & palerain_option_rootful)
-    )
+    && (palera1n_flags & palerain_option_rootful) &&
 #endif
+    (gKernelVersion.xnuMajor < 10063)
+    )
     {
         // This patch is required because on md0oncores, the rootfs is mounted by the kernel
         // However, when force reverting on platforms without SSV we want to mount the snapshot
@@ -2432,7 +2434,7 @@ static void kpf_cmd(const char *cmd, char *args)
     xnu_pf_range_t* protobox_string_range = xnu_pf_section(sandbox_header, "__TEXT", "__cstring");
     if (!protobox_string_range) protobox_string_range = text_cstring_range;
 
-    const char protobox_string[] = "failed to initialize protobox collection";
+    const char protobox_string[] = "(apply-protobox)";
     const char *protobox_string_match = memmem(protobox_string_range->cacheable_base, protobox_string_range->size, protobox_string, sizeof(protobox_string) - 1);
 
 #ifdef DEV_BUILD
