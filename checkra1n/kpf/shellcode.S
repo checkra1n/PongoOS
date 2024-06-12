@@ -230,6 +230,8 @@ vnode_check_open_orig:
 .globl _launchd_execve_hook_end
 .globl _launchd_execve_hook_offset
 .globl _launchd_execve_hook_pagesize
+.globl _launchd_execve_hook_mach_vm_allocate_kernel
+
 _launchd_execve_hook:
 b          launchd_execve_hook$start
 
@@ -269,6 +271,8 @@ lsl        w2, w1, w8    // map_page_size
 add        x1, sp, #0x40 // &scratch_addr
 mov        w3, #0x1      // VM_FLAGS_ANYWHERE
 mov        x4, #0x0      // VM_KERN_MEMORY_NONE
+_launchd_execve_hook_mach_vm_allocate_kernel:
+mov        x3, x4        // Replaced with NOP on xnu 10063 and lower
 ldr        x8, mach_vm_allocate_kernel
 blr        x8
 

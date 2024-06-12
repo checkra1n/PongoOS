@@ -168,7 +168,7 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 
 // Imports from shellcode.S
 extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
-extern uint32_t launchd_execve_hook[], launchd_execve_hook_ptr[], launchd_execve_hook_offset[], launchd_execve_hook_pagesize[];
+extern uint32_t launchd_execve_hook[], launchd_execve_hook_ptr[], launchd_execve_hook_offset[], launchd_execve_hook_pagesize[], launchd_execve_hook_mach_vm_allocate_kernel[];
 
 uint32_t* _mac_mount = NULL;
 bool kpf_has_done_mac_mount = false;
@@ -1859,6 +1859,7 @@ uint32_t* copyout = NULL;
 uint32_t* mach_vm_allocate_kernel = NULL;
 uint32_t current_map_off = -1;
 uint32_t vm_map_page_size_off = -1;
+bool mach_vm_allocate_kernel_new = false;
 
 bool IOSecureBSDRoot_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
@@ -1969,15 +1970,33 @@ bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *op
     bl = NULL;
     for(int i = 0; i < 0x80; i++)
     {
-        if(start[i]     == 0x52800023 &&
-           start[i + 1] == 0x52800004)
+        if(start[i]     == 0x52800023 && // movz w3, #0x1
+           start[i + 1] == 0x52800004)   // movz w4, #0
         {
             bl = find_next_insn(start + i, 10, 0x94000000, 0xfc000000); // bl
             if(bl) break;
         }
     }
-    if(!bl) return false;
+    if (!bl) {
+        for(int i = 0; i < 0x30; i++)
+        {
+            if (
+                (start[i    ] & 0xffffffe0) == 0x52800020 && // mov wN, #0x1
+                (start[i + 1] & 0xffe0fc1f) == 0x1ac02002 && // mov w2, wN, wM
+                (start[i + 2] & 0xffc003ff) == 0x910003e1 && // add x1, sp, ...
+                (start[i + 3] & 0xffffffff) == 0xd2800003 && // mov x3, #0x0
+                (start[i + 4] & 0xfc000000) == 0x94000000    // bl
+            )
+            {
+                bl = &start[i + 4];
+                mach_vm_allocate_kernel_new = true;
+                break;
+            }
+        }
+    }
     
+    if (!bl) return false;
+
     mach_vm_allocate_kernel = follow_call(bl);
     puts("KPF: Found mach_vm_allocate_kernel");
     
@@ -2638,7 +2657,7 @@ static void kpf_cmd(const char *cmd, char *args)
         uint32_t* repatch_launchd_execve_hook = (uint32_t*)(launchd_execve_hook - shellcode_from + shellcode_to);
         uint32_t* repatch_launchd_execve_hook_offset = (uint32_t*)(launchd_execve_hook_offset - shellcode_from + shellcode_to);
         uint32_t* repatch_launchd_execve_hook_pagesize = (uint32_t*)(launchd_execve_hook_pagesize - shellcode_from + shellcode_to);
-
+        uint32_t* repatch_launchd_execve_hook_mach_vm_allocate_kernel = (uint32_t*)(launchd_execve_hook_mach_vm_allocate_kernel - shellcode_from + shellcode_to);
         
         if (repatch_launchd_execve_hook_ptrs[0] != 0x4141414141414141) {
             panic("Shellcode corruption");
@@ -2653,6 +2672,8 @@ static void kpf_cmd(const char *cmd, char *args)
         repatch_launchd_execve_hook_offset[2] |= ((vm_map_page_size_off >> 2) & 0x7ff) << 11;
         
         if (socnum != 0x8960 && socnum != 0x7000 && socnum != 0x7001) *repatch_launchd_execve_hook_pagesize = NOP;
+        if (!mach_vm_allocate_kernel_new) *repatch_launchd_execve_hook_mach_vm_allocate_kernel = NOP;
+
         uint32_t delta = (&repatch_launchd_execve_hook[0]) - mac_execve_hook;
         delta &= 0x03ffffff;
         delta |= 0x94000000;
