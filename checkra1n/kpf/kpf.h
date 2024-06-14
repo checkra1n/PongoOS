@@ -118,11 +118,12 @@ extern kpf_component_t kpf_launch_constraints;
 extern kpf_component_t kpf_mach_port;
 extern kpf_component_t kpf_nvram;
 extern kpf_component_t kpf_overlay;
+extern kpf_component_t kpf_proc_selfname;
 extern kpf_component_t kpf_ramdisk;
+extern kpf_component_t kpf_spawn_validate_persona;
 extern kpf_component_t kpf_trustcache;
 extern kpf_component_t kpf_vfs;
 extern kpf_component_t kpf_vm_prot;
-extern kpf_component_t kpf_proc_selfname;
 
 /********** ********** ********** ********** ********** Exports ********** ********** ********** ********** **********/
 

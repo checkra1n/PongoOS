@@ -2207,13 +2207,14 @@ kpf_component_t* const kpf_components[] = {
     &kpf_launch_constraints,
     &kpf_mach_port,
     &kpf_nvram,
+    &kpf_proc_selfname,
     &kpf_shellcode,
+    &kpf_spawn_validate_persona,
     &kpf_overlay,
     &kpf_ramdisk,
     &kpf_trustcache,
     &kpf_vfs,
     &kpf_vm_prot,
-    &kpf_proc_selfname
 };
 
 static void kpf_cmd(const char *cmd, char *args)
