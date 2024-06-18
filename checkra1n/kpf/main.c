@@ -2557,8 +2557,6 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!has_found_apfs_vfsop_mount && apfs_vfsop_mount_string_match != NULL) {
       if (palera1n_flags & palerain_option_rootful) {
         panic("Missing patch: apfs_vfsop_mount");
-      } else {
-        puts("Missing patch: apfs_vfsop_mount");
       }
     }
 

@@ -602,6 +602,7 @@ int main(int argc, const char **argv)
                     ++verbose;
                     break;
                 case 'f':
+                    palera1n_flags |= palerain_option_rootful;
                     test_force_rootful = 1;
                     break;
                 default:
