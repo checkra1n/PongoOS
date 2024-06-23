@@ -1,4 +1,3 @@
-
 #include "kpf.h"
 #include <pongo.h>
 #include <xnu/xnu.h>
@@ -19,9 +18,9 @@ bool spawn_validate_persona_callback(struct xnu_pf_patch *patch, uint32_t *opcod
 }
 
 void kpf_spawn_validate_persona_patch(xnu_pf_patchset_t* patchset) {
-    if (gKernelVersion.xnuMajor < 11215) return;
+    if (gKernelVersion.xnuMajor < 11215 && (gKernelVersion.darwinMajor != 23 || gKernelVersion.darwinMinor < 6)) return;
 
-    // Since iOS 18.0, there is a check in spawn_validate_persona to forbid non-root
+    // Since iOS 17.6b1, there is a check in spawn_validate_persona to forbid non-root
     // callers to spawn root processes, we patch the check for uid == 0 and gid == 0
     // for the processe to be spawned out
     // /x 001a40b900000034000a40b900000034000e40b900000034:10feffff100000ff10feffff100000ff10feffff100000ff
