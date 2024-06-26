@@ -610,7 +610,7 @@ bool vm_fault_enter_callback14(struct xnu_pf_patch* patch, uint32_t* opcode_stre
     DEVLOG("Trying vm_fault_enter at 0x%llx", xnu_ptr_to_va(opcode_stream));
     // r2 /x
     // Make sure this was preceded by a "tbz w[16-31], 2, ..." that jumps to the code we're currently looking at
-    uint32_t *tbz = find_prev_insn(opcode_stream, 0x18, 0x36100010, 0xfff80010);
+    uint32_t *tbz = find_prev_insn(opcode_stream, 0x20, 0x36100010, 0xfff80010);
     if(!tbz)
     {
         // This isn't our TBZ
