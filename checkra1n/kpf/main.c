@@ -1469,7 +1469,15 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
         panic_at(bl, "Failed to follow call to check_dyld_policy_internal");
     }
     // Find call to proc_issetuid
-    uint32_t *ref = find_next_insn(check_dyld_policy_internal, 10, 0x94000000, 0xfc000000);
+    uint32_t *ref = NULL;
+    for (size_t i = 0; i < 0x10; i++) {
+        if ((check_dyld_policy_internal[i] & 0xfc000000) == 0x94000000 // bl
+        && (check_dyld_policy_internal[i+1] & 0xff00001f) == 0x34000000) { // cbz
+            ref = &check_dyld_policy_internal[i];
+            break;
+        }
+    }
+    if (!ref) panic_at(check_dyld_policy_internal, "Missing call to proc_issetuid");
     if((ref[1] & 0xff00001f) != 0x34000000)
     {
         panic_at(ref, "CBZ missing after call to proc_issetuid");
@@ -1512,9 +1520,9 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
         }
         ref += 2;
     }
-    // Move from high reg, bl, and either tbz, 0 or cmp, 0
     uint32_t op = ref[2];
-    if((ref[0] & 0xfff003ff) != 0xaa1003e0 || (ref[1] & 0xfc000000) != 0x94000000 || ((op & 0xfff8001f) != 0x36000000 && op != 0x7100001f))
+    // Move from high reg, bl, and either tb(n)z, 0 or cmp, 0
+    if((ref[0] & 0xfff003ff) != 0xaa1003e0 || (ref[1] & 0xfc000000) != 0x94000000 || ((op & 0xfef8001f) != 0x36000000 && op != 0x7100001f))
     {
         panic_at(check_dyld_policy_internal, "CMP/TBZ missing after call to %s", entitlement ? "proc_has_entitlement" : "proc_has_get_task_allow");
     }
