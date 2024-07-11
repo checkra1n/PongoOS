@@ -123,6 +123,8 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
         if (xnu_platform() == PLATFORM_IOS) fakefs_offset = 1;
     }
 
+    if (gKernelVersion.xnuMajor >= 11215 && xnu_platform() == PLATFORM_IOS) fakefs_offset++; /* iOS 18+ */
+
 #ifdef DEV_BUILD
     have_ramdisk = true;
 #else
