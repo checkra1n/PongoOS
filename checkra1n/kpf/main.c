@@ -169,6 +169,7 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 // Imports from shellcode.S
 extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
 extern uint32_t launchd_execve_hook[], launchd_execve_hook_ptr[], launchd_execve_hook_offset[], launchd_execve_hook_pagesize[], launchd_execve_hook_mach_vm_allocate_kernel[];
+extern uint32_t proc_set_syscall_filter_mask_shc[], proc_set_syscall_filter_mask_shc_target[], zalloc_ro_mut[];
 
 uint32_t* _mac_mount = NULL;
 bool kpf_has_done_mac_mount = false;
@@ -798,25 +799,63 @@ bool vnode_lookup_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     return true;
 }
 
+uint32_t* _proc_set_syscall_filter_mask = NULL;
+uint32_t* protobox_patchpoint = NULL;
+
 bool kpf_protobox_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
-    uint32_t adrp1 = opcode_stream[0],
-             add1  = opcode_stream[1];
-    const char *str1 = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(adrp1) + ((add1 >> 10) & 0xfff));
-
-    uint32_t adrp2 = opcode_stream[4],
-             add2  = opcode_stream[5];
-    const char *str2 = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) + adrp_off(adrp2) + ((add2 >> 10) & 0xfff));
-
-    if (!strcmp(str1, "Restore") && !strcmp(str2, "Darwin")) {
-        // Make protobox think this device is in "Restore" mode
-        // This will disable protobox
-        opcode_stream[2] = 0xD2800020; // mov x0, #1
-        printf("KPF: Found and patched protobox check @ 0x%" PRIx64 "\n", xnu_ptr_to_va(opcode_stream));
-        return true;
+    uint32_t* b = find_next_insn(opcode_stream, 0x10, 0x14000000, 0xfc000000); // b proc_set_syscall_filter_mask
+    if (!b) {
+        panic_at(opcode_stream, "kpf_protobox: Failed to find b proc_set_syscall_filter_mask");
     }
 
-    return false;
+    uint32_t* proc_set_syscall_filter_mask = follow_call(b);
+    uint32_t *stackframe = find_prev_insn(opcode_stream - 1, 0x20, 0xa9007bfd, 0xffc07fff); // stp x29, x30, [sp, ...]
+    if(!stackframe)
+    {
+        panic_at(opcode_stream, "kpf_protobox: Failed to find stack frame");
+    }
+
+    uint32_t *start = find_prev_insn(stackframe - 1, 8, 0xd10003ff, 0xffc003ff); // sub sp, sp, ...
+    if(!start) {
+        start = find_prev_insn(stackframe, 10, 0xa9a003e0, 0xffe003e0); // stp xN, xM, [sp, -0x...]!
+    }
+
+    if (!start) {
+        panic_at(stackframe, "kpf_protobox: Failed to find start of function");
+    }
+
+    uint32_t* bl = find_prev_insn(opcode_stream, 6, 0x94000000, 0xfc000000); // bl zone_require_ro
+    if (!bl) {
+        panic_at(opcode_stream, "kpf_protobox: Failed to find zone_require_ro");
+    }
+
+    *bl = 0xaa0003f1; // mov x17, x0
+
+    _proc_set_syscall_filter_mask = proc_set_syscall_filter_mask;
+
+    protobox_patchpoint = b;
+
+    printf("KPF: found protobox\n");
+    return true;
+}
+
+bool kpf_filter_mismatch_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    opcode_stream[0] = 0x14000000 | sxt32(opcode_stream[0] >> 5, 19); // cbz -> b
+    printf("KPF: found syscall filter mismatch\n");
+    return true;
+}
+
+uint32_t* _zalloc_ro_mut = NULL;
+bool kpf_zalloc_ro_mut_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    uint32_t* _zalloc_ro_mut_candidate = follow_call(&opcode_stream[6]);
+    if (!_zalloc_ro_mut) _zalloc_ro_mut = _zalloc_ro_mut_candidate;
+    if (_zalloc_ro_mut != _zalloc_ro_mut_candidate) {
+        panic("kpf_zalloc_ro_mut: Found multiple zalloc_ro_mut candidates");
+    }
+
+    puts("KPF: Found zalloc_ro_mut");
+    return true;
 }
 
 void kpf_find_shellcode_funcs(xnu_pf_patchset_t* xnu_text_exec_patchset) {
@@ -868,6 +907,29 @@ void kpf_find_shellcode_funcs(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xffffffff
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "ret0_gadget", iiii_matches, iiii_masks, sizeof(iiii_masks)/sizeof(uint64_t), true, (void*)ret0_gadget_callback);
+
+    // find mac label related calls to zalloc_ro_mut
+    uint64_t zalloc_ro_mut_matches[] = {
+        0x90000003, // adrp x3, ...
+        0x91000063, // add x3, x3, ...
+        0x52800080, // mov w0, #0x4
+        0xaa1003e1, // mov x1, x{16-31}
+        0xd2800002, // mov x2, #0x0
+        0x52800404, // mov w4, #0x20
+        0x94000000  // bl zalloc_ro_mut
+    };
+
+    uint64_t zalloc_ro_mut_masks[] = {
+        0x9f00001f,
+        0xffc003ff,
+        0xffffffff,
+        0xfff0ffff,
+        0xffffffff,
+        0xffffffff,
+        0xfc000000
+    };
+
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "zalloc_ro_mut", zalloc_ro_mut_matches, zalloc_ro_mut_masks, sizeof(zalloc_ro_mut_matches) / sizeof(uint64_t), false, (void *)kpf_zalloc_ro_mut_callback);
 }
 
 static bool found_mach_traps = false;
@@ -1741,32 +1803,30 @@ void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset, bool protobox_used) {
     };
     xnu_pf_maskmatch(patchset, "vnode_lookup", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)vnode_lookup_callback);
 
-    // Protobox on is an additional sandbox mechanism in iOS 16+ that introduces syscall masks, which is used to have syscall whitelists on some system processes
-    // When injecting into them or using something like Frida, it can prevent certain functionality
-    // Additionally it makes these processes crash on sandbox violations, meaning that calling even something simple like mach_thread_self in watchdogd will crash the process
-    // We disable it by making the code that enables it think the device is in Restore mode, as this check involves calling is_release_type with a string it's easy to find
+    // /x 0800009008010091081970f8030140b9e00300aae10300aae20300aa:1f00009fff03c0ffff1ff0ffffffffffffffe0ffffffe0ffffffe0ff
+    // iOS 15.4+
     if (protobox_used) {
         uint64_t protobox_matches[] = {
-            0x90000000, // adrp x0, "Restore"@PAGE
-            0x91000000, // add x0, "Restore"@PAGEOFF
-            0x94000000, // bl _is_release_type
-            0x37000000, // tbnz w0, #0, ???
-            0x90000000, // adrp x0, "Darwin"@PAGE
-            0x91000000, // add x0, "Darwin"@PAGEOFF
-            0x94000000, // bl _is_release_type
-            0x36000000, // tb(n)z w0, #0, ???
+            0x90000008, // adrp x8, ...
+            0x91000108, // add, x8, x8
+            0xf8701908, // ldr x8, [x8, w{16-31}, ... #0x3]
+            0xb9400103, // ldr w3, [x8]
+            0xaa0003e0, // mov x0, x{16-31}
+            0xaa0003e1, // mov x1, x{16-31}
+            0xaa0003e2  // mov x2, x{16-31}
         };
+
         uint64_t protobox_masks[] = {
             0x9f00001f,
-            0xff8003ff,
-            0xfc000000,
-            0xff00001f,
-            0x9f00001f,
-            0xff8003ff,
-            0xfc000000,
-            0xfe00001f,
+            0xffc003ff,
+            0xfff01fff,
+            0xffffffff,
+            0xffe0ffff,
+            0xffe0ffff,
+            0xffe0ffff
         };
-        xnu_pf_maskmatch(patchset, "protobox", protobox_matches, protobox_masks, sizeof(protobox_masks)/sizeof(uint64_t), true, (void *)kpf_protobox_callback);
+
+        xnu_pf_maskmatch(patchset, "protobox", protobox_matches, protobox_masks, sizeof(protobox_masks) / sizeof(uint64_t), true, (void *)kpf_protobox_callback);
     }
 }
 
@@ -2466,7 +2526,7 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!protobox_string_range) protobox_string_range = text_cstring_range;
 
     const char protobox_string[] = "(apply-protobox)";
-    const char *protobox_string_match = memmem(protobox_string_range->cacheable_base, protobox_string_range->size, protobox_string, sizeof(protobox_string) - 1);
+    const char *protobox_string_match = memmem(protobox_string_range->cacheable_base, protobox_string_range->size, protobox_string, sizeof(protobox_string)-1);
 
 #ifdef DEV_BUILD
     // 15.0 beta 3 and later, except bridgeOS
@@ -2474,12 +2534,9 @@ static void kpf_cmd(const char *cmd, char *args)
         panic("Protobox string doesn't match expected Darwin version");
     }
 #endif
+    bool protobox_used = (protobox_string_match != NULL && gKernelVersion.xnuMajor >= 8792);
 
-    // 16.0 beta 1 and later
-    const char constraints_string[] = "mac_proc_check_launch_constraints";
-    const char *constraints_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, constraints_string, sizeof(constraints_string));
-
-    kpf_sandbox_kext_patches(sandbox_patchset, (protobox_string_match != NULL) && (constraints_string_match != NULL));
+    kpf_sandbox_kext_patches(sandbox_patchset, protobox_used);
     xnu_pf_emit(sandbox_patchset);
     xnu_pf_apply(sandbox_text_exec_range, sandbox_patchset);
     xnu_pf_patchset_destroy(sandbox_patchset);
@@ -2563,7 +2620,6 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
     if (!kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
-
 
     if (!has_found_apfs_vfsop_mount && apfs_vfsop_mount_string_match != NULL) {
       if (palera1n_flags & palerain_option_rootful) {
@@ -2688,6 +2744,29 @@ static void kpf_cmd(const char *cmd, char *args)
         delta &= 0x03ffffff;
         delta |= 0x94000000;
         *mac_execve_hook = delta;
+    }
+
+    if (protobox_used) {
+        if (!_zalloc_ro_mut) panic("Missing patch: zalloc_ro_mut");
+
+        uint32_t* repatch_proc_set_syscall_filter_mask_shc = (uint32_t*)(proc_set_syscall_filter_mask_shc - shellcode_from + shellcode_to);
+        uint32_t* repatch_proc_set_syscall_filter_mask_shc_target = (uint32_t*)(proc_set_syscall_filter_mask_shc_target - shellcode_from + shellcode_to);
+        uint32_t* repatch_zalloc_ro_mut = (uint32_t*)(zalloc_ro_mut - shellcode_from + shellcode_to);
+
+        uint32_t delta = (&repatch_proc_set_syscall_filter_mask_shc[0]) - protobox_patchpoint;
+        delta &= 0x03ffffff;
+        delta |= 0x14000000;
+        *protobox_patchpoint = delta;
+
+        delta = (&_proc_set_syscall_filter_mask[0]) - repatch_proc_set_syscall_filter_mask_shc_target;
+        delta &= 0x03ffffff;
+        delta |= 0x14000000;
+        *repatch_proc_set_syscall_filter_mask_shc_target = delta;
+
+        delta = (&_zalloc_ro_mut[0]) - repatch_zalloc_ro_mut;
+        delta &= 0x03ffffff;
+        delta |= 0x14000000;
+        *repatch_zalloc_ro_mut = delta;
     }
     
     if(!livefs_string_match) // Only disable snapshot when we can remount realfs
