@@ -132,6 +132,7 @@ static void kpf_ramdisk_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring
 #endif
 }
 
+#if !defined(KPF_TEST)
 static const char* disk_prefix(void) {
     if (gKernelVersion.darwinMajor >= 19) {
         if (xnu_platform() == PLATFORM_TVOS) {
@@ -151,6 +152,7 @@ static const char* disk_prefix(void) {
         return "disk0s1s";
     }
 }
+#endif
 
 static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t palera1n_flags)
 {

@@ -204,13 +204,16 @@ bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     // Most reliable marker of a stack frame seems to be "add x29, sp, 0x...".
     // And this function is HUGE, hence up to 2k insn.
     uint32_t *frame = find_prev_insn(mac_mount_1, 2000, 0x910003fd, 0xff8003ff);
-    if(!frame) return false;
-    
+    if(!frame) {
+        DEVLOG("kpf_mac_mount_callback: failed to find stack frame");
+        return false;
+    }
     // Now find the insn that decrements sp. This can be either
     // "stp ..., ..., [sp, -0x...]!" or "sub sp, sp, 0x...".
     // Match top bit of imm on purpose, since we only want negative offsets.
-    uint32_t  *start = find_prev_insn(frame, 10, 0xa9a003e0, 0xffe003e0);
-    if(!start) start = find_prev_insn(frame, 10, 0xd10003ff, 0xff8003ff);
+    uint32_t  *start = find_prev_insn(frame, 10, 0xa9a003e0, 0xffe003e0); // stp xN, xM, [sp, #-0x...]!
+    if(!start) start = find_prev_insn(frame, 10, 0xd10003ff, 0xff8003ff); // sub sp, sp, ...
+    if(!start) start = find_prev_insn(frame, 10, 0x6da003e0, 0xffe083e0); // stp dN, dM, [sp, #-0x...]!
     if(!start) return false;
     
     _mac_mount = start;
