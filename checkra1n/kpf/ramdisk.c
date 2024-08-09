@@ -169,24 +169,32 @@ static void kpf_ramdisk_bootprep(struct mach_header_64 *hdr, palerain_option_t p
     uint32_t partid = 1;
     /* have SSV and rootful */
     if ((palera1n_flags & (palerain_option_rootful | palerain_option_ssv)) == (palerain_option_rootful | palerain_option_ssv)) {
-        dt_node_t* fstab = dt_find(gDeviceTree, "fstab");
-        if (!fstab) panic("invalid devicetree: no fstab!"); /* iOS 12 and below should not have SSV */
-        size_t max_fs_entries_len = 0;
-        size_t root_matching_len = 0;
-        uint32_t* max_fs_entries = dt_prop(fstab, "max_fs_entries", &max_fs_entries_len);
-        if (!max_fs_entries) panic("invalid devicetree: no prop!");
-        uint32_t* patch = (uint32_t*)max_fs_entries;
-        printf("fstab max_fs_entries: %016" PRIx64 ": %08x\n", (uint64_t)max_fs_entries, patch[0]);
-        dt_node_t* baseband = dt_find(gDeviceTree, "baseband");
-        if (baseband) partid = patch[0] + 1U;
-        else partid = patch[0];
-        if (socnum == 0x7000 || socnum == 0x7001) partid--;
-        partid += fakefs_offset;
         dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
         if (!chosen) panic("invalid devicetree: no device!");
+        size_t nvram_proxy_data_len = 0;
+        char* nvram_proxy_data = dt_prop(chosen, "nvram-proxy-data", &nvram_proxy_data_len);
+        if (!nvram_proxy_data) panic("invalid devicetree: no /chosen/nvram-proxy-data!");
+        char* nvram_rootdev = memmem(nvram_proxy_data, nvram_proxy_data_len, "p1-fakefs-rootdev=", 18);
+        if (nvram_rootdev) snprintf(BSDName, 16, "%s", &nvram_rootdev[18]);
+
+        size_t root_matching_len = 0;
         char* root_matching = dt_prop(chosen, "root-matching", &root_matching_len);
         if (!root_matching) panic("invalid devicetree: no prop!");
-        snprintf(BSDName, 16, "%s%" PRIu32, disk_prefix(), partid);
+        if (!nvram_rootdev) {
+            dt_node_t* fstab = dt_find(gDeviceTree, "fstab");
+            if (!fstab) panic("invalid devicetree: no fstab!"); /* iOS 12 and below should not have SSV */
+            size_t max_fs_entries_len = 0;
+            uint32_t* max_fs_entries = dt_prop(fstab, "max_fs_entries", &max_fs_entries_len);
+            if (!max_fs_entries) panic("invalid devicetree: no prop!");
+            uint32_t* patch = (uint32_t*)max_fs_entries;
+            printf("fstab max_fs_entries: %016" PRIx64 ": %08x\n", (uint64_t)max_fs_entries, patch[0]);
+            dt_node_t* baseband = dt_find(gDeviceTree, "baseband");
+            if (baseband) partid = patch[0] + 1U;
+            else partid = patch[0];
+            if (socnum == 0x7000 || socnum == 0x7001) partid--;
+            partid += fakefs_offset;
+            snprintf(BSDName, 16, "%s%" PRIu32, disk_prefix(), partid);
+        }
         /* Don't root from fakefs during fakefs setup or force revert */
         if ((palera1n_flags & (palerain_option_setup_rootful | palerain_option_force_revert)) == 0)
         snprintf(root_matching, root_matching_len, 
