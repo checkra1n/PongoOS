@@ -745,7 +745,7 @@ struct pongo_module_info* pongo_module_create(uint32_t segmentCount) {
 void pongo_module_print_list() {
     struct pongo_module_info* cur = head;
     while (cur) {
-        iprintf(" | %26s @ 0x%llx->0x%llx\n", cur->name, cur->vm_base, cur->vm_end);
+        iprintf(" | %26s @ 0x%" PRIx64 "->0x%" PRIx64 "\n", cur->name, cur->vm_base, cur->vm_end);
         for (uint32_t i = 0; i < cur->segcount; i++) {
             iprintf(" |---> %22s @ 0x%08llx, size 0x%06llx (%s%s%s)\n", cur->segments[i].name, cur->vm_base + cur->segments[i].vm_addr, cur->segments[i].vm_size, cur->segments[i].prot & PROT_READ ? "r" : "-", cur->segments[i].prot & PROT_WRITE ? "w" : "-", cur->segments[i].prot & PROT_EXEC ? "x" : "-");
         }

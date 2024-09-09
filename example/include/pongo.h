@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 
 #define DT_KEY_LEN 0x20
 #define BOOT_LINE_LENGTH_iOS12 0x100

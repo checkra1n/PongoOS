@@ -24,7 +24,12 @@
  * SOFTWARE.
  *
  */
+#define _DEFAULT_SOURCE
 #undef panic
+#ifndef __APPLE__
+#include "./mach-o/loader.h"
+#include <time.h>
+#endif
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -35,18 +40,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#ifdef __APPLE__
 #include <mach/mach.h>
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
 #include <libkern/OSCacheControl.h>
 #include <TargetConditionals.h>
+#endif
 #if TARGET_OS_OSX
 #   include <pthread.h>
 #endif
+
+#include <paleinfo.h>
+extern palerain_option_t palera1n_flags;
 
 #define SWAP32(x) (((x & 0xff000000) >> 24) | ((x & 0xff0000) >> 8) | ((x & 0xff00) << 8) | ((x & 0xff) << 24))
 
@@ -58,6 +69,8 @@ typedef struct mach_header_64     mach_hdr_t;
 typedef struct load_command       mach_lc_t;
 typedef struct segment_command_64 mach_seg_t;
 typedef struct thread_command     mach_th_t;
+
+uint32_t socnum = 0x8015;
 
 typedef struct boot_args
 {
@@ -92,21 +105,34 @@ typedef struct boot_args
     };
 } __attribute__((packed)) boot_args;
 
+#ifdef __APPLE__
 extern kern_return_t mach_vm_protect(vm_map_t task, mach_vm_address_t addr, mach_vm_size_t size, boolean_t set_max, vm_prot_t prot);
+#else
+void sys_icache_invalidate(void* a, size_t b) {}
+#endif
 
 extern void module_entry(void);
 extern void (*preboot_hook)(void);
 
 void realpanic(const char *str, ...)
 {
-    char *ptr = NULL;
     va_list va;
+#ifdef __APPLE__
+    char *ptr = NULL;
 
     va_start(va, str);
     vasprintf(&ptr, str, va);
     va_end(va);
-
     panic(ptr);
+#else
+    printf("panic: ");
+    va_start(va, str);
+    vprintf(str, va);
+    va_end(va);
+    printf("\n");
+    fflush(stdout);
+    exit(6);
+#endif
 }
 
 void *ramdisk_buf = NULL;
@@ -124,7 +150,23 @@ static struct {
 
 uint64_t get_ticks(void)
 {
+#ifdef __APPLE__
     return __builtin_arm_rsr64("cntpct_el0");
+#else
+    struct timespec spec;
+
+    clock_gettime(CLOCK_REALTIME, &spec);
+    return (uint64_t)((spec.tv_sec*1000+spec.tv_nsec/1e6)*24000);
+#endif
+}
+
+void* dt_get(const char *name)
+{
+    return NULL;
+}
+
+uint32_t dt_node_u32(void *node, const char *prop, uint32_t idx) {
+    return 0;
 }
 
 void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args))
@@ -149,7 +191,7 @@ void invalidate_icache(void)
     }
 }
 
-#if !TARGET_OS_OSX
+#if !TARGET_OS_OSX && defined(__APPLE__)
 void pthread_jit_write_protect_np(int exec)
 {
     for(uint32_t i = 0; i < NUM_JIT; ++i)
@@ -165,6 +207,8 @@ void pthread_jit_write_protect_np(int exec)
         }
     }
 }
+#elif !defined(__APPLE__)
+void pthread_jit_write_protect_np(int exec) {}
 #endif
 
 void* jit_alloc(size_t count, size_t size)
@@ -177,7 +221,11 @@ void* jit_alloc(size_t count, size_t size)
         exit(-1);
     }
 
-    int prot  = PROT_READ | PROT_WRITE;
+#if defined(__APPLE__)
+    int prot  = PROT_READ | PROT_WRITE | PROT_EXEC;
+#else
+    int prot  = PROT_READ | PROT_WRITE | PROT_EXEC;
+#endif
     int flags = MAP_ANON | MAP_PRIVATE;
 #if TARGET_OS_OSX
     prot  |= PROT_EXEC;
@@ -414,7 +462,7 @@ static void __attribute__((noreturn)) process_kernel(int fd)
     gBootArgs = &BootArgs;
     gEntryPoint = (void*)((uintptr_t)mem + (entry - lowest));
 
-    printf("Kernel at 0x%llx, entry at 0x%llx", (uint64_t)mem, (uint64_t)gEntryPoint);
+    printf("Kernel at 0x%" PRIx64 ", entry at 0x%" PRIx64 "", (uint64_t)mem, (uint64_t)gEntryPoint);
 
     module_entry();
     preboot_hook();
@@ -528,6 +576,8 @@ static int wait_for_child(child_t *children, size_t *num_bad, child_t **slot)
     return -1;
 }
 
+bool test_force_rootful = 0;
+
 int main(int argc, const char **argv)
 {
     int aoff = 1;
@@ -551,6 +601,10 @@ int main(int argc, const char **argv)
                 case 'v':
                     ++verbose;
                     break;
+                case 'f':
+                    palera1n_flags |= palerain_option_rootful;
+                    test_force_rootful = 1;
+                    break;
                 default:
                     fprintf(stderr, "Bad arg: -%c\n", c);
                     return -1;
@@ -559,7 +613,7 @@ int main(int argc, const char **argv)
     }
     if(argc - aoff != 1)
     {
-        fprintf(stderr, "Usage: %s [-nqv] [file | dir]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-nqvf] [file | dir]\n", argv[0]);
         return -1;
     }
     int fd = open(argv[aoff], O_RDONLY);

@@ -60,7 +60,7 @@ static int require_prot(mach_vm_address_t addr, mach_vm_size_t size, vm_prot_t p
     if(addr_check != (addr & ~0x3fffULL) || size_check != ((size + 0x3fffULL) & ~0x3fffULL))
     {
         printf("Bad addr/size returned from mach_vm_region_recurse!\n");
-        printf("Want 0x%llx/0x%llx, have 0x%llx/0x%llx\n", addr, size, addr_check, size_check);
+        printf("Want 0x%" PRIx64 "/0x%" PRIx64 ", have 0x%" PRIx64 "/0x%" PRIx64 "\n", addr, size, addr_check, size_check);
         return -1;
     }
 
@@ -83,14 +83,14 @@ static int require_prot(mach_vm_address_t addr, mach_vm_size_t size, vm_prot_t p
 int main(void)
 {
     void *libxpc = dlopen("/usr/lib/system/libxpc.dylib", RTLD_LAZY);
-    printf("dlopen: 0x%llx\n", (uint64_t)libxpc);
+    printf("dlopen: 0x%" PRIx64 "\n", (uint64_t)libxpc);
     if(!libxpc)
     {
         return -1;
     }
 
     void *test_sym = dlsym(libxpc, "xpc_test_symbols_exported");
-    printf("dlsym: 0x%llx\n", (uint64_t)test_sym);
+    printf("dlsym: 0x%" PRIx64 "\n", (uint64_t)test_sym);
     if(!test_sym)
     {
         return -1;

@@ -51,7 +51,7 @@ int main(void)
     }
 
     ret = mach_vm_allocate(tfp0, &page, 0x4000, VM_FLAGS_ANYWHERE);
-    printf("mach_vm_allocate: 0x%llx, %s\n", page, mach_error_string(ret));
+    printf("mach_vm_allocate: 0x%" PRIx64 ", %s\n", page, mach_error_string(ret));
     if(ret != KERN_SUCCESS || page == 0)
     {
         goto out;
@@ -74,7 +74,7 @@ int main(void)
         goto out;
     }
 
-    printf("Data: 0x%016llx 0x%016llx\n", check[0], check[1]);
+    printf("Data: 0x%016" PRIx64 " 0x%016" PRIx64 "\n", check[0], check[1]);
     if(check[0] != data[0] || check[1] != data[1])
     {
         goto out;

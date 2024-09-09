@@ -25,6 +25,7 @@
  *
  */
 #include <pongo.h>
+#include <lzma/lzmadec.h>
 
 extern volatile char gBootFlag;
 
@@ -56,16 +57,35 @@ uint32_t ramdisk_size;
 
  */
 
-void ramdisk_cmd() {
+void ramdisk_cmd(const char* cmd, char* args) {
     if (!loader_xfer_recv_count) {
         iprintf("please upload a ramdisk before issuing this command\n");
         return;
     }
-    if (ramdisk_buf) free(ramdisk_buf);
-    ramdisk_buf = malloc(loader_xfer_recv_count);
-    if (!ramdisk_buf) panic("couldn't reserve heap for ramdisk");
-    ramdisk_size = loader_xfer_recv_count;
-    memcpy(ramdisk_buf, loader_xfer_recv_data, ramdisk_size);
+    if (args[0] != '\0') {
+        size_t tmp_ramdisk_size;
+        if ((tmp_ramdisk_size = (int)strtoul(args, NULL, 0)) != 0) {
+            printf("args: %s, tmp_ramdisk_size: %u\n", args, tmp_ramdisk_size);
+            if (ramdisk_buf) free(ramdisk_buf);
+            ramdisk_buf = malloc(tmp_ramdisk_size);
+            if (!ramdisk_buf) panic("couldn't reserve heap for ramdisk");
+            int lzma_result = unlzma_decompress(ramdisk_buf, &tmp_ramdisk_size, loader_xfer_recv_data, loader_xfer_recv_count);
+            if (lzma_result != SZ_OK) {
+                printf("ramdisk decompression failed\n");
+                return;
+            }
+            ramdisk_size = (uint32_t)tmp_ramdisk_size;
+        } else {
+            printf("ramdisk usage: ramdisk [uncompressed size if compressed]\n");
+            return;
+        }
+    } else {
+        if (ramdisk_buf) free(ramdisk_buf);
+        ramdisk_buf = malloc(loader_xfer_recv_count);
+        if (!ramdisk_buf) panic("couldn't reserve heap for ramdisk");
+        ramdisk_size = loader_xfer_recv_count;
+        memcpy(ramdisk_buf, loader_xfer_recv_data, ramdisk_size);
+    }
     loader_xfer_recv_count = 0;
 }
 
@@ -153,7 +173,7 @@ void peek_cmd(const char* cmd, char* args) {
 
     uint64_t addr = strtoull(args, NULL, 16);
     uint32_t rv = *((uint32_t*)addr);
-    iprintf("0x%llx: %x (%x %x %x %x)\n", (uint64_t)addr, rv, rv&0xff, (rv>>8)&0xff, (rv>>16)&0xff, (rv>>24)&0xff);
+    iprintf("0x%" PRIx64 ": %x (%x %x %x %x)\n", (uint64_t)addr, rv, rv&0xff, (rv>>8)&0xff, (rv>>16)&0xff, (rv>>24)&0xff);
 }
 void poke_cmd(const char* cmd, char* args) {
     if (! *args) {
@@ -167,7 +187,7 @@ void poke_cmd(const char* cmd, char* args) {
     }
     uint64_t addr = strtoull(args, NULL, 16);
     uint32_t value = strtoul(arg1, NULL, 16);
-    iprintf("writing %x @ 0x%llx\n", value, addr);
+    iprintf("writing %x @ 0x%" PRIx64 "\n", value, addr);
     *((uint32_t*)addr) = value;
 }
 

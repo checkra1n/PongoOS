@@ -108,7 +108,7 @@ void map_range_map(uint64_t* tt0, uint64_t va, uint64_t pa, uint64_t size, uint6
     uint64_t pgsz = 1ULL << (tt_bits + 3ULL);
     if((va & (pgsz - 1ULL)) || (pa & (pgsz - 1ULL)) || (size & (pgsz - 1ULL)) || size < pgsz || (va + size < va) || (pa + size < pa))
     {
-        panic("map_range: called with bad arguments (0x%llx, 0x%llx, 0x%llx, ...)", va, pa, size);
+        panic("map_range: called with bad arguments (0x%" PRIx64 ", 0x%" PRIx64 ", 0x%" PRIx64 ", ...)", va, pa, size);
     }
 
     union tte tte;
@@ -497,7 +497,7 @@ err_t vm_space_map_page_physical_prot(struct vm_space* vmspace, uint64_t vaddr, 
 
     if (vaddr & 0x7000000000000000) {
         if ((physical & 0x3fff) && !(prot & PROT_PAGING_INFO)) {
-            panic("passed unaligned PA %llx to vm_space_map_page_physical_prot", physical);
+            panic("passed unaligned PA %" PRIx64 " to vm_space_map_page_physical_prot", physical);
         }
         map_range_map((uint64_t*)vmspace->ttbr1, vaddr, prot & PROT_PAGING_INFO ? 0 : physical, 0x4000, prot & PROT_DEVICE ? 3 : 2, prot & PROT_DEVICE ? 0 : 1, 1, prot & PROT_PAGING_INFO ? physical : 0, prot & (PROT_READ|PROT_WRITE|PROT_EXEC|PROT_KERN_ONLY|PROT_PAGING_INFO), true);
         if (!(prot & PROT_PAGING_INFO))
@@ -533,7 +533,7 @@ uint64_t asid_alloc() {
         if (!is_alloc) {
             asid_table[i>>3] |= (1 << (i&0x7));
             enable_interrupts();
-            //fiprintf(stderr, "allocating asid: %llx\n", ((uint64_t) i) << 48ULL);
+            //fiprintf(stderr, "allocating asid: %" PRIx64 "\n", ((uint64_t) i) << 48ULL);
 
             return ((uint64_t) i) << 48ULL;
         }
@@ -548,7 +548,7 @@ void asid_free(uint64_t asid) {
     bool is_alloc = !!(asid_table[index>>3] & (1 << (index&0x7)));
     if (!is_alloc) panic("ASID was not allocated?!");
 #if DEBUG_REFCOUNT
-    fiprintf(stderr, "freeing asid: %llx\n", asid);
+    fiprintf(stderr, "freeing asid: %" PRIx64 "\n", asid);
 #endif
     asid_table[index >> 3] &= ~(1 << (index&0x7));
     asm volatile("ISB");
@@ -615,16 +615,16 @@ uint64_t free_pages = 0;
 uint64_t wired_pages = 0;
 uint32_t phys_get_entry(uint64_t pa) {
     pa -= gBootArgs->physBase;
-    if (pa & 0x3fff) panic("phys_get_entry only works with aligned PAs (pa: %llx)", pa);
+    if (pa & 0x3fff) panic("phys_get_entry only works with aligned PAs (pa: %" PRIx64 ")", pa);
     pa >>= 14;
-    if (pa > ppages) panic("OOB phys_get_entry: 0x%llx", pa << 14ULL);
+    if (pa > ppages) panic("OOB phys_get_entry: 0x%" PRIx64 "", pa << 14ULL);
     return ppage_list[pa];
 }
 void phys_set_entry(uint64_t pa, uint32_t val) {
     pa -= gBootArgs->physBase;
-    if (pa & 0x3fff) panic("phys_get_entry only works with aligned PAs (pa: %llx)", pa);
+    if (pa & 0x3fff) panic("phys_get_entry only works with aligned PAs (pa: %" PRIx64 ")", pa);
     pa >>= 14;
-    if (pa > ppages) panic("OOB phys_set_entry: 0x%llx", pa << 14ULL);
+    if (pa > ppages) panic("OOB phys_set_entry: 0x%" PRIx64 "", pa << 14ULL);
     ppage_list[pa] = val;
 }
 uint64_t pa_head;
@@ -642,21 +642,21 @@ void phys_unlink_contiguous(uint64_t pa, uint64_t size) {
 
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
-        if (i > ppages) panic("OOB phys_unlink_contiguous: 0x%llx", i << 14ULL);
+        if (i > ppages) panic("OOB phys_unlink_contiguous: 0x%" PRIx64 "", i << 14ULL);
         uint64_t* pa_v = phystokv((i << 14ULL) + gBootArgs->physBase);
 
-        if ((phys_get_entry((i << 14ULL) + gBootArgs->physBase) & PAGE_REFBITS) != PAGE_FREE) panic("phys_unlink_contiguous: ppage (pa: %llx) is not free!", (i << 14ULL) + gBootArgs->physBase);
+        if ((phys_get_entry((i << 14ULL) + gBootArgs->physBase) & PAGE_REFBITS) != PAGE_FREE) panic("phys_unlink_contiguous: ppage (pa: %" PRIx64 ") is not free!", (i << 14ULL) + gBootArgs->physBase);
 
         uint64_t pa_next = pa_v[0];
         uint64_t pa_prev = pa_v[1];
 
         if (pa_next) {
-            if ((phys_get_entry(pa_next) & PAGE_REFBITS) != PAGE_FREE) panic("phys_unlink_contiguous: ppage (next: %llx) is not free!", pa_next);
+            if ((phys_get_entry(pa_next) & PAGE_REFBITS) != PAGE_FREE) panic("phys_unlink_contiguous: ppage (next: %" PRIx64 ") is not free!", pa_next);
             uint64_t* pa_next_v = phystokv(pa_next);
             pa_next_v[1] = pa_prev; // unlink
         }
         if (pa_prev) {
-            if ((phys_get_entry(pa_prev) & PAGE_REFBITS) != PAGE_FREE) panic("phys_unlink_contiguous: ppage (prev: %llx) is not free!", pa_prev);
+            if ((phys_get_entry(pa_prev) & PAGE_REFBITS) != PAGE_FREE) panic("phys_unlink_contiguous: ppage (prev: %" PRIx64 ") is not free!", pa_prev);
             uint64_t* pa_prev_v = phystokv(pa_prev);
             pa_prev_v[0] = pa_next;
         } else {
@@ -669,13 +669,13 @@ void mark_phys_wired(uint64_t pa, uint64_t size) {
     pa -= gBootArgs->physBase;
 
     uint64_t fpages = size >> 14;
-    if (pa & 0x3fff) panic("mark_phys_wired only works with aligned PAs (pa: %llx)", pa);
+    if (pa & 0x3fff) panic("mark_phys_wired only works with aligned PAs (pa: %" PRIx64 ")", pa);
     pa >>= 14;
 
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
-        if ((phys_get_entry((i << 14ULL) + gBootArgs->physBase) & PAGE_REFBITS) != PAGE_FREE) panic("mark_phys_wired: ppage (pa: %llx) is not free!", (i << 14ULL) + gBootArgs->physBase);
-        if (i > ppages) panic("OOB mark_phys_wired: 0x%llx", i << 14ULL);
+        if ((phys_get_entry((i << 14ULL) + gBootArgs->physBase) & PAGE_REFBITS) != PAGE_FREE) panic("mark_phys_wired: ppage (pa: %" PRIx64 ") is not free!", (i << 14ULL) + gBootArgs->physBase);
+        if (i > ppages) panic("OOB mark_phys_wired: 0x%" PRIx64 "", i << 14ULL);
         ppage_list[i] = (ppage_list[i] & ~PAGE_REFBITS) | PAGE_WIRED;
         free_pages--;
         wired_pages++;
@@ -725,7 +725,7 @@ void phys_force_free(uint64_t pa, uint64_t size) {
 
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
-        if (i > ppages) panic("OOB phys_force_free: 0x%llx", i << 14ULL);
+        if (i > ppages) panic("OOB phys_force_free: 0x%" PRIx64 "", i << 14ULL);
         if ((ppage_list[i] & PAGE_REFBITS) == PAGE_WIRED) {
             wired_pages--;
         }
@@ -747,7 +747,7 @@ void phys_reference(uint64_t pa, uint64_t size) {
 
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
-        if (i > ppages) panic("OOB phys_reference: 0x%llx", i << 14ULL);
+        if (i > ppages) panic("OOB phys_reference: 0x%" PRIx64 "", i << 14ULL);
         if ((ppage_list[i] & PAGE_REFBITS) != PAGE_WIRED) {
             if ((ppage_list[i] & PAGE_REFBITS) == PAGE_FREE) {
                 free_pages--;
@@ -763,18 +763,18 @@ void phys_dereference(uint64_t pa, uint64_t size) {
     pa -= gBootArgs->physBase;
 
     uint64_t fpages = size >> 14ULL;
-    if (pa & 0x3fff) panic("phys_dereference only works with aligned PAs (was passed %llx)", pa + gBootArgs->physBase);
+    if (pa & 0x3fff) panic("phys_dereference only works with aligned PAs (was passed %" PRIx64 ")", pa + gBootArgs->physBase);
     pa >>= 14ULL;
 
     disable_interrupts();
     for (uint64_t i=pa; i < pa+fpages; i++) {
-        if (i > ppages) panic("OOB phys_dereference: 0x%llx", i << 14ULL);
+        if (i > ppages) panic("OOB phys_dereference: 0x%" PRIx64 "", i << 14ULL);
         if ((ppage_list[i] & PAGE_REFBITS) != PAGE_FREE) {
             ppage_list[i] = (ppage_list[i] & ~PAGE_REFBITS) | ((ppage_list[i] - 1) & PAGE_REFBITS);
             if ((ppage_list[i] & PAGE_REFBITS) == PAGE_FREE) {
                 phys_page_was_freed((i << 14ULL) + gBootArgs->physBase);
             }
-        } else panic("phys_dereference called on PAGE_FREE page @ 0x%llx", i << 14ULL);
+        } else panic("phys_dereference called on PAGE_FREE page @ 0x%" PRIx64 "", i << 14ULL);
     }
     enable_interrupts();
 }
@@ -956,7 +956,7 @@ bool vm_fault(struct vm_space* vmspace, uint64_t vma, vm_protect_t fault_prot) {
                 if (tte.valid == 0 && tte.table == 1) {
                     tte.table = 0;
                     if (tte.u64 == PAGING_INFO_ALLOC_ON_FAULT_MAGIC) {
-                        //fiprintf(stderr, "should allocate physical for %llx\n", vma);
+                        //fiprintf(stderr, "should allocate physical for %" PRIx64 "\n", vma);
                         paging_requests++;
                         vm_space_map_page_physical_prot(vmspace, vma & ~0x3fff, ppage_alloc(), PROT_READ|PROT_WRITE);
                         enable_interrupts();

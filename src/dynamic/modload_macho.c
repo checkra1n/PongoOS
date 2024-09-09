@@ -28,17 +28,18 @@
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
 #include <mach-o/reloc.h>
+#include <lzma/lzmadec.h>
 
 // to replace with dlsym perhaps later on
 void* resolve_symbol(const char* name);
 
 void link_exports(struct pongo_exports* export);
 
-void modload_cmd() {
+bool modload_buf(char* buf, uint32_t bufsz) {
         iprintf("[modload_macho:i] Attempting to load a module\n");
-        if (loader_xfer_recv_count >= 0x4000) {
-            //iprintf("enough bytes! %x\n", loader_xfer_recv_count);
-            struct mach_header_64* mh = (void*) loader_xfer_recv_data;
+        if (bufsz >= 0x4000) {
+            //iprintf("enough bytes! %x\n", bufsz);
+            struct mach_header_64* mh = (void*) buf;
             struct load_command* lc = (struct load_command*) (mh + 1);
             if (mh->magic == MH_MAGIC_64) {
                 //puts("it's a mach-o!");
@@ -53,7 +54,7 @@ void modload_cmd() {
                         if (lc->cmd == LC_SEGMENT_64) {
                             segmentCount++;
                             struct segment_command_64 * sg = (struct segment_command_64*) lc;
-                            //iprintf("found %s, vmaddr %llx, vmsz %llx, fileoff %llx, filesize %llx\n", sg->segname, sg->vmaddr, sg->vmsize, sg->fileoff, sg->filesize);
+                            //iprintf("found %s, vmaddr %" PRIx64 ", vmsz %" PRIx64 ", fileoff %" PRIx64 ", filesize %" PRIx64 "\n", sg->segname, sg->vmaddr, sg->vmsize, sg->fileoff, sg->filesize);
                             if (sg->vmaddr < base_vmaddr) base_vmaddr = sg->vmaddr;
                             if (sg->fileoff + sg->filesize > filesz_expected)
                                 filesz_expected = sg->fileoff + sg->filesize;
@@ -67,8 +68,8 @@ void modload_cmd() {
                         lc = (struct load_command*)(((char*)lc) + lc->cmdsize);
                     }
                     vmsz_needed -= base_vmaddr;
-                    //iprintf("need %llx, got %llx\n", filesz_expected, loader_xfer_recv_count);
-                    if (!(filesz_expected > loader_xfer_recv_count)) {
+                    //iprintf("need %" PRIx64 ", got %" PRIx64 "\n", filesz_expected, bufsz);
+                    if (!(filesz_expected > bufsz)) {
                         uint64_t entrypoint = 0;
                         uint8_t * allocto = alloc_contig((vmsz_needed + 0x3FFF) & ~0x3FFF);
                         uint64_t vma_base = linear_kvm_alloc(vmsz_needed);
@@ -77,7 +78,7 @@ void modload_cmd() {
                         module->vm_end = vma_base + vmsz_needed;
                         uint32_t segmentIndex = 0;
                         
-                        //iprintf("need vm %llx, got %p, base %llx\n", vmsz_needed, allocto, base_vmaddr);
+                        //iprintf("need vm %" PRIx64 ", got %p, base %" PRIx64 "\n", vmsz_needed, allocto, base_vmaddr);
                         struct load_command* lc = (struct load_command*) (mh + 1);
                         for (int i=0; i<mh->ncmds; i++) {
                             if (lc->cmd == LC_SEGMENT_64) {
@@ -88,7 +89,7 @@ void modload_cmd() {
                                 info->vm_size = sg->vmsize;
 
                                 memset(allocto + sg->vmaddr - base_vmaddr, 0, sg->vmsize);
-                                memcpy(allocto + sg->vmaddr - base_vmaddr, loader_xfer_recv_data + sg->fileoff, sg->filesize);
+                                memcpy(allocto + sg->vmaddr - base_vmaddr, buf + sg->fileoff, sg->filesize);
                                 
                                 vm_protect_t prots = 0;
                                 prots |= sg->initprot & VM_PROT_READ ? PROT_READ : 0;
@@ -98,7 +99,7 @@ void modload_cmd() {
                                 info->prot = prots;
 
                                 for (uint32_t page = 0; page < sg->vmsize; page += PAGE_SIZE) {
-                                    //fiprintf(stderr, "mapping %llx (%llx, %llx), %x\n", vma_base + page + sg->vmaddr - base_vmaddr, sg->vmaddr, sg->vmsize, prots);
+                                    //fiprintf(stderr, "mapping %" PRIx64 " (%" PRIx64 ", %" PRIx64 "), %x\n", vma_base + page + sg->vmaddr - base_vmaddr, sg->vmaddr, sg->vmsize, prots);
                                     uint64_t ppage = vatophys((uint64_t)(allocto + page + sg->vmaddr - base_vmaddr));
                                     vm_space_map_page_physical_prot(&kernel_vm_space, vma_base + page + sg->vmaddr - base_vmaddr, ppage, prots | PROT_KERN_ONLY);
                                 }
@@ -146,7 +147,7 @@ void modload_cmd() {
                             void* symbol_value = resolve_symbol(name);
                             if (symbol_value == 0) {
                                 puts("[modload_macho:!] load module: linking failed");
-                                return;
+                                return false;
                             }
                             // Find the offset of the relocation pointer in the virtually mapped Mach-O and
                             // replace it with the resolved address of the symbol. r_address is the offset from
@@ -179,9 +180,32 @@ void modload_cmd() {
                         module->name = strdup(modname ? *modname ? *modname : "<null>" : "<unknown>");
                         module->exports = exports;
                         ((void (*)())entrypoint)();
+                        return true;
                     } else puts ("[modload_macho:!] load module: truncated load");
                 } else puts("[modload_macho:!] load module: need dylib");
             } else puts("[modload_macho:!] load module: not mach-o");
         } else puts("[modload_macho:!] load module: short read");
-        loader_xfer_recv_count = 0;
+    return false;
+}
+
+void modload_cmd(char* cmd, char* args) {
+    if (args[0] != '\0') {
+        size_t module_size;
+        if ((module_size = (int)strtoul(args, NULL, 0)) != 0) {
+            printf("args: %s, module_size: %zu\n", args, module_size);
+            void* module_buf = malloc(module_size);
+            if (!module_buf) panic("couldn't reserve heap for module");
+            int lzma_result = unlzma_decompress(module_buf, &module_size, loader_xfer_recv_data, loader_xfer_recv_count);
+            if (lzma_result == SZ_OK) {
+                modload_buf(module_buf, (uint32_t)module_size);
+                free(module_buf);
+            } else printf("module decompression failed\n");
+        } else {
+            printf("modload usage: modload [uncompressed size if compressed]\n");
+            return;
+        }
+    } else {
+        modload_buf(loader_xfer_recv_data, loader_xfer_recv_count);
+    }
+    loader_xfer_recv_size = 0;
 }

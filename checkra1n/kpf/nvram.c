@@ -271,7 +271,7 @@ static void kpf_nvram_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
     xnu_pf_maskmatch(xnu_text_exec_patchset, "nvram_unlock", matches4, masks4, sizeof(matches4)/sizeof(uint64_t), false, (void*)kpf_nvram_table_callback);
 }
 
-static void kpf_nvram_finish(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags)
+static void kpf_nvram_finish(struct mach_header_64 *hdr, palerain_option_t *palera1n_flags)
 {
 #ifdef DEV_BUILD
     // Treat this patch as optional in release
@@ -299,7 +299,7 @@ static uint32_t kpf_nvram_emit(uint32_t *shellcode_area)
     int64_t nvram_off = nvram_patch_to - nvram_patch_from;
     if(nvram_off > 0x7fffffcLL || nvram_off < -0x8000000LL)
     {
-        panic("kpf_nvram_unlock: jump too far: 0x%llx", nvram_off);
+        panic("kpf_nvram_unlock: jump too far: 0x%" PRIx64 "", nvram_off);
     }
 
     memcpy(shellcode_area, nvram_shc, (uintptr_t)nvram_shc_end - (uintptr_t)nvram_shc);

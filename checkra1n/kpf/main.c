@@ -31,12 +31,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <mach-o/loader.h>
-#include <kerninfo.h>
+#include <paleinfo.h>
 #include <mac.h>
 #include <pongo.h>
 #include <xnu/xnu.h>
 
 uint32_t offsetof_p_flags;
+palerain_option_t palera1n_flags = 0;
+
+#if defined(KPF_TEST)
+extern bool test_force_rootful;
+
+#if __has_include(<bsd/string.h>)
+#include <bsd/string.h>
+#endif
+#endif
 
 #if 0
         // AES, sigh
@@ -107,7 +116,7 @@ uint32_t* follow_call(uint32_t *from)
     uint32_t op = *from;
     if((op & 0x7c000000) != 0x14000000)
     {
-        DEVLOG("follow_call 0x%llx is not B or BL", xnu_ptr_to_va(from));
+        DEVLOG("follow_call 0x%" PRIx64 " is not B or BL", xnu_ptr_to_va(from));
         return NULL;
     }
     uint32_t *target = from + sxt32(op, 26);
@@ -122,20 +131,22 @@ uint32_t* follow_call(uint32_t *from)
         uint64_t ptr = *(uint64_t*)(page + ((((uint64_t)target[1] >> 10) & 0xfffULL) << 3));
         target = xnu_va_to_ptr(kext_rebase_va(ptr));
     }
-    DEVLOG("followed call from 0x%llx to 0x%llx", xnu_ptr_to_va(from), xnu_ptr_to_va(target));
+    DEVLOG("followed call from 0x%" PRIx64 " to 0x%" PRIx64 "", xnu_ptr_to_va(from), xnu_ptr_to_va(target));
     return target;
 }
 
-#ifdef DEV_BUILD
 struct kernel_version gKernelVersion;
 static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
 {
-    const char kernelVersionStringMarker[] = "@(#)VERSION: Darwin Kernel Version ";
+    const char* kernelVersionStringMarker = "@(#)VERSION: Darwin Kernel Version ";
     const char *kernelVersionString = memmem(text_const_range->cacheable_base, text_const_range->size, kernelVersionStringMarker, strlen(kernelVersionStringMarker));
     if(kernelVersionString == NULL)
     {
-        panic("No kernel version string found");
+        kernelVersionStringMarker = "Darwin Kernel Version ";
+        kernelVersionString = memmem(text_const_range->cacheable_base, text_const_range->size, kernelVersionStringMarker, strlen(kernelVersionStringMarker));
+        if(kernelVersionString == NULL) panic("No kernel version string found");
     }
+    gKernelVersion.kernel_version_string = kernelVersionString;
     const char *start = kernelVersionString + strlen(kernelVersionStringMarker);
     char *end = NULL;
     errno = 0;
@@ -154,12 +165,14 @@ static void kpf_kernel_version_init(xnu_pf_range_t *text_const_range)
     if(errno) panic("Error parsing kernel version");
     printf("Detected Kernel version Darwin: %d.%d.%d xnu: %d\n", gKernelVersion.darwinMajor, gKernelVersion.darwinMinor, gKernelVersion.darwinRevision, gKernelVersion.xnuMajor);
 }
-#endif
 
 // Imports from shellcode.S
 extern uint32_t sandbox_shellcode[], sandbox_shellcode_setuid_patch[], sandbox_shellcode_ptrs[], sandbox_shellcode_end[];
+extern uint32_t launchd_execve_hook[], launchd_execve_hook_ptr[], launchd_execve_hook_offset[], launchd_execve_hook_pagesize[], launchd_execve_hook_mach_vm_allocate_kernel[];
+extern uint32_t proc_set_syscall_filter_mask_shc[], proc_set_syscall_filter_mask_shc_target[], zalloc_ro_mut[];
 
-bool kpf_has_done_mac_mount;
+uint32_t* _mac_mount = NULL;
+bool kpf_has_done_mac_mount = false;
 bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
     puts("KPF: Found mac_mount");
     uint32_t* mac_mount = &opcode_stream[0];
@@ -188,6 +201,25 @@ bool kpf_mac_mount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     // replace with a mov x8, xzr
     // this will bypass the (vp->v_mount->mnt_flag & MNT_ROOTFS) check
     mac_mount_1[0] = 0xaa1f03e8;
+    
+    // Most reliable marker of a stack frame seems to be "add x29, sp, 0x...".
+    // And this function is HUGE, hence up to 2k insn.
+    uint32_t *frame = find_prev_insn(mac_mount_1, 2000, 0x910003fd, 0xff8003ff);
+    if(!frame) {
+        DEVLOG("kpf_mac_mount_callback: failed to find stack frame");
+        return false;
+    }
+    // Now find the insn that decrements sp. This can be either
+    // "stp ..., ..., [sp, -0x...]!" or "sub sp, sp, 0x...".
+    // Match top bit of imm on purpose, since we only want negative offsets.
+    uint32_t  *start = find_prev_insn(frame, 10, 0xa9a003e0, 0xffe003e0); // stp xN, xM, [sp, #-0x...]!
+    if(!start) start = find_prev_insn(frame, 10, 0xd10003ff, 0xff8003ff); // sub sp, sp, ...
+    if(!start) start = find_prev_insn(frame, 10, 0x6da003e0, 0xffe083e0); // stp dN, dM, [sp, #-0x...]!
+    if(!start) return false;
+    
+    _mac_mount = start;
+    puts("KPF: Found mac_mount top");
+    
     kpf_has_done_mac_mount = true;
     xnu_pf_disable_patch(patch);
     puts("KPF: Found mac_mount");
@@ -201,6 +233,7 @@ void kpf_mac_mount_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
     // After that we search for a ldrb w8, [x8, 0x71] and replace it with a movz x8, 0
     // at 0x70 there are the flags and MNT_ROOTFS is 0x00004000 -> 0x4000 >> 8 -> 0x40 -> bit 6 -> the check is right below
     // that way we can also perform operations on the rootfs
+    // r2: /x e92f1f32
     uint64_t matches[] = {
         0x321f2fe9, // orr w9, wzr, 0x1ffe
     };
@@ -208,7 +241,11 @@ void kpf_mac_mount_patch(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xFFFFFFFF,
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "mac_mount_patch1", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_mac_mount_callback);
-    matches[0] = 0x5283ffc9; // movz w9, 0x1ffe
+    
+    // ios 16.4 changed the codegen, so we match both
+    // r2: /x c9ff8312:ffffff3f
+    matches[0] = 0x1283ffc9; // movz w/x9, 0x1ffe/-0x1fff
+    masks[0] = 0x3fffffff;
     xnu_pf_maskmatch(xnu_text_exec_patchset, "mac_mount_patch2", matches, masks, sizeof(matches)/sizeof(uint64_t), false, (void*)kpf_mac_mount_callback);
 }
 
@@ -247,13 +284,13 @@ bool kpf_mac_dounmount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_str
         (mov[-2]&0xFFE0FFFF) == 0xAA0003E0 && // MOV X0, Xn
         (mov[-1]&0xFC000000) == 0x94000000) { // BL vnode_getparent
 #if DEBUG_DOUNMOUNT
-        DEVLOG("Dounmount match for call to vnode_getparent at 0x%llx", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)));
+        DEVLOG("Dounmount match for call to vnode_getparent at 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)));
 #endif
         parent_rn = *mov&0x1f;
     }
 
 #if DEBUG_DOUNMOUNT
-    DEVLOG("Dounmount tenative match at 0x%llx", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)));
+    DEVLOG("Dounmount tenative match at 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(opcode_stream)));
 #endif
 
     // Check that we have code to release parent_vnode below
@@ -265,7 +302,7 @@ bool kpf_mac_dounmount_callback(struct xnu_pf_patch* patch, uint32_t* opcode_str
         return false;
     }
 #if DEBUG_DOUNMOUNT
-    DEVLOG("Dounmount testing parent lock at 0x%llx", xnu_rebase_va(xnu_ptr_to_va(parent_lock)));
+    DEVLOG("Dounmount testing parent lock at 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(parent_lock)));
 #endif
 
     uint32_t* call;
@@ -397,7 +434,7 @@ static bool kpf_vm_map_protect_branch_short(struct xnu_pf_patch *patch, uint32_t
 
 static bool kpf_vm_map_protect_inline(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
 {
-    DEVLOG("vm_map_protect candidate at 0x%llx", xnu_ptr_to_va(opcode_stream));
+    DEVLOG("vm_map_protect candidate at 0x%" PRIx64 "", xnu_ptr_to_va(opcode_stream));
 
     // Match all possible combo and adjust index to the "csel"
     uint32_t idx = 2;
@@ -572,7 +609,7 @@ bool vm_fault_enter_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream
         DEVLOG("vm_fault_enter_callback: already ran, skipping...");
         return false;
     }
-    DEVLOG("Trying vm_fault_enter at 0x%llx", xnu_ptr_to_va(opcode_stream));
+    DEVLOG("Trying vm_fault_enter at 0x%" PRIx64 "", xnu_ptr_to_va(opcode_stream));
     // Should be followed by a TB(N)Z Wx, #2 shortly
     if (!find_next_insn(opcode_stream, 0x18, 0x36100000, 0xFEF80000)) {
         // Wrong place...
@@ -607,10 +644,10 @@ bool vm_fault_enter_callback14(struct xnu_pf_patch* patch, uint32_t* opcode_stre
         DEVLOG("vm_fault_enter_callback: already ran, skipping...");
         return false;
     }
-    DEVLOG("Trying vm_fault_enter at 0x%llx", xnu_ptr_to_va(opcode_stream));
+    DEVLOG("Trying vm_fault_enter at 0x%" PRIx64 "", xnu_ptr_to_va(opcode_stream));
     // r2 /x
     // Make sure this was preceded by a "tbz w[16-31], 2, ..." that jumps to the code we're currently looking at
-    uint32_t *tbz = find_prev_insn(opcode_stream, 0x18, 0x36100010, 0xfff80010);
+    uint32_t *tbz = find_prev_insn(opcode_stream, 0x20, 0x36100010, 0xfff80010);
     if(!tbz)
     {
         // This isn't our TBZ
@@ -751,7 +788,7 @@ bool vnode_lookup_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
         (try[1]&0xFC000000) != 0x94000000 ||    // BL _sfree
         (try[3]&0xFF000000) != 0xB4000000 ||    // CBZ
         (try[4]&0xFC000000) != 0x94000000 ) {   // BL _vnode_put
-        DEVLOG("Failed match of vnode_lookup code at 0x%llx", kext_rebase_va(xnu_ptr_to_va(opcode_stream)));
+        DEVLOG("Failed match of vnode_lookup code at 0x%" PRIx64 "", kext_rebase_va(xnu_ptr_to_va(opcode_stream)));
         return false;
     }
     puts("KPF: Found vnode_lookup");
@@ -759,6 +796,65 @@ bool vnode_lookup_callback(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     vnode_lookup = follow_call(&opcode_stream[6]);
     vnode_put = follow_call(&try[4]);
     xnu_pf_disable_patch(patch);
+    return true;
+}
+
+uint32_t* _proc_set_syscall_filter_mask = NULL;
+uint32_t* protobox_patchpoint = NULL;
+
+bool kpf_protobox_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    uint32_t* b = find_next_insn(opcode_stream, 0x10, 0x14000000, 0xfc000000); // b proc_set_syscall_filter_mask
+    if (!b) {
+        panic_at(opcode_stream, "kpf_protobox: Failed to find b proc_set_syscall_filter_mask");
+    }
+
+    uint32_t* proc_set_syscall_filter_mask = follow_call(b);
+    uint32_t *stackframe = find_prev_insn(opcode_stream - 1, 0x20, 0xa9007bfd, 0xffc07fff); // stp x29, x30, [sp, ...]
+    if(!stackframe)
+    {
+        panic_at(opcode_stream, "kpf_protobox: Failed to find stack frame");
+    }
+
+    uint32_t *start = find_prev_insn(stackframe - 1, 8, 0xd10003ff, 0xffc003ff); // sub sp, sp, ...
+    if(!start) {
+        start = find_prev_insn(stackframe, 10, 0xa9a003e0, 0xffe003e0); // stp xN, xM, [sp, -0x...]!
+    }
+
+    if (!start) {
+        panic_at(stackframe, "kpf_protobox: Failed to find start of function");
+    }
+
+    uint32_t* bl = find_prev_insn(opcode_stream, 6, 0x94000000, 0xfc000000); // bl zone_require_ro
+    if (!bl) {
+        panic_at(opcode_stream, "kpf_protobox: Failed to find zone_require_ro");
+    }
+
+    *bl = 0xaa0003f1; // mov x17, x0
+
+    _proc_set_syscall_filter_mask = proc_set_syscall_filter_mask;
+
+    protobox_patchpoint = b;
+
+    printf("KPF: found protobox\n");
+    return true;
+}
+
+bool kpf_filter_mismatch_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    opcode_stream[0] = 0x14000000 | sxt32(opcode_stream[0] >> 5, 19); // cbz -> b
+    printf("KPF: found syscall filter mismatch\n");
+    return true;
+}
+
+uint32_t* _zalloc_ro_mut = NULL;
+bool kpf_zalloc_ro_mut_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    uint32_t* _zalloc_ro_mut_candidate = follow_call(&opcode_stream[6]);
+    if (!_zalloc_ro_mut) _zalloc_ro_mut = _zalloc_ro_mut_candidate;
+    if (_zalloc_ro_mut != _zalloc_ro_mut_candidate) {
+        panic("kpf_zalloc_ro_mut: Found multiple zalloc_ro_mut candidates");
+    }
+
+    puts("KPF: Found zalloc_ro_mut");
     return true;
 }
 
@@ -811,6 +907,29 @@ void kpf_find_shellcode_funcs(xnu_pf_patchset_t* xnu_text_exec_patchset) {
         0xffffffff
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "ret0_gadget", iiii_matches, iiii_masks, sizeof(iiii_masks)/sizeof(uint64_t), true, (void*)ret0_gadget_callback);
+
+    // find mac label related calls to zalloc_ro_mut
+    uint64_t zalloc_ro_mut_matches[] = {
+        0x90000003, // adrp x3, ...
+        0x91000063, // add x3, x3, ...
+        0x52800080, // mov w0, #0x4
+        0xaa1003e1, // mov x1, x{16-31}
+        0xd2800002, // mov x2, #0x0
+        0x52800404, // mov w4, #0x20
+        0x94000000  // bl zalloc_ro_mut
+    };
+
+    uint64_t zalloc_ro_mut_masks[] = {
+        0x9f00001f,
+        0xffc003ff,
+        0xffffffff,
+        0xfff0ffff,
+        0xffffffff,
+        0xffffffff,
+        0xfc000000
+    };
+
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "zalloc_ro_mut", zalloc_ro_mut_matches, zalloc_ro_mut_masks, sizeof(zalloc_ro_mut_matches) / sizeof(uint64_t), false, (void *)kpf_zalloc_ro_mut_callback);
 }
 
 static bool found_mach_traps = false;
@@ -905,6 +1024,8 @@ bool mach_traps_alt_callback(struct xnu_pf_patch *patch, uint64_t *mach_traps)
 
 bool has_found_sbops = 0;
 uint64_t* sbops;
+
+bool found_apfs_rename = false;
 bool sb_ops_callback(struct xnu_pf_patch* patch, uint64_t* sbops_stream) {
     puts("KPF: Found sbops");
     sbops = sbops_stream;
@@ -913,8 +1034,25 @@ bool sb_ops_callback(struct xnu_pf_patch* patch, uint64_t* sbops_stream) {
     return true;
 }
 bool kpf_apfs_patches_rename(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    if (
+           (opcode_stream[-1] & 0xfec003a0) != 0xf80003a0 /*st(u)r x*, [x29/sp, *]*/ 
+        && (opcode_stream[-1] & 0xffffffff) != 0xaa0003fc /* mov x28, x0 */
+        ) return false;
+
+    if (found_apfs_rename) {
+        panic("APFS rename: Found twice");
+    }
+    found_apfs_rename = true;
     puts("KPF: Found APFS rename");
-    opcode_stream[3] = NOP;
+    if ((opcode_stream[2] & 0xff000000) == 0x36000000) {
+        /* tbz -> b */
+        opcode_stream[2] = 0x14000000 | (uint32_t)sxt32(opcode_stream[2] >> 5, 14);
+    } else if ((opcode_stream[2] & 0xff000000) == 0x37000000) {
+        /* tbnz -> nop */
+        opcode_stream[2] = NOP;
+    } else {
+        panic("KPF: unreachable in apfs_patches_rename");
+    }
     return true;
 }
 
@@ -945,7 +1083,219 @@ bool kpf_apfs_patches_mount(struct xnu_pf_patch* patch, uint32_t* opcode_stream)
     has_found_f_apfs_privcheck = true;
     return true;
 }
-void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
+
+#if 0
+bool kpf_apfs_seal_broken(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    puts("KPF: Found root seal broken");
+    
+    opcode_stream[3] = NOP;
+
+    return true;
+}
+
+bool personalized_hash_patched = false;
+bool kpf_personalized_root_hash(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    // ios 16.4 broke this a lot, so we're just gonna find the string and do stuff with that
+    printf("KPF: found kpf_apfs_personalized_hash\n");
+
+    uint32_t* cbz1 = find_prev_insn(opcode_stream, 0x10, 0x34000000, 0x7e000000);
+
+    if (!cbz1) {
+        printf("kpf_apfs_personalized_hash: failed to find first cbz\n");
+        return false;
+    }
+
+    uint32_t* cbz_fail = find_prev_insn(cbz1 + 1, 0x50, 0x34000000, 0x7e000000);
+
+    if (!cbz_fail) {
+        printf("kpf_apfs_personalized_hash: failed to find fail cbz\n");
+        return false;
+    }
+
+    uint64_t addr_fail = xnu_ptr_to_va(cbz_fail) + (sxt32(cbz_fail[0] >> 5, 19) << 2);
+
+    uint32_t *fail_stream = xnu_va_to_ptr(addr_fail);
+        
+    uint32_t *success_stream = opcode_stream;
+    uint32_t *temp_stream = opcode_stream;
+        
+    for (int i = 0; i < 0x500; i++) {
+        if ((temp_stream[0] & 0x9f000000) == 0x90000000 && // adrp
+            (temp_stream[1] & 0xff800000) == 0x91000000) { // add
+                const char *str = get_string(temp_stream);
+                if (strcmp(str, "%s:%d: %s successfully validated on-disk root hash\n") == 0) {
+                    success_stream = find_prev_insn(temp_stream, 0x10, 0x35000000, 0x7f000000);
+
+                    if (success_stream) {
+                        success_stream++;
+                    } else {
+                        success_stream = find_prev_insn(temp_stream, 0x10, 0xf90003e0, 0xffc003e0); // str x*, [sp, #0x*]
+                        
+                        if (!success_stream) {
+                            DEVLOG("kpf_apfs_personalized_hash: failed to find start of block");
+                        }
+                    }
+                    
+                    break;
+                }
+        }
+                
+       temp_stream++;
+    }
+        
+    if (!success_stream) {
+        printf("kpf_apfs_personalized_hash: failed to find success!\n");
+        return false;
+    }
+        
+    uint64_t addr_success = xnu_ptr_to_va(success_stream);
+
+    DEVLOG("addrs: success is 0x%" PRIx64 ", fail is 0x%" PRIx64 ", target is 0x%" PRIx64 "", addr_success, xnu_ptr_to_va(cbz_fail), addr_fail);
+        
+    uint32_t branch_success = 0x14000000 | (((addr_success - addr_fail) >> 2) & 0x03ffffff);
+        
+    DEVLOG("branch is 0x%x (BE)", branch_success);
+
+    fail_stream[0] = branch_success;
+    
+    personalized_hash_patched = true;
+
+    return true;
+}
+
+bool kpf_apfs_auth_required(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
+    printf("KPF: Found root authentication required\n");
+    
+    uint32_t* func_start = find_prev_insn(opcode_stream, 0x50, 0xa98003e0, 0xffc003e0); //stp x*, x*, [sp, -0x*]!
+        
+    if (!func_start) {
+        func_start = find_prev_insn(opcode_stream, 0x50, 0xd10000ff, 0xffc003ff); // sub sp, sp, 0x*
+            
+        if (!func_start) {
+            printf("root authentication: failed to find stack marker!\n");
+            return false;
+        }
+    }
+        
+    func_start[0] = 0xd2800000;
+    func_start[1] = RET;
+        
+    return true;
+}
+#endif
+
+bool has_found_apfs_vfsop_mount = false;
+bool kpf_apfs_vfsop_mount(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    uint32_t tbnz_offset = (opcode_stream[1] >> 5) & 0x3fff;
+    uint32_t *tbnz_stream = opcode_stream + 1 + tbnz_offset;
+    uint32_t *adrp = find_next_insn(tbnz_stream, 20, 0x90000000, 0x9f00001f); // adrp
+    if (!adrp) {
+        return false;
+    }
+    if ((adrp[1] & 0xff80001f) != 0x91000000) return false;
+    uint64_t page = ((uint64_t)adrp & ~0xfffULL) + adrp_off(adrp[0]);
+    uint32_t off = (adrp[1] >> 10) & 0xfff;
+    const char *str = (const char*)(page + off);
+    if (!strstr(str, "Updating mount to read/write mode is not allowed\n")) {
+	    return false;
+    }
+
+    opcode_stream[1] = 0x52800000; /* mov w0, 0 */
+    has_found_apfs_vfsop_mount = true;
+
+    printf("KPF: found apfs_vfsop_mount\n");
+    
+    return true;
+}
+
+bool kpf_apfs_root_snapshot_name(struct xnu_pf_patch *patch, uint32_t *opcode_stream)  {
+    const char *str = (const char *)(((uint64_t)(opcode_stream) & ~0xfffULL) 
+        + adrp_off(opcode_stream[0]) + ((opcode_stream[1] >> 10) & 0xfff));
+    if (strcmp(str, "0123456789ABCDEF") != 0) return false;
+
+    uint32_t* b_cond = find_next_insn(opcode_stream, 20, 0x54000000, 0xff000000); // b.cond
+    if (!b_cond) {
+        panic("kpf_apfs_root_snapshot_name_inlined: failed to find b.cond");
+    }
+    uint32_t* dest_addr = b_cond + 1;
+
+    /*
+     * addr_reg holds a pointer to a buffer as follows:
+     * com.apple.os.update- ... to be filled in with hash
+     *                     ^
+     *             pointer in addr_reg
+     * We seek back to the start of the string, write "orig-fs\x00"
+     * into it, then skip the loop for filling in the buffer 
+     * character-by-character.
+    */
+
+    uint32_t addr_reg = (opcode_stream[9] >> 5) & 0x1f; // strb wN, [addr_reg, xN, lsl]
+    uint32_t scratch_reg = addr_reg - 1;
+    uint32_t imm12 = 20;
+    opcode_stream[0] = 0xd1000000 | imm12 << 10 | addr_reg << 5 | scratch_reg; // sub scratch_reg, addr_reg, #0x14
+    opcode_stream[1] = 0x10000080 | addr_reg; // adr addr_reg, #0x10
+    opcode_stream[2] = 0xf9400000 | addr_reg << 5 | addr_reg; // ldr addr_reg, [addr_reg]
+    opcode_stream[3] = 0xf9000000 | addr_reg | scratch_reg << 5; // str addr_reg, [scratch_reg]
+    opcode_stream[4] = 0x14000000 | ((dest_addr - &opcode_stream[4]) & 0x3fffffff); // b dest_addr
+    opcode_stream[5] = 0x6769726f; // orig
+    opcode_stream[6] = 0x0073662d; // -fs\x00
+    
+    printf("KPF: found apfs_root_snapshot_name\n");
+    return true;
+}
+
+#if 0
+bool handled_eval_rootauth = false;
+bool kpf_apfs_rootauth(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    handled_eval_rootauth = true;
+
+    opcode_stream[0] = NOP;
+    opcode_stream[1] = 0x52800000; /* mov w0, 0 */
+
+    printf("KPF: found handle_eval_rootauth\n");
+    return true;
+}
+
+bool kpf_apfs_rootauth_new(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    handled_eval_rootauth = true;
+
+    uint32_t orig_register = (opcode_stream[1] & 0x1f);
+    opcode_stream[0] = NOP;
+    opcode_stream[1] = 0x52800000 | orig_register; /* mov wN, 0 */
+    
+    uint32_t *ret_stream = follow_call(opcode_stream + 2);
+    
+    if (!ret_stream) {
+        printf("KPF: failed to follow branch\n");
+        return false;
+    }
+    
+    uint32_t *mov = ret_stream;
+    while (true) {  
+        mov = find_next_insn(mov, 0x10, 0xaa0003e0, 0xffe0ffff); // mov x0, xN
+
+        if (!mov) {
+            printf("KPF: failed to find mov\n");
+            return false;
+        }
+
+        uint32_t mov_register = (mov[0] >> 16) & 0x1f;
+
+        if (mov_register == orig_register) {
+            break;
+        }
+
+        mov++;
+    }
+    
+    mov[0] = 0xd2800000; /* mov x0, 0 */
+
+    printf("KPF: found handle_eval_rootauth\n");
+    return true;
+}
+#endif
+
+void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_ssv, bool apfs_vfsop_mount_string_match) {
     // there is a check in the apfs mount function that makes sure that the kernel task is calling this function (current_task() == kernel_task)
     // we also want to call it so we patch that check out
     // example from i7 13.3:
@@ -979,7 +1329,7 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         0xfc000000,
     };
     xnu_pf_maskmatch(patchset, "apfs_patch_mount", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_mount);
-    if(have_union)
+    if(!have_ssv)
     {
         // the rename function will prevent us from renaming a snapshot that's on the rootfs, so we will just patch that check out
         // example from i7 13.3
@@ -987,23 +1337,116 @@ void kpf_apfs_patches(xnu_pf_patchset_t* patchset, bool have_union) {
         // 0xfffffff0068f3d5c      e01f00f9       str x0, [sp, 0x38]
         // 0xfffffff0068f3d60      08c44039       ldrb w8, [x0, 0x31] ; [0x31:4]=
         // 0xfffffff0068f3d64      68043037       tbnz w8, 6, 0xfffffff0068f3df0 <- patch this out
-        // Since iOS 15, the "str" can also be "stur", so we mask out one of the upper bits to catch both,
+        // This patch must not be applied to iOS 15+ because it means people can recovery loop their devices by renaming the snapshot
+        // Since tvOS 15.0, the "str" can also be "stur", so we mask out one of the upper bits to catch both,
         // and we apply a mask of 0x1d to the base register, to catch exactly x29 and sp.
+        // Since tvOS 15.4, the first st(u)r instruction can also be mov x28, x0, so we only check it in the callback
+        // Since tvOS 16.0, the tbnz instruction can also be tbz, which required converting the branch instead of nopping
         // r2 cmd:
-        // /x a00300f8a00300f80000403900003037:a003c0fea003c0fe0000feff0000f8ff
+        // /x a00300f80000403900003037:a003c0fe0000feff0000f8ff
         uint64_t i_matches[] = {
             0xf80003a0, // st(u)r x*, [x29/sp, *]
-            0xf80003a0, // st(u)r x*, [x29/sp, *]
             0x39400000, // ldrb w*, [x*]
-            0x37300000, // tbnz w*, 6, *
+            0x36300000, // tb(n)z w*, 6, *
         };
         uint64_t i_masks[] = {
             0xfec003a0,
-            0xfec003a0,
             0xfffe0000,
-            0xfff80000,
+            0xfef80000,
         };
         xnu_pf_maskmatch(patchset, "apfs_patch_rename", i_matches, i_masks, sizeof(i_matches)/sizeof(uint64_t), true, (void*)kpf_apfs_patches_rename);
+    }
+
+    if(
+        apfs_vfsop_mount_string_match 
+#ifndef DEV_BUILD
+       && palera1n_flags & palerain_option_rootful // this patch is not required on rootless
+#endif
+    ) {
+        // when mounting an apfs volume, there is a check to make sure the volume is
+        // not both root volume and read/write
+        // we just nop the check out
+        // example from iPad 6 16.1.1:
+        // 0xfffffff0064023a8      e8b340b9       ldr w8, [sp, 0xb0]  ; 5
+        // 0xfffffff0064023ac      08791f12       and w8, w8, 0xfffffffe
+        // 0xfffffff0064023b0      e8b300b9       str w8, [sp, 0xb0]
+        // r2: /x a00340b900781f12a00300b9:a003feff00fcffffa003c0ff
+        uint64_t remount_matches[] = {
+	        0x94000000, // bl
+            0x37700000, // tbnz w0, 0xe, *
+        };
+        
+        uint64_t remount_masks[] = {
+	        0xfc000000,
+            0xfff8001f,
+        };
+        
+        xnu_pf_maskmatch(patchset,
+            "apfs_vfsop_mount", remount_matches, remount_masks, sizeof(remount_masks) / sizeof(uint64_t), true ,(void *)kpf_apfs_vfsop_mount);
+        
+    }
+
+    if (
+#if !defined(KPF_TEST)
+    (palera1n_flags & palerain_option_ssv) == 0
+    && (palera1n_flags & palerain_option_force_revert)
+    && (palera1n_flags & palerain_option_rootful) &&
+#endif
+    (gKernelVersion.xnuMajor < 10063)
+    )
+    {
+        // This patch is required because on md0oncores, the rootfs is mounted by the kernel
+        // However, when force reverting on platforms without SSV we want to mount the snapshot
+        // of the real filesystem, so as to cleanup uicache properly. Here, we change the
+        // snapshot that the kernel boots from to orig-fs
+        // Example from Apple TV HD 17.2:
+        //        0xfffffff006ae3528      09008052       movz w9, 0
+        //        0xfffffff006ae352c      0a0080d2       movz x10, 0
+        //        0xfffffff006ae3530      8b520091       add x11, x20, 0x14
+        //        0xfffffff006ae3534      ac85ffb0       adrp x12, 0xfffffff005b98000
+        //        0xfffffff006ae3538      8c990691       add x12, x12, 0x1a6
+        //   ┌──> 0xfffffff006ae353c      4dfd41d3       lsr x13, x10, 1
+        //   ╎    0xfffffff006ae3540      6d6a6d38       ldrb w13, [x19, x13] ; 0xd4000000da ; 910533066970
+        //   ╎    0xfffffff006ae3544      ee03292a       mvn w14, w9
+        //   ╎    0xfffffff006ae3548      ce017e92       and x14, x14, 4
+        //   ╎    0xfffffff006ae354c      ad25ce9a       lsr x13, x13, x14
+        //   ╎    0xfffffff006ae3550      ad0d4092       and x13, x13, 0xf
+        //   ╎    0xfffffff006ae3554      8d696d38       ldrb w13, [x12, x13] ; 0xd4000000d3 ; 910533066963
+        //   ╎    0xfffffff006ae3558      6d692a38       strb w13, [x11, x10]
+        //   ╎    0xfffffff006ae355c      4a050091       add x10, x10, 1
+        //   ╎    0xfffffff006ae3560      29110011       add w9, w9, 4
+        //   ╎    0xfffffff006ae3564      1f010aeb       cmp x8, x10
+        //   └──< 0xfffffff006ae3568      a1feff54       b.ne 0xfffffff006ae353c
+        // r2: /x 000000900000009100fc41d300686038e003202a00001e120024c01a000c00120008603800682038:0000009f0000c0ff00fcffff00fce0ffe0ffe0ff00fc9f7f00fce07f00fc9f7f001ce0ff00fce0ff
+        // This call is sometimes inlined, hence why the patch is somewhat complicated
+        uint64_t root_snapshot_matches[] = {
+            0x90000000, // adrp xN, ...
+            0x91000000, // add xN, xN, ...
+            0xd341fc00, // lsr xN, xN, #0x1
+            0x38606800, // ldrb wN, [xN, xN, lsl]
+            0x2a2003e0, // mvn xN, xN
+            0x121e0000, // and rN, rN, #0x4
+            0x1ac02400, // lsr xN, xN, xN
+            0x12000c00, // and rN, rN, #0xf
+            0x38600800, // ldrb wN, [xN, xN, ...]
+            0x38206800  // strb wN, [xN, xN, lsl]
+        };
+
+        uint64_t root_snapshot_masks[] = {
+            0x9f000000,
+            0xffc00000,
+            0xfffffc00,
+            0xffe0fc00,
+            0xffe0ffe0,
+            0x7f9ffc00,
+            0x7fe0fc00,
+            0x7f9ffc00,
+            0xffe01c00,
+            0xffe0fc00
+        };
+
+        xnu_pf_maskmatch(patchset,
+        "apfs_root_snapshot_name", root_snapshot_matches, root_snapshot_masks, sizeof(root_snapshot_matches) / sizeof(uint64_t), true ,(void *)kpf_apfs_root_snapshot_name);
     }
 }
 static uint32_t* amfi_ret;
@@ -1034,7 +1477,7 @@ bool kpf_amfi_sha1(struct xnu_pf_patch* patch, uint32_t* opcode_stream) {
 }
 
 void kpf_find_offset_p_flags(uint32_t *proc_issetugid) {
-    DEVLOG("Found kpf_find_offset_p_flags 0x%llx", xnu_ptr_to_va(proc_issetugid));
+    DEVLOG("Found kpf_find_offset_p_flags 0x%" PRIx64 "", xnu_ptr_to_va(proc_issetugid));
     if (!proc_issetugid) {
         panic("kpf_find_offset_p_flags called with no argument");
     }
@@ -1091,7 +1534,15 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
         panic_at(bl, "Failed to follow call to check_dyld_policy_internal");
     }
     // Find call to proc_issetuid
-    uint32_t *ref = find_next_insn(check_dyld_policy_internal, 10, 0x94000000, 0xfc000000);
+    uint32_t *ref = NULL;
+    for (size_t i = 0; i < 0x10; i++) {
+        if ((check_dyld_policy_internal[i] & 0xfc000000) == 0x94000000 // bl
+        && (check_dyld_policy_internal[i+1] & 0xff00001f) == 0x34000000) { // cbz
+            ref = &check_dyld_policy_internal[i];
+            break;
+        }
+    }
+    if (!ref) panic_at(check_dyld_policy_internal, "Missing call to proc_issetuid");
     if((ref[1] & 0xff00001f) != 0x34000000)
     {
         panic_at(ref, "CBZ missing after call to proc_issetuid");
@@ -1134,9 +1585,9 @@ bool kpf_amfi_mac_syscall(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
         }
         ref += 2;
     }
-    // Move from high reg, bl, and either tbz, 0 or cmp, 0
     uint32_t op = ref[2];
-    if((ref[0] & 0xfff003ff) != 0xaa1003e0 || (ref[1] & 0xfc000000) != 0x94000000 || ((op & 0xfff8001f) != 0x36000000 && op != 0x7100001f))
+    // Move from high reg, bl, and either tb(n)z, 0 or cmp, 0
+    if((ref[0] & 0xfff003ff) != 0xaa1003e0 || (ref[1] & 0xfc000000) != 0x94000000 || ((op & 0xfef8001f) != 0x36000000 && op != 0x7100001f))
     {
         panic_at(check_dyld_policy_internal, "CMP/TBZ missing after call to %s", entitlement ? "proc_has_entitlement" : "proc_has_get_task_allow");
     }
@@ -1327,7 +1778,7 @@ void kpf_amfi_kext_patches(xnu_pf_patchset_t* patchset) {
     xnu_pf_maskmatch(patchset, "amfi_mac_syscall_low", iiii_matches, iiii_masks, sizeof(iiii_matches)/sizeof(uint64_t), false, (void*)kpf_amfi_mac_syscall_low);
 }
 
-void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
+void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset, bool protobox_used) {
     uint64_t matches[] = {
         0x35000000, // CBNZ
         0x94000000, // BL _vfs_context_current
@@ -1351,6 +1802,32 @@ void kpf_sandbox_kext_patches(xnu_pf_patchset_t* patchset) {
         0xFF000000
     };
     xnu_pf_maskmatch(patchset, "vnode_lookup", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)vnode_lookup_callback);
+
+    // /x 0800009008010091081970f8030140b9e00300aae10300aae20300aa:1f00009fff03c0ffff1ff0ffffffffffffffe0ffffffe0ffffffe0ff
+    // iOS 15.4+
+    if (protobox_used) {
+        uint64_t protobox_matches[] = {
+            0x90000008, // adrp x8, ...
+            0x91000108, // add, x8, x8
+            0xf8701908, // ldr x8, [x8, w{16-31}, ... #0x3]
+            0xb9400103, // ldr w3, [x8]
+            0xaa0003e0, // mov x0, x{16-31}
+            0xaa0003e1, // mov x1, x{16-31}
+            0xaa0003e2  // mov x2, x{16-31}
+        };
+
+        uint64_t protobox_masks[] = {
+            0x9f00001f,
+            0xffc003ff,
+            0xfff01fff,
+            0xffffffff,
+            0xffe0ffff,
+            0xffe0ffff,
+            0xffe0ffff
+        };
+
+        xnu_pf_maskmatch(patchset, "protobox", protobox_matches, protobox_masks, sizeof(protobox_masks) / sizeof(uint64_t), true, (void *)kpf_protobox_callback);
+    }
 }
 
 bool vnop_rootvp_auth_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
@@ -1446,6 +1923,287 @@ void kpf_root_livefs_patch(xnu_pf_patchset_t* patchset) {
 }
 #endif
 
+uint32_t* mdevremoveall = NULL;
+uint32_t* mac_execve = NULL;
+uint32_t* mac_execve_hook = NULL;
+uint32_t* copyout = NULL;
+uint32_t* mach_vm_allocate_kernel = NULL;
+uint32_t current_map_off = -1;
+uint32_t vm_map_page_size_off = -1;
+bool mach_vm_allocate_kernel_new = false;
+
+bool IOSecureBSDRoot_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    // Prevent ramdisk from being cleaned even when booted without rootdev="md0"
+    if(mdevremoveall)
+    {
+        DEVLOG("IOSecureBSDRoot_callback: already ran, skipping...");
+        return false;
+    }
+    puts("KPF: Found mdevremoveall");
+    DEVLOG("Found mdevremoveall 0x%" PRIx64, xnu_rebase_va(xnu_ptr_to_va(opcode_stream)) + 4*4);
+    
+    uint32_t insn = opcode_stream[4];
+    int32_t off = sxt32(insn >> 5, 19);
+    opcode_stream[4] = 0x14000000 | (uint32_t)off;
+    mdevremoveall = opcode_stream;
+    return true;
+}
+
+bool load_init_program_at_path_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    puts("KPF: Found load_init_program_at_path");
+    uint32_t* bl = find_next_insn(opcode_stream, 8, 0x94000000, 0xfc000000);
+    if(!bl) return false;
+    opcode_stream = bl;
+    
+    mac_execve = follow_call(opcode_stream);
+    mac_execve_hook = opcode_stream;
+    puts("KPF: Found mac_execve");
+    
+    //uint32_t* prebl = find_prev_insn(opcode_stream, 0x80, 0x52800302, 0xffffffff);
+    //bl = find_next_insn(prebl, 10, 0x94000000, 0xfc000000); // bl
+    //
+    //copyout = follow_call(bl);
+    //puts("KPF: Found copyout");
+    
+    // Most reliable marker of a stack frame seems to be "add x29, sp, 0x...".
+    // And this function is HUGE, hence up to 2k insn.
+    uint32_t *frame = find_prev_insn(opcode_stream, 2000, 0x910003fd, 0xff8003ff);
+    if(!frame) return false;
+    
+    // Now find the insn that decrements sp. This can be either
+    // "stp ..., ..., [sp, -0x...]!" or "sub sp, sp, 0x...".
+    // Match top bit of imm on purpose, since we only want negative offsets.
+    uint32_t  *start = find_prev_insn(frame, 10, 0xa9a003e0, 0xffe003e0);
+    if(!start) start = find_prev_insn(frame, 10, 0xd10003ff, 0xff8003ff);
+    if(!start) return false;
+
+#if 0
+    uint32_t* match = opcode_stream;
+    
+    while(1) {
+        if(
+           ((match[0] & 0xfff0ffff) == 0xaa1003e0) && // mov x0, x{16-30}
+           ((match[1] & 0xfc000000) == 0x94000000) && // bl _strlen
+           ((match[2] & 0xfffffff0) == 0x91000410) && // add x{16-30}, x0, #1
+           ((match[3] & 0xfffffe1f) == 0xf100121f) && // cmp x{16-30}, #4
+           ((match[4] & 0xff000000) == 0x54000000) && // b.hs
+           ((match[5] & 0x9f000000) == 0x90000000) && // adrp
+           ((match[6] & 0xff000000) == 0x91000000) && // add
+           ((match[7] & 0xfff0ffff) == 0xaa1003e1) && // mov x1, x{16-30}
+           ((match[8] & 0xfff0ffff) == 0xaa1003e2) && // mov x2, x{16-30}
+           ((match[9] & 0xfc000000) == 0x94000000)    // bl _copyout
+           )
+        {
+            // found
+            match += 9;
+            copyout = follow_call(match);
+            puts("KPF: Found copyout");
+            break;
+        }
+        match--;
+        if(match == start) {
+            panic("copyout not found");
+            return false;
+        }
+    }
+#endif
+    
+    /* xxx */
+    uint32_t *tpidr_el1 = find_next_insn(start, 0x20, 0xd538d080, 0xffffff80); // search mrs xN, tpidr_el1
+    if(!tpidr_el1) return false;
+    uint32_t reg = tpidr_el1[0] & 0x1f;
+    
+    uint32_t *ldr = find_next_insn(tpidr_el1, 10, 0xf9400000 | (reg << 5), 0xffc000e0 | (reg << 5)); // search ldr xM, [xN, #xxx]
+    if(!ldr) return false;
+    current_map_off = ((ldr[0] >> 10) & 0xfff) << 3;
+    printf("KPF: Found current_map_offset at 0x%x\n", current_map_off);
+    
+    reg = ldr[0] & 0x1f;
+    
+    uint32_t *ldrh = find_next_insn(ldr, 10, 0x79400000 | (reg << 5), 0xffc000e0 | (reg << 5));
+    if(ldrh)
+    {
+        // 1st: search ldrh
+        vm_map_page_size_off = ((ldrh[0] >> 11) & 0x7FF) << 2;
+        printf("KPF: Found vm_map_page_size offset at 0x%x\n", vm_map_page_size_off);
+    }
+    else
+    {
+        // 2nd: xnu-8019: search add
+        uint32_t *add = find_next_insn(ldr, 10, 0x91000000 | (reg << 5), 0xffc000e0 | (reg << 5));
+        if(!add) return false;
+        vm_map_page_size_off = (add[0] >> 10) & 0xfff;
+        printf("KPF: Found vm_map_page_size offset at 0x%x\n", vm_map_page_size_off);
+    }
+    
+    bl = NULL;
+    for(int i = 0; i < 0x80; i++)
+    {
+        if(start[i]     == 0x52800023 && // movz w3, #0x1
+           start[i + 1] == 0x52800004)   // movz w4, #0
+        {
+            bl = find_next_insn(start + i, 10, 0x94000000, 0xfc000000); // bl
+            if(bl) break;
+        }
+    }
+    if (!bl) {
+        for(int i = 0; i < 0x30; i++)
+        {
+            if (
+                (start[i    ] & 0xffffffe0) == 0x52800020 && // mov wN, #0x1
+                (start[i + 1] & 0xffe0fc1f) == 0x1ac02002 && // mov w2, wN, wM
+                (start[i + 2] & 0xffc003ff) == 0x910003e1 && // add x1, sp, ...
+                (start[i + 3] & 0xffffffff) == 0xd2800003 && // mov x3, #0x0
+                (start[i + 4] & 0xfc000000) == 0x94000000    // bl
+            )
+            {
+                bl = &start[i + 4];
+                mach_vm_allocate_kernel_new = true;
+                break;
+            }
+        }
+    }
+    
+    if (!bl) return false;
+
+    mach_vm_allocate_kernel = follow_call(bl);
+    puts("KPF: Found mach_vm_allocate_kernel");
+    
+    return true;
+}
+
+bool copyout_callsites_callback(struct xnu_pf_patch *patch, uint32_t *opcode_stream) {
+    // Don't match inlined copyout
+    if (find_prev_insn(opcode_stream-1, 20, 0x52801102, 0xffffffff)) return false; /* mov w2, #0x88 */
+
+    uint32_t* candidate = follow_call(&opcode_stream[1]);
+    if (!copyout) {
+        copyout = candidate;
+        puts("KPF: Found copyout");
+        return true;
+    }
+    if (candidate != copyout) {
+        panic("KPF: Found multiple copyout candidates");
+    }
+    return true;
+}
+
+void kpf_md0oncores_patch(xnu_pf_patchset_t* patchset)
+{
+    uint64_t matches[] =
+    {
+        0xd63f0100, // blr  x8
+        0x52805828, // mov  w8, #0x2c1
+        0x72bc0008, // movk w8, #0xe000, lsl #16
+        0x6b08001f, // cmp  wN, w8
+        0x54000001, // b.ne 0x...
+    };
+    uint64_t masks[] =
+    {
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xfffffc1f,
+        0xff00001f,
+    };
+    xnu_pf_maskmatch(patchset, "IOSecureBSDRoot", matches, masks, sizeof(masks)/sizeof(uint64_t), true, (void*)IOSecureBSDRoot_callback);
+    
+    /* i7 15.7.6
+     * fffffff0075cd178    stp     x21, x23, [sp, #0x38]
+     * fffffff0075cd17c    stp     xzr, xzr, [sp, #0x48]
+     * fffffff0075cd180    add     x1, sp, #0x38
+     * fffffff0075cd184    mov     x0, x19
+     * fffffff0075cd188    bl      __mac_execve
+     * fffffff0075cd18c    cbnz    w0, loc_fffffff0075cd1c4
+     */
+    uint64_t i_matches[] =
+    {
+        0xa903dff5, // stp  x21, x23, [sp, #0x38]
+        0xa904ffff, // stp  xzr, xzr, [sp, #0x48]
+        0x9100e3e1, // add  x1, sp, #0x38
+        0xaa1303e0, // mov  x0, x19
+        0x94000000, // bl   __mac_execve
+        0x35000000, // cbnz wN, ...
+    };
+    uint64_t i_masks[] =
+    {
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xfc000000,
+        0xff00001f,
+    };
+    xnu_pf_maskmatch(patchset, "load_init_program_at_path", i_matches, i_masks, sizeof(i_masks)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
+    
+    // xnu-7090 - xnu-7938
+    uint64_t ii_matches[] =
+    {
+        0xa9005ff5, // stp  x21, x23, [sp, ...]
+        0xa9007fff, // stp  xzr, xzr, [sp, ...]
+        0x910003e1, // add  x1, sp, ...
+        0x910003e2, // add  x2, sp, ...
+        0xaa1303e0, // mov  x0, x19
+        0x94000000, // bl   __mac_execve
+        0x35000000, // cbnz w0, ...
+    };
+    uint64_t ii_masks[] =
+    {
+        0xffc07fff,
+        0xffc07fff,
+        0xffc003ff,
+        0xffc003ff,
+        0xffffffff,
+        0xfc000000,
+        0xff00001f,
+    };
+    xnu_pf_maskmatch(patchset, "load_init_program_at_path", ii_matches, ii_masks, sizeof(ii_masks)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
+
+    // xnu-10063
+    uint64_t iii_matches[] = {
+        0xa903dbf5, // stp x21, x22, [sp, #0x38]
+        0xa904ffff, // stp xzr, xzr, [sp, #0x48]
+        0x9100e3e1, // add x1, sp, #0x38
+        0xaa1303e0, // mov x0, x19
+        0x94000000, // bl __mac_execve
+        0x35000000, // cbnz w0, ...
+    };
+
+    uint64_t iii_masks[] =
+    {
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xffffffff,
+        0xfc000000,
+        0xff00001f,
+    };
+    xnu_pf_maskmatch(patchset, "load_init_program_at_path", iii_matches, iii_masks, sizeof(iii_matches)/sizeof(uint64_t), false, (void*)load_init_program_at_path_callback);
+
+    // Find callsite(s) of copyout function
+    // Might match more than once but as long as they point the same address it's fine
+    // Note: In older iOS versions the cbnz instruction could be cbz, but we don't need it here
+    // /x 0211805200000094f00300aa00000035:ffffffff000000fcf003ffff000000ff
+    uint64_t copyout_matches[] =
+    {
+        0x52801102, // mov w2, #0x88
+        0x94000000, // bl copyout
+        0xaa0003f0, // mov x{16-31}, x0
+        0x34000000  // cb(n)z wN, ...
+    };
+
+    uint64_t copyout_masks[] =
+    {
+        0xffffffff,
+        0xfc000000,
+        0xffff03f0,
+        0xfe000000
+    };
+    xnu_pf_maskmatch(patchset, "copyout_callsites", copyout_matches, copyout_masks, sizeof(copyout_matches)/sizeof(uint64_t), true, (void*)copyout_callsites_callback);
+}
+
 static uint32_t shellcode_count;
 static uint32_t *shellcode_area;
 
@@ -1513,7 +2271,22 @@ static int kpf_compare_patches(const void *a, const void *b)
     return (int)one->granule - (int)two->granule;
 }
 
-static checkrain_option_t kpf_flags, checkra1n_flags;
+kpf_component_t* const kpf_components[] = {
+    &kpf_bindfs,
+    &kpf_developer_mode,
+    &kpf_dyld,
+    &kpf_launch_constraints,
+    &kpf_mach_port,
+    &kpf_nvram,
+    &kpf_proc_selfname,
+    &kpf_shellcode,
+    &kpf_spawn_validate_persona,
+    &kpf_overlay,
+    &kpf_ramdisk,
+    &kpf_trustcache,
+    &kpf_vfs,
+    &kpf_vm_prot,
+};
 
 static void kpf_cmd(const char *cmd, char *args)
 {
@@ -1526,22 +2299,6 @@ static void kpf_cmd(const char *cmd, char *args)
 
     uint64_t tick_0 = get_ticks();
     uint64_t tick_1;
-
-    kpf_component_t* const kpf_components[] =
-    {
-        &kpf_bindfs,
-        &kpf_developer_mode,
-        &kpf_dyld,
-        &kpf_launch_constraints,
-        &kpf_mach_port,
-        &kpf_nvram,
-        &kpf_shellcode,
-        &kpf_overlay,
-        &kpf_ramdisk,
-        &kpf_trustcache,
-        &kpf_vfs,
-        &kpf_vm_prot,
-    };
 
     size_t npatches = 0;
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
@@ -1577,6 +2334,12 @@ static void kpf_cmd(const char *cmd, char *args)
         }
     }
 
+    if (dt_node_u32(dt_get("/chosen"), "board-id", 0) == 0x02 && socnum == 0x8011) {
+        if (!strstr((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), "AppleEmbeddedUSBArbitrator-force-usbdevice=")) {
+            strlcat((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), " AppleEmbeddedUSBArbitrator-force-usbdevice=1", 0x270);
+        }
+    }
+
     qsort(patches, npatches, sizeof(kpf_patch_t*), kpf_compare_patches);
 
     xnu_pf_patchset_t* xnu_text_exec_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
@@ -1589,32 +2352,82 @@ static void kpf_cmd(const char *cmd, char *args)
     struct mach_header_64* hdr = xnu_header();
     xnu_pf_range_t* text_cstring_range = xnu_pf_section(hdr, "__TEXT", "__cstring");
 
-#ifdef DEV_BUILD
     xnu_pf_range_t *text_const_range = xnu_pf_section(hdr, "__TEXT", "__const");
     kpf_kernel_version_init(text_const_range);
     free(text_const_range);
-#endif
 
     // extern struct mach_header_64* xnu_pf_get_kext_header(struct mach_header_64* kheader, const char* kext_bundle_id);
 
     xnu_pf_patchset_t* apfs_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     struct mach_header_64* apfs_header = xnu_pf_get_kext_header(hdr, "com.apple.filesystems.apfs");
     xnu_pf_range_t* apfs_text_exec_range = xnu_pf_section(apfs_header, "__TEXT_EXEC", "__text");
-    //xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
+    xnu_pf_range_t* apfs_text_cstring_range = xnu_pf_section(apfs_header, "__TEXT", "__cstring");
 
     const char rootvp_string[] = "rootvp not authenticated after mounting";
     const char *rootvp_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, rootvp_string, sizeof(rootvp_string) - 1);
-#if 0
+
+    const char apfs_vfsop_mount_string[] = "Updating mount to read/write mode is not allowed\n";
+    const char *apfs_vfsop_mount_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, apfs_vfsop_mount_string, sizeof(apfs_vfsop_mount_string) - 1) : NULL;
+    if(!apfs_vfsop_mount_string_match) apfs_vfsop_mount_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, apfs_vfsop_mount_string, sizeof(apfs_vfsop_mount_string) - 1);
+
+#ifdef DEV_BUILD
+    // 14.0 beta 1 onwards
+    if((apfs_vfsop_mount_string_match != NULL) != (gKernelVersion.darwinMajor >= 20)) panic("apfs_vfsop_mount string doesn't match expected Darwin version");
+#endif
+
     const char livefs_string[] = "Rooting from the live fs of a sealed volume is not allowed on a RELEASE build";
     const char *livefs_string_match = apfs_text_cstring_range ? memmem(apfs_text_cstring_range->cacheable_base, apfs_text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1) : NULL;
     if(!livefs_string_match) livefs_string_match = memmem(text_cstring_range->cacheable_base, text_cstring_range->size, livefs_string, sizeof(livefs_string) - 1);
+
+    if(livefs_string_match)
+    {
+        palera1n_flags |= palerain_option_ssv;
+#if 0
+        kpf_root_livefs_patch(apfs_patchset);
 #endif
+    }
 
 #ifdef DEV_BUILD
-#if 0
     // 15.0 beta 1 onwards, but only iOS/iPadOS
     if((livefs_string_match != NULL) != (gKernelVersion.darwinMajor >= 21 && xnu_platform() == PLATFORM_IOS)) panic("livefs panic doesn't match expected Darwin version");
 #endif
+
+    if (!apfs_vfsop_mount_string_match) {
+        strlcat((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), " rootdev=md0", 0x270);
+    }
+
+    xnu_pf_range_t* bootdata_range = xnu_pf_section(hdr, "__BOOTDATA", "__init");
+    xnu_pf_range_t* const_klddata_range = xnu_pf_section(hdr, "__KLDDATA", "__const");
+
+#ifdef DEV_BUILD
+    if (gKernelVersion.xnuMajor >= 7195 != (const_klddata_range != NULL)) {
+        if (gKernelVersion.xnuMajor == 7195 && gKernelVersion.darwinMinor > 4) panic("__KLDDATA __const existence does not match expected Darwin version");
+    }
+#endif
+
+    const char *thid_should_crash_string_match = NULL;
+    if (bootdata_range) {
+        const char thid_should_crash_string[] = "thid_should_crash";
+        thid_should_crash_string_match = memmem(bootdata_range->cacheable_base, bootdata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
+
+        if (const_klddata_range && !thid_should_crash_string_match) {
+            thid_should_crash_string_match = memmem(const_klddata_range->cacheable_base, const_klddata_range->size, thid_should_crash_string, sizeof(thid_should_crash_string) - 1);
+        }
+
+#ifdef DEV_BUILD
+        // 17.0 beta 1 onwards
+        if(((thid_should_crash_string_match != NULL) != gKernelVersion.xnuMajor >= 10002)) panic("thid_should_crash string doesn't match expected Darwin version");
+#endif
+        if (thid_should_crash_string_match && !strstr((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), "thid_should_crash="))
+        {
+            strlcat((char*)((int64_t)gBootArgs->iOS13.CommandLine - 0x800000000 + kCacheableView), " thid_should_crash=0", 0x270);
+            DEVLOG("Applied thid_should_crash=0 boot arg");
+        }
+    }
+#ifdef DEV_BUILD
+    else if (gKernelVersion.darwinMajor > 19) {
+        panic("__BOOTDATA __init existence does not match expected Darwin version");
+    }
 #endif
 
     for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
@@ -1622,7 +2435,7 @@ static void kpf_cmd(const char *cmd, char *args)
         kpf_component_t *component = kpf_components[i];
         if(component->init)
         {
-            component->init(hdr, text_cstring_range, kpf_flags, checkra1n_flags);
+            component->init(hdr, text_cstring_range, palera1n_flags);
         }
     }
 
@@ -1684,13 +2497,16 @@ static void kpf_cmd(const char *cmd, char *args)
         }
     }
 
-    kpf_apfs_patches(apfs_patchset, rootvp_string_match == NULL);
-#if 0
-    if(livefs_string_match)
-    {
-        kpf_root_livefs_patch(apfs_patchset);
+    kpf_apfs_patches(apfs_patchset, livefs_string_match != NULL, apfs_vfsop_mount_string_match != NULL);
+
+    if (!(palera1n_flags & palerain_option_rootful) && !(palera1n_flags & palerain_option_rootless)) {
+        if (livefs_string_match) {
+            palera1n_flags |= palerain_option_rootless;
+        } else {
+            palera1n_flags |= palerain_option_rootful;      
+        }
     }
-#endif
+
     xnu_pf_emit(apfs_patchset);
     xnu_pf_apply(apfs_text_exec_range, apfs_patchset);
     xnu_pf_patchset_destroy(apfs_patchset);
@@ -1706,7 +2522,21 @@ static void kpf_cmd(const char *cmd, char *args)
     xnu_pf_patchset_t* sandbox_patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
     struct mach_header_64* sandbox_header = xnu_pf_get_kext_header(hdr, "com.apple.security.sandbox");
     xnu_pf_range_t* sandbox_text_exec_range = xnu_pf_section(sandbox_header, "__TEXT_EXEC", "__text");
-    kpf_sandbox_kext_patches(sandbox_patchset);
+    xnu_pf_range_t* protobox_string_range = xnu_pf_section(sandbox_header, "__TEXT", "__cstring");
+    if (!protobox_string_range) protobox_string_range = text_cstring_range;
+
+    const char protobox_string[] = "(apply-protobox)";
+    const char *protobox_string_match = memmem(protobox_string_range->cacheable_base, protobox_string_range->size, protobox_string, sizeof(protobox_string)-1);
+
+#ifdef DEV_BUILD
+    // 15.0 beta 3 and later, except bridgeOS
+    if ((gKernelVersion.xnuMajor >= 8019 && (xnu_platform() != PLATFORM_BRIDGEOS)) != (protobox_string_match != NULL)) {
+        panic("Protobox string doesn't match expected Darwin version");
+    }
+#endif
+    bool protobox_used = (protobox_string_match != NULL && gKernelVersion.xnuMajor >= 8792);
+
+    kpf_sandbox_kext_patches(sandbox_patchset, protobox_used);
     xnu_pf_emit(sandbox_patchset);
     xnu_pf_apply(sandbox_text_exec_range, sandbox_patchset);
     xnu_pf_patchset_destroy(sandbox_patchset);
@@ -1764,8 +2594,11 @@ static void kpf_cmd(const char *cmd, char *args)
     kpf_vm_map_protect_patch(xnu_text_exec_patchset);
     kpf_mac_vm_fault_enter_patch(xnu_text_exec_patchset);
     kpf_find_shellcode_funcs(xnu_text_exec_patchset);
-    if(rootvp_string_match) // Union mounts no longer work
+    if(apfs_vfsop_mount_string_match)
     {
+        kpf_md0oncores_patch(xnu_text_exec_patchset);
+    }
+    if (rootvp_string_match) { // Union mounts no longer work
         kpf_vnop_rootvp_auth_patch(xnu_text_exec_patchset);
     }
 
@@ -1779,14 +2612,20 @@ static void kpf_cmd(const char *cmd, char *args)
     if (!has_found_sbops) panic("no sbops?");
     if (!amfi_ret) panic("no amfi_ret?");
     if (!vnode_lookup) panic("no vnode_lookup?");
-    DEVLOG("Found vnode_lookup: 0x%llx", xnu_rebase_va(xnu_ptr_to_va(vnode_lookup)));
+    DEVLOG("Found vnode_lookup: 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(vnode_lookup)));
     if (!vnode_put) panic("no vnode_put?");
-    DEVLOG("Found vnode_put: 0x%llx", xnu_rebase_va(xnu_ptr_to_va(vnode_put)));
+    DEVLOG("Found vnode_put: 0x%" PRIx64 "", xnu_rebase_va(xnu_ptr_to_va(vnode_put)));
     if (offsetof_p_flags == -1) panic("no p_flags?");
     if (!found_vm_fault_enter) panic("no vm_fault_enter");
     if (!found_vm_map_protect) panic("Missing patch: vm_map_protect");
     if (!vfs_context_current) panic("Missing patch: vfs_context_current");
-    if (!rootvp_string_match && !kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
+    if (!kpf_has_done_mac_mount) panic("Missing patch: mac_mount");
+
+    if (!has_found_apfs_vfsop_mount && apfs_vfsop_mount_string_match != NULL) {
+      if (palera1n_flags & palerain_option_rootful) {
+        panic("Missing patch: apfs_vfsop_mount");
+      }
+    }
 
     uint32_t delta = (&shellcode_area[1]) - amfi_ret;
     delta &= 0x03ffffff;
@@ -1871,15 +2710,94 @@ static void kpf_cmd(const char *cmd, char *args)
     uint32_t* repatch_vnode_shellcode = &shellcode_area[4];
     *repatch_vnode_shellcode = repatch_ldr_x19_vnode_pathoff;
 
-    if(!rootvp_string_match) // Only use underlying fs on union mounts
+    if(apfs_vfsop_mount_string_match)
+    {
+        if (!mdevremoveall) panic("no mdevremoveall");
+        if (!mac_execve) panic("no mac_execve");
+        if (!mac_execve_hook) panic("no mac_execve_hook");
+        if (!copyout) panic("no copyout");
+        if (!mach_vm_allocate_kernel) panic("no mach_vm_allocate_kernel");
+        if (current_map_off == -1 || vm_map_page_size_off == -1) panic("no offsets");
+        
+        uint64_t* repatch_launchd_execve_hook_ptrs = (uint64_t*)(launchd_execve_hook_ptr - shellcode_from + shellcode_to);
+        uint32_t* repatch_launchd_execve_hook = (uint32_t*)(launchd_execve_hook - shellcode_from + shellcode_to);
+        uint32_t* repatch_launchd_execve_hook_offset = (uint32_t*)(launchd_execve_hook_offset - shellcode_from + shellcode_to);
+        uint32_t* repatch_launchd_execve_hook_pagesize = (uint32_t*)(launchd_execve_hook_pagesize - shellcode_from + shellcode_to);
+        uint32_t* repatch_launchd_execve_hook_mach_vm_allocate_kernel = (uint32_t*)(launchd_execve_hook_mach_vm_allocate_kernel - shellcode_from + shellcode_to);
+        
+        if (repatch_launchd_execve_hook_ptrs[0] != 0x4141414141414141) {
+            panic("Shellcode corruption");
+        }
+        
+        repatch_launchd_execve_hook_ptrs[0] = xnu_ptr_to_va(mac_execve);
+        repatch_launchd_execve_hook_ptrs[1] = xnu_ptr_to_va(_mac_mount);
+        repatch_launchd_execve_hook_ptrs[2] = xnu_ptr_to_va(mach_vm_allocate_kernel);
+        repatch_launchd_execve_hook_ptrs[3] = xnu_ptr_to_va(copyout);
+        
+        repatch_launchd_execve_hook_offset[0] |= ((current_map_off >> 3) & 0xfff) << 10;
+        repatch_launchd_execve_hook_offset[2] |= ((vm_map_page_size_off >> 2) & 0x7ff) << 11;
+        
+        if (socnum != 0x8960 && socnum != 0x7000 && socnum != 0x7001) *repatch_launchd_execve_hook_pagesize = NOP;
+        if (!mach_vm_allocate_kernel_new) *repatch_launchd_execve_hook_mach_vm_allocate_kernel = NOP;
+
+        uint32_t delta = (&repatch_launchd_execve_hook[0]) - mac_execve_hook;
+        delta &= 0x03ffffff;
+        delta |= 0x94000000;
+        *mac_execve_hook = delta;
+    }
+
+    if (protobox_used) {
+        if (!_zalloc_ro_mut) panic("Missing patch: zalloc_ro_mut");
+
+        uint32_t* repatch_proc_set_syscall_filter_mask_shc = (uint32_t*)(proc_set_syscall_filter_mask_shc - shellcode_from + shellcode_to);
+        uint32_t* repatch_proc_set_syscall_filter_mask_shc_target = (uint32_t*)(proc_set_syscall_filter_mask_shc_target - shellcode_from + shellcode_to);
+        uint32_t* repatch_zalloc_ro_mut = (uint32_t*)(zalloc_ro_mut - shellcode_from + shellcode_to);
+
+        uint32_t delta = (&repatch_proc_set_syscall_filter_mask_shc[0]) - protobox_patchpoint;
+        delta &= 0x03ffffff;
+        delta |= 0x14000000;
+        *protobox_patchpoint = delta;
+
+        delta = (&_proc_set_syscall_filter_mask[0]) - repatch_proc_set_syscall_filter_mask_shc_target;
+        delta &= 0x03ffffff;
+        delta |= 0x14000000;
+        *repatch_proc_set_syscall_filter_mask_shc_target = delta;
+
+        delta = (&_zalloc_ro_mut[0]) - repatch_zalloc_ro_mut;
+        delta &= 0x03ffffff;
+        delta |= 0x14000000;
+        *repatch_zalloc_ro_mut = delta;
+    }
+    
+    if(!livefs_string_match) // Only disable snapshot when we can remount realfs
     {
         char *snapshotString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) snapshotString = (char*)memmem((unsigned char *)plk_text_range->cacheable_base, plk_text_range->size, (uint8_t *)"com.apple.os.update-", strlen("com.apple.os.update-"));
         if (!snapshotString) panic("no snapshot string");
 
+#if !defined(KPF_TEST)
+        if (thid_should_crash_string_match != NULL) {
+            size_t root_snapshot_name_len = 0;
+            dt_node_t* chosen = dt_find(gDeviceTree, "chosen");
+            if (!chosen) panic("invalid devicetree: no device!");
+            char* snapshotString2 = dt_prop(chosen, "root-snapshot-name", &root_snapshot_name_len);
+            if (!snapshotString2) panic("invalid devicetree: no prop!");
+
+            if ((palera1n_flags & palerain_option_ssv) == 0 && (palera1n_flags & palerain_option_force_revert)) {
+                memcpy(snapshotString2, "orig-fs", sizeof("orig-fs"));
+            } else {
+                *snapshotString2 = 'x';
+            }
+        }
+#endif
+
         *snapshotString = 'x';
         puts("KPF: Disabled snapshot temporarily");
     }
+
+    char *launchdString = (char*)memmem((unsigned char *)text_cstring_range->cacheable_base, text_cstring_range->size, (uint8_t *)"/sbin/launchd", sizeof("/sbin/launchd"));
+    if (!launchdString) panic("no launchd string");
+    snprintf(launchdString, sizeof("/sbin/launchd"), "/cores/ploosh");
 
     // TODO: tmp
     shellcode_area = shellcode_to;
@@ -1897,7 +2815,7 @@ static void kpf_cmd(const char *cmd, char *args)
     {
         if(kpf_components[i]->finish)
         {
-            kpf_components[i]->finish(hdr, &checkra1n_flags);
+            kpf_components[i]->finish(hdr, &palera1n_flags);
         }
     }
 
@@ -1905,41 +2823,36 @@ static void kpf_cmd(const char *cmd, char *args)
     {
         if(kpf_components[i]->bootprep)
         {
-            kpf_components[i]->bootprep(hdr, checkra1n_flags);
+            kpf_components[i]->bootprep(hdr, palera1n_flags);
         }
     }
 
-    if(checkrain_option_enabled(kpf_flags, checkrain_option_verbose_boot))
+    if(palera1n_flags & palerain_option_verbose_boot)
     {
         gBootArgs->Video.v_display = 0;
     }
 
     tick_1 = get_ticks();
-    printf("KPF: Applied patchset in %llu ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
+    printf("KPF: Applied patchset in %" PRIu64 " ms\n", (tick_1 - tick_0) / TICKS_IN_1MS);
 }
 
-static void set_flags(char *args, uint32_t *flags, const char *name)
+static void set_flags(char *args, palerain_option_t *flags, const char *name)
 {
     if(args[0] != '\0')
     {
-        uint32_t val = strtoul(args, NULL, 16);
-        printf("Setting %s to 0x%08x\n", name, val);
+        palerain_option_t val = strtoul(args, NULL, 16);
+        printf("Setting %s to 0x%016" PRIx64 "\n", name, val);
         *flags = val;
     }
     else
     {
-        printf("%s: 0x%08x\n", name, *flags);
+        printf("%s: 0x%016" PRIx64 "\n", name, *flags);
     }
 }
 
-static void checkra1n_flags_cmd(const char *cmd, char *args)
+static void palera1n_flags_cmd(const char *cmd, char *args)
 {
-    set_flags(args, &checkra1n_flags, "checkra1n_flags");
-}
-
-static void kpf_flags_cmd(const char *cmd, char *args)
-{
-    set_flags(args, &kpf_flags, "kpf_flags");
+    set_flags(args, &palera1n_flags, "palera1n_flags");
 }
 
 void module_entry(void)
@@ -1967,9 +2880,17 @@ void module_entry(void)
     puts("# Cellebrite (ih8sn0w, cjori, ronyrus et al.)");
     puts("#==================");
 
+    for(size_t i = 0; i < sizeof(kpf_components)/sizeof(kpf_components[0]); ++i)
+    {
+        kpf_component_t *component = kpf_components[i];
+        if(component->pre_init)
+        {
+            component->pre_init();
+        }
+    }
+
     preboot_hook = kpf_cmd;
-    command_register("checkra1n_flags", "set flags for checkra1n userland", checkra1n_flags_cmd);
-    command_register("kpf_flags", "set flags for kernel patchfinder", kpf_flags_cmd);
+    command_register("palera1n_flags", "set flags for checkra1n userland", palera1n_flags_cmd);
     command_register("kpf", "running checkra1n-kpf without booting (use bootux afterwards)", kpf_cmd);
     command_register("overlay", "loads an overlay disk image", kpf_overlay_cmd);
 }

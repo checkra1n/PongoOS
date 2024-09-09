@@ -70,7 +70,7 @@ void linux_dtree_init(void)
     /* Alias */
     node = fdt_add_subnode(fdt, 0, "/aliases");
     char serials[64];
-    siprintf(serials, "/soc/serial@%llx", ((uint64_t)dt_get_u32_prop("uart0", "reg")) + gIOBase);
+    siprintf(serials, "/soc/serial@%" PRIx64 "", ((uint64_t)dt_get_u32_prop("uart0", "reg")) + gIOBase);
     fdt_appendprop_string(fdt, node, "serial0", serials);
 
     /* CPU */
@@ -117,7 +117,7 @@ void linux_dtree_init(void)
     fdt_appendprop(fdt, node, "ranges", "", 0);
 
     /* Interrupt controller: Apple AIC */
-    siprintf(fdt_nodename, "/interrupt-controller@%llx", (uint64_t)dt_get_u32_prop("aic", "reg") + gIOBase);
+    siprintf(fdt_nodename, "/interrupt-controller@%" PRIx64 "", (uint64_t)dt_get_u32_prop("aic", "reg") + gIOBase);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_string(fdt, node1, "name", "interrupt_controller");
     fdt_appendprop_string(fdt, node1, "device_type", "interrupt_controller");
@@ -131,7 +131,7 @@ void linux_dtree_init(void)
     fdt_appendprop(fdt, node1, "interrupt-controller", "", 0);
 
     /* UART */
-    siprintf(fdt_nodename, "/serial@%llx", (uint64_t)dt_get_u32_prop("uart0", "reg") + gIOBase);
+    siprintf(fdt_nodename, "/serial@%" PRIx64 "", (uint64_t)dt_get_u32_prop("uart0", "reg") + gIOBase);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_string(fdt, node1, "compatible", "hx,uart");
     fdt_appendprop_addrrange(fdt, 0, node1, "reg",
@@ -156,7 +156,7 @@ void linux_dtree_init(void)
     fdt_appendprop(fdt, node, "ranges", "", 0);
 
     uint64_t nomap_area = 0x800000000 + gBootArgs->memSize - 0x02000000;
-    siprintf(fdt_nodename, "/fw_area@%llx", nomap_area);
+    siprintf(fdt_nodename, "/fw_area@%" PRIx64 "", nomap_area);
     node1 = fdt_add_subnode(fdt, node, fdt_nodename);
     fdt_appendprop_addrrange(fdt, 0, node1, "reg", nomap_area, 0x04000000);
     fdt_appendprop(fdt, node1, "no-map", "", 0);
@@ -172,7 +172,7 @@ void linux_dtree_late(void)
     fdt_appendprop(fdt, node, "ranges", "", 0);
 
     char cmdline[256];
-    siprintf(cmdline, "debug earlycon=hx_uart,0x%llx console=tty0 console=ttyHX0", ((uint64_t)dt_get_u32_prop("uart0", "reg")) + gIOBase);
+    siprintf(cmdline, "debug earlycon=hx_uart,0x%" PRIx64 " console=tty0 console=ttyHX0", ((uint64_t)dt_get_u32_prop("uart0", "reg")) + gIOBase);
     fdt_appendprop_string(fdt, node, "bootargs", cmdline);
 
     /* simplefb dart-apcie3*/

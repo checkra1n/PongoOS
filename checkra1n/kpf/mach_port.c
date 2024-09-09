@@ -500,7 +500,7 @@ static void kpf_task_conversion_eval_patch(xnu_pf_patchset_t *xnu_text_exec_patc
     xnu_pf_maskmatch(xnu_text_exec_patchset, "task_conversion_eval", matches_imm, masks_imm, sizeof(matches_imm)/sizeof(uint64_t), false, (void*)kpf_task_conversion_eval_callback_imm);
 }
 
-static void kpf_mach_port_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags)
+static void kpf_mach_port_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, palerain_option_t palera1n_flags)
 {
     const char kmap_port_string[] = "userspace has control access to a"; // iOS 14 had broken panic strings
     const char *kmap_port_string_match = memmem(cstring->cacheable_base, cstring->size, kmap_port_string, sizeof(kmap_port_string) - 1); // don't match null byte
@@ -525,7 +525,7 @@ static void kpf_mach_port_patches(xnu_pf_patchset_t *xnu_text_exec_patchset)
     kpf_task_conversion_eval_patch(xnu_text_exec_patchset);
 }
 
-static void kpf_mach_port_finish(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags)
+static void kpf_mach_port_finish(struct mach_header_64 *hdr, palerain_option_t *palera1n_flags)
 {
     if(need_convert_port_to_map_patch && !found_convert_port_to_map)
     {

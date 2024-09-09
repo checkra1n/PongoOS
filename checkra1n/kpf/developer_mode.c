@@ -124,7 +124,7 @@ static void kpf_developer_mode_patch(xnu_pf_patchset_t *amfi_text_exec_patchset)
     xnu_pf_maskmatch(amfi_text_exec_patchset, "developer_mode", matches, masks, sizeof(matches)/sizeof(uint64_t), true, (void*)kpf_developer_mode_callback);
 }
 
-static void kpf_developer_mode_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags)
+static void kpf_developer_mode_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, palerain_option_t palera1n_flags)
 {
     struct mach_header_64 *amfi = xnu_pf_get_kext_header(hdr, "com.apple.driver.AppleMobileFileIntegrity");
     xnu_pf_range_t *amfi_cstring = xnu_pf_section(amfi, "__TEXT", "__cstring");

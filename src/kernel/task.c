@@ -198,7 +198,7 @@ retry:;
     for(int i = 0; i < ntasks; ++i)
     {
         task_info_t *t = &tasks_copy[i];
-        iprintf(" | %7s | task %d | runcnt = %llx | flags = %s, %s\n", t->name[0] ? t->name : "unknown", t->pid, t->runcnt, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
+        iprintf(" | %7s | task %d | runcnt = %" PRIx64 " | flags = %s, %s\n", t->name[0] ? t->name : "unknown", t->pid, t->runcnt, t->flags & TASK_PREEMPT ? "preempt" : "coop", t->flags & TASK_LINKED ? "run" : "wait");
     }
     iprintf("=+=    IRQ Handlers    ===\n");
     for(int i = 0; i < nirq; ++i)

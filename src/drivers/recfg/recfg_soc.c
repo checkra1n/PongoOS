@@ -422,8 +422,8 @@ static int recfg_read32_cb(void *a, uint64_t *addr, uint32_t *mask, uint32_t *da
 
 static int recfg_read64_cb(void *a, uint64_t *addr, uint64_t *mask, uint64_t *data, bool *retry, uint8_t *recnt)
 {
-    if(*retry)  iprintf("    rd64 0x%09llx & 0x%016llx == 0x%016llx, retry = %d\n", *addr, *mask, *data, *recnt);
-    else        iprintf("    rd64 0x%09llx & 0x%016llx == 0x%016llx\n", *addr, *mask, *data);
+    if(*retry)  iprintf("    rd64 0x%09llx & 0x%016" PRIx64 " == 0x%016" PRIx64 ", retry = %d\n", *addr, *mask, *data, *recnt);
+    else        iprintf("    rd64 0x%09llx & 0x%016" PRIx64 " == 0x%016" PRIx64 "\n", *addr, *mask, *data);
     return kRecfgSuccess;
 }
 
@@ -435,7 +435,7 @@ static int recfg_write32_cb(void *a, uint64_t *addr, uint32_t *data)
 
 static int recfg_write64_cb(void *a, uint64_t *addr, uint64_t *data)
 {
-    iprintf("    wr64 0x%llx = 0x%016llx\n", *addr, *data);
+    iprintf("    wr64 0x%" PRIx64 " = 0x%016" PRIx64 "\n", *addr, *data);
     return kRecfgSuccess;
 }
 
@@ -450,15 +450,15 @@ static void recfg_cmd_dump(const char *cmd, char *args)
     uint32_t lock_val = *gCFG->aop_sram_lock_range;
     uint64_t lock_from = sram_base + ((lock_val & 0xffff) << 6);
     uint64_t lock_to   = sram_base + (((lock_val >> 16) & 0xffff) << 6) + 0x40;
-    iprintf("CFG table: 0x%llx (%s)\n", cfg_base,  cfg_locked  ? "locked" : "unlocked");
-    iprintf("SRAM base: 0x%llx (%s)\n", sram_base, sram_locked ? "locked" : "unlocked");
+    iprintf("CFG table: 0x%" PRIx64 " (%s)\n", cfg_base,  cfg_locked  ? "locked" : "unlocked");
+    iprintf("SRAM base: 0x%" PRIx64 " (%s)\n", sram_base, sram_locked ? "locked" : "unlocked");
     if(lock_to <= lock_from)
     {
         iprintf("SRAM lock range: none (%s)\n", sram_locked ? "locked" : "unlocked");
     }
     else
     {
-        iprintf("SRAM lock range: 0x%llx-0x%llx (%s)\n", lock_from, lock_to, sram_locked ? "locked" : "unlocked");
+        iprintf("SRAM lock range: 0x%" PRIx64 "-0x%" PRIx64 " (%s)\n", lock_from, lock_to, sram_locked ? "locked" : "unlocked");
     }
     recfg_cb_t cb =
     {
@@ -475,7 +475,7 @@ static void recfg_cmd_dump(const char *cmd, char *args)
         uint64_t seq_base = (uint64_t)table[i] << 4;
         size_t seq_size = sram_end - seq_base;
         seq_size = recfg_map(seq_base, seq_size);
-        iprintf("Recfg seq %lu: 0x%llx\n", i, seq_base);
+        iprintf("Recfg seq %lu: 0x%" PRIx64 "\n", i, seq_base);
 
         if(recfg_check((void*)seq_base, seq_size, NULL, true) == kRecfgSuccess)
         {

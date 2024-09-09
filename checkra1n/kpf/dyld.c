@@ -198,7 +198,7 @@ static uint32_t kpf_dyld_emit(uint32_t *shellcode_area)
     int64_t patch_off  = shellcode_addr - patchpoint_addr;
     if(ctx_off > 0x7fffffcLL || ctx_off < -0x8000000LL || lookup_off > 0x7fffffcLL || lookup_off < -0x8000000LL || put_off > 0x7fffffcLL || put_off < -0x8000000LL || patch_off > 0x7fffffcLL || patch_off < -0x8000000LL)
     {
-        panic("kpf_dyld: jump too far: 0x%llx/0x%llx/0x%llx/0x%llx", ctx_off, lookup_off, put_off, patch_off);
+        panic("kpf_dyld: jump too far: 0x%" PRIx64 "/0x%" PRIx64 "/0x%" PRIx64 "/0x%" PRIx64 "", ctx_off, lookup_off, put_off, patch_off);
     }
 
     memcpy(shellcode_area, dyld_shc, (uintptr_t)dyld_shc_end - (uintptr_t)dyld_shc);

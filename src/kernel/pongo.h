@@ -29,10 +29,13 @@
 #include <mach-o/loader.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <strings.h>
-#include <kerninfo.h>
+#include <paleinfo.h>
+#include <inttypes.h>
 
 #ifdef PONGO_PRIVATE
 #include "framebuffer/fb.h"
@@ -190,8 +193,8 @@ typedef enum {
 } vm_protect_t;
 
 #ifdef PONGO_PRIVATE
-#import "vfs.h"
-#import "task.h"
+#include "vfs.h"
+#include "task.h"
 #else
 struct proc;
 struct task;

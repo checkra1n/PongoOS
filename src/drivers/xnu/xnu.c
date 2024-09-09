@@ -122,18 +122,18 @@ void log_bootargs(const char *cmd, char *args)
     iprintf("gBootArgs:\n"
             "\tRevision: 0x%x\n"
             "\tVersion: 0x%x\n"
-            "\tvirtBase: 0x%llx\n"
-            "\tphysBase 0x%llx\n"
-            "\tmemSize: 0x%llx\n"
-            "\ttopOfKernelData: 0x%llx\n"
+            "\tvirtBase: 0x%" PRIx64 "\n"
+            "\tphysBase 0x%" PRIx64 "\n"
+            "\tmemSize: 0x%" PRIx64 "\n"
+            "\ttopOfKernelData: 0x%" PRIx64 "\n"
             "\tmachineType: 0x%x\n"
-            "\tdeviceTreeP: 0x%llx\n"
+            "\tdeviceTreeP: 0x%" PRIx64 "\n"
             "\tdeviceTreeLength: 0x%x\n"
             "\tCommandLine: 0x%s\n"
-            "\tbootFlags (<=iOS12): 0x%llx\n"
-            "\tmemSizeActual (<=iOS12): 0x%llx\n"
-            "\tbootFlags (>=iOS13): 0x%llx\n"
-            "\tmemSizeActual (>=iOS13): 0x%llx\n",
+            "\tbootFlags (<=iOS12): 0x%" PRIx64 "\n"
+            "\tmemSizeActual (<=iOS12): 0x%" PRIx64 "\n"
+            "\tbootFlags (>=iOS13): 0x%" PRIx64 "\n"
+            "\tmemSizeActual (>=iOS13): 0x%" PRIx64 "\n",
             cBootArgs->Revision,
             cBootArgs->Version,
             cBootArgs->virtBase,

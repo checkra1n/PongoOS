@@ -1,4 +1,4 @@
-name: CI
+name: Build KPF & Pongo
 
 on:
   # Trigger on all pushes and pull requests
@@ -10,43 +10,53 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: macos-latest
     steps:
-      - name: Install toolchain
-        run: |
-          echo 'deb https://assets.checkra.in/debian /' | sudo tee /etc/apt/sources.list.d/checkra1n.list
-          sudo apt-key adv --fetch-keys https://assets.checkra.in/debian/archive.key
-          sudo apt-get update
-          sudo apt-get install -y ld64 cctools-strip
-      - name: Voodoo magic
-        id: voodoo
-        uses: actions/cache@v2
-        with:
-          key: ${{ github.event_name }}-${{ github.ref }}-${{ github.run_id }}
-          restore-keys: |
-            push-${{ github.ref }}-
-            push-
-          path: |
-            **
       - name: Checkout repository
-        if: steps.voodoo.outputs.cache-hit != 'true'
         uses: actions/checkout@v2
         with:
-          submodules: true
+          fetch-depth: 0
+
       - name: Update repository
-        if: steps.voodoo.outputs.cache-hit == 'true'
         run: |
+          git submodule update --init --recursive
           git fetch --all
           git reset --hard origin/$(git branch --show-current)
           git submodule update --recursive --remote
-      - name: Compile
-        run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make all
-      - name: Archive
-        uses: actions/upload-artifact@v2
+
+      - name: Compile KPF and Pongo
+        run: |
+          make
+
+      - name: Prepare upload directory
+        run: |
+          mkdir upload
+          mv build/Pongo.bin upload/
+          mv build/checkra1n-kpf-pongo upload/
+
+      - name: Compile KPF and Pongo Development
+        run: |
+          make clean
+          make DEV_BUILD=1
+
+      - name: Prepare upload directory Development
+        run: |
+          mv build/Pongo.bin upload/Pongo.bin.development
+          mv build/checkra1n-kpf-pongo upload/checkra1n-kpf-pongo.development
+
+      - name: Get branch name
+        id: branch-name
+        uses: tj-actions/branch-names@v7
+
+      - name: Upload artifact
+        uses: wangyucode/sftp-upload-action@v1.4.8
         with:
-          name: PongoOS
-          path: |
-            build/checkra1n-kpf-pongo
-            build/Pongo
-            build/Pongo.bin
-            build/PongoConsolidated.bin
+          host: ${{ secrets.NICKCHAN_FTP_HOST }}
+          port: ${{ secrets.NICKCHAN_FTP_PORT }}
+          username: palera1n
+          password: ${{ secrets.NICKCHAN_FTP_PASS }}
+          forceUpload: true
+          dryRun: false
+          localDir: 'upload'
+          remoteDir: "/palera1n/artifacts/kpf/${{ steps.branch-name.outputs.ref_branch || github.ref }}"
+

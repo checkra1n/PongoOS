@@ -162,7 +162,7 @@ static void kpf_trustcache_patches(xnu_pf_patchset_t *amfi_text_exec_patchset)
     xnu_pf_maskmatch(amfi_text_exec_patchset, "trustcache", matches_new, masks_new, sizeof(matches_new)/sizeof(uint64_t), false, (void*)kpf_trustcache_new_callback);
 }
 
-static void kpf_trustcache_finish(struct mach_header_64 *hdr, checkrain_option_t *checkra1n_flags)
+static void kpf_trustcache_finish(struct mach_header_64 *hdr, palerain_option_t *palera1n_flags)
 {
     if(!found_trustcache)
     {
