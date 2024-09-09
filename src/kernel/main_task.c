@@ -27,6 +27,7 @@
 #include <pongo.h>
 #include <aes/aes_private.h>
 #include <recfg/recfg_soc_private.h>
+#include <tz/tz_private.h>
 
 void shell_main();
 

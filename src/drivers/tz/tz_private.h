@@ -25,18 +25,13 @@
  *
  */
 
-#ifndef TZ_H
-#define TZ_H
+#ifndef TZ_PRIVATE_H
+#define TZ_PRIVATE_H
 
-#include <stdbool.h>
-#include <stdint.h>
+#ifdef PONGO_PRIVATE
 
-bool tz_get(uint8_t which, uint64_t *base, uint64_t *size);
-bool tz_set(uint8_t which, uint64_t base, uint64_t size);
-bool tz_locked(uint8_t which);
-bool tz_lock(uint8_t which);
-bool tz_lockdown(void);
-bool tz_blackbird(void);
-uint64_t tz0_calculate_encrypted_block_offset(uint64_t offset);
+void tz_setup(void);
+
+#endif
 
 #endif

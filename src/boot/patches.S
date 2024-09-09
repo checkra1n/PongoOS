@@ -461,7 +461,6 @@ In r2:
 
 We search for the pattern, then seek backwards for a "cbz w0, ..." with positive offset. If we find none
 within a short range, we skip this match, otherwise we replace that instruction with an unconditional branch.
-
 */
 
 sym fuse_jump
@@ -513,4 +512,196 @@ sym fuse_jump
     mov w8, 0x14000000 // b
     bfi w8, w12, 0, 26
     str w8, [x10]
+    ret
+
+
+// void antitrust(volatile void *boot_image)
+
+/*
+Keep TrustZone unlocked.
+
+There are a total of 4 variants of this patch, and this is just one of them.
+In the matrix below:
+
+- s2 = A10+ on iOS 14.0+. Stage2-only.
+- XX = A7, any version, and A8-A9 on 10.x and lower. Pongo-only.
+- YY = A9X, any version. Pongo-only.
+- ZZ = The rest, this is us. The only patch that is shared between stage2 and Pongo.
+
+For A8-A9, ZZ could be used on iOS 8 and 10 as well, but not on iOS 9.
+But XX works on those too, so we don't care.
+
++--------+----+----+-----+----+-----+-----+------+----+-----+
+|        | A7 | A8 | A8X | A9 | A9X | A10 | A10X | T2 | A11 |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 7  | XX |    |     |    |     |     |      |    |     |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 8  | XX | XX | XX  |    |     |     |      |    |     |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 9  | XX | XX | XX  | XX | YY  |     |      |    |     |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 10 | XX | XX | XX  | XX | YY  | ZZ  |  ZZ  |    |     |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 11 | XX | ZZ | ZZ  | ZZ | YY  | ZZ  |  ZZ  | ZZ | ZZ  |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 12 | XX | ZZ | ZZ  | ZZ | YY  | ZZ  |  ZZ  | ZZ | ZZ  |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 13 |    | ZZ | ZZ  | ZZ | YY  | ZZ  |  ZZ  | ZZ | ZZ  |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 14 |    | ZZ | ZZ  | ZZ | YY  | s2  |  s2  | s2 | s2  |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 15 |    | ZZ | ZZ  | ZZ | YY  | s2  |  s2  | s2 | s2  |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 16 |    | ZZ |     | ZZ | YY  | s2  |  s2  | s2 | s2  |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+| iOS 17 |    | ZZ |     |    |     | s2  |  s2  | s2 |     |
++--------+----+----+-----+----+-----+-----+------+----+-----+
+
+We start by looking for these two instructions:
+
++---------------------+
+| lsr xN, xN, 0xc     |
+| stur wN, [xM, -0xc] |
++---------------------+
+
+Where N < 16 and M >= 16.
+
+In r2:
+
+/x 00fc4cd300421fb8:10feffff10feffff
+
+After that, we search for a "str wT, [xM]" (same base register, offset 0) within 20 instructions.
+We expect one of the two following sequences there:
+
++----------------+
+| str wT, [xM]   |
+| ldr wS, [xM]   |
+| tbz wS, 0, ... |
++----------------+
+| str wT, [xM]   |
+| bl ...         |
+| ldr wS, [xM]   |
+| tbz wS, 0, ... |
++----------------+
+
+Where S < 16.
+
+Right after that, devices with TZ1 have another block with the same base register but offset 4:
+
++-----------------+
+| str wT, [xM, 4] |
+| ldr wS, [xM, 4] |
+| tbz wS, 0, ...  |
++-----------------+
+| str wT, [xM, 4] |
+| bl ...         |
+| ldr wS, [xM, 4] |
+| tbz wS, 0, ...  |
++-----------------+
+
+Again with S < 16.
+
+We NOP out the str, ldr and tbz in both blocks.
+
+*/
+
+sym antitrust
+    mov x2, x0 // instr
+    mov w7, 0xfffffe10
+    mov w8, 0xd34c0000 // lsr xN, xN, 0xc
+    movk w8, 0xfc00
+    mov w9, 0xb81f0000 // stur wN, [xM, -0xc]
+    movk w9, 0x4200
+    // Search for pattern
+1:
+    ldr w3, [x2], 0x4
+    and w4, w3, w7
+    cmp w4, w8
+    b.ne 1b
+
+    bfi w9, w3, 0, 5
+    ldr w3, [x2]
+    and w4, w3, 0xfffffe1f
+    cmp w4, w9
+    b.ne 1b
+
+    // Search for "str wT, [xM]"
+    and w7, w3, 0x3e0
+    movk w7, 0xb900, lsl 16 // str wT, [xM]
+    add x3, x2, 0x50
+2:
+    ldr w5, [x2, 0x4]!
+    and w4, w5, 0xffffffe0
+    cmp w4, w7
+    b.eq 3f
+    cmp x2, x3
+    b.lo 2b
+    b . // XXX: fail
+
+3:
+    // Patch 1st write
+    mov w10, 0xd5030000 // nop
+    movk w10, 0x201f
+    str w10, [x2]
+
+    // Check for bl
+    ldr w3, [x2, 0x4]!
+    ubfx w4, w3, 26, 6
+    cmp w4, 0x25 // bl
+    b.ne 4f
+    ldr w3, [x2, 0x4]!
+
+4:
+    // 1s load
+    orr w7, w7, 0x00400000 // str to ldr
+    and w4, w3, 0xfffffff0
+    cmp w4, w7
+    b.ne . // XXX: fail
+    // Patch 1st load
+    str w10, [x2]
+
+    // 1s tbz
+    mov w8, 0x36000000 // tbz wS, 0, ...
+    bfi w8, w3, 0, 5
+    ldr w3, [x2, 0x4]!
+    and w3, w3, 0xfffc001f
+    cmp w3, w8
+    b.ne . // XXX: fail
+    // Patch 1st tbz
+    str w10, [x2]
+
+    // Check for 2nd set of str, ldr, tbz
+    orr w5, w5, 0x400 // [xM] to [xM, 4]
+    ldr w3, [x2, 0x4]!
+    cmp w3, w5
+    b.ne Ligma
+    // Patch 2nd write
+    str w10, [x2]
+
+    // Check for bl
+    ldr w3, [x2, 0x4]!
+    ubfx w4, w3, 26, 6
+    cmp w4, 0x25 // bl
+    b.ne 5f
+    ldr w3, [x2, 0x4]!
+
+5:
+    // 2nd load
+    orr w7, w7, 0x400 // [xM] to [xM, 4]
+    and w4, w3, 0xfffffff0
+    cmp w4, w7
+    b.ne . // XXX: fail
+    // Patch
+    str w10, [x2]
+
+    // 2nd tbz
+    bfi w8, w3, 0, 5
+    ldr w3, [x2, 0x4]!
+    and w3, w3, 0xfffc001f
+    cmp w3, w8
+    b.ne . // XXX: fail
+    // Patch
+    str w10, [x2]
+
+Ligma:
     ret
