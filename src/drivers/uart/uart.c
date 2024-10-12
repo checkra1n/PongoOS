@@ -89,12 +89,22 @@ static inline void put_serial_modifier(const char* str) {
     while (*str) serial_putc(*str++);
 }
 
+static dt_node_t* serial_dt_node(void)
+{
+    static dt_node_t *uart = NULL;
+    if(!uart)
+    {
+        uart = dt_node_parent(dt_get("debug-console"));
+    }
+    return uart;
+}
+
 uint32_t orig_rUCON0, orig_rULCON0, orig_rUFCON0, orig_rUMCON0;
 uint64_t gUartBase;
 extern uint32_t gLogoBitmap[32];
 void serial_early_init() {
     disable_interrupts();
-    gUartBase = dt_get_u32_prop("uart0", "reg");
+    gUartBase = dt_node_u32(serial_dt_node(), "reg", 0);
     gUartBase += gIOBase;
     orig_rUCON0  = rUCON0;
     orig_rULCON0 = rULCON0;
@@ -146,7 +156,7 @@ void serial_init() {
     struct task* irq_task = task_create_extended("uart", uart_main, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
 
     disable_interrupts();
-    uart_irq = dt_get_u32_prop("uart0", "interrupts");
+    uart_irq = dt_node_u32(serial_dt_node(), "interrupts", 0);
     serial_disable_rx();
     task_bind_to_irq(irq_task, uart_irq);
     rUCON0 = 0x5885;
