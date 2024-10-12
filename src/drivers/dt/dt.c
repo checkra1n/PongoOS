@@ -59,11 +59,11 @@ int dt_check(void *mem, size_t size, size_t *offp)
     return 0;
 }
 
-int dt_parse(dt_node_t *node, int depth, size_t *offp, int (*cb_node)(void*, dt_node_t*), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, size_t), void *cbp_arg)
+int dt_parse(dt_node_t *node, int depth, size_t *offp, int (*cb_node)(void*, dt_node_t*, int), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, size_t), void *cbp_arg)
 {
     if(cb_node)
     {
-        int r = cb_node(cbn_arg, node);
+        int r = cb_node(cbn_arg, node, depth);
         if(r != 0) return r;
     }
     if(depth >= 0 || cb_prop)
@@ -198,7 +198,7 @@ typedef struct
     size_t size;
 } dt_arg_t;
 
-static int dt_cbn(void *a, dt_node_t *node)
+static int dt_cbn(void *a, dt_node_t *node, int depth)
 {
     if(a != node)
     {
@@ -430,7 +430,7 @@ int dt_print(dt_node_t *node, int argc, const char **argv)
 // ========== Legacy/Compat ==========
 
 int dt_check_32(void *mem, uint32_t size, uint32_t *offp) __asm__("_dt_check$32");
-int dt_parse_32(dt_node_t *node, int depth, uint32_t *offp, int (*cb_node)(void*, dt_node_t*), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void *cbp_arg) __asm__("_dt_parse$32");
+int dt_parse_32(dt_node_t *node, int depth, uint32_t *offp, int (*cb_node)(void*, dt_node_t*, int), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void *cbp_arg) __asm__("_dt_parse$32");
 void* dt_prop_32(dt_node_t *node, const char *key, uint32_t *lenp) __asm__("_dt_prop$32");
 
 int dt_check_32(void *mem, uint32_t size, uint32_t *offp)
@@ -453,7 +453,7 @@ static int dt_parse_32_cbp(void *a, dt_node_t *node, int depth, const char *key,
     return args->cb(args->arg, node, depth, key, val, (uint32_t)len);
 }
 
-int dt_parse_32(dt_node_t *node, int depth, uint32_t *offp, int (*cb_node)(void*, dt_node_t*), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void *cbp_arg)
+int dt_parse_32(dt_node_t *node, int depth, uint32_t *offp, int (*cb_node)(void*, dt_node_t*, int), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, uint32_t), void *cbp_arg)
 {
     dt_parse_32_cbp_t cbp_arg_32 =
     {

@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2023 checkra1n team
+ * Copyright (C) 2019-2024 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -49,7 +49,7 @@ typedef struct
 } dt_prop_t;
 
 extern int dt_check(void *mem, size_t size, size_t *offp) __asm__("_dt_check$64");
-extern int dt_parse(dt_node_t *node, int depth, size_t *offp, int (*cb_node)(void*, dt_node_t*), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, size_t), void *cbp_arg) __asm__("_dt_parse$64");
+extern int dt_parse(dt_node_t *node, int depth, size_t *offp, int (*cb_node)(void*, dt_node_t*, int), void *cbn_arg, int (*cb_prop)(void*, dt_node_t*, int, const char*, void*, size_t), void *cbp_arg) __asm__("_dt_parse$64");
 extern dt_node_t* dt_find(dt_node_t *node, const char *name);
 extern void* dt_prop(dt_node_t *node, const char *key, size_t *lenp) __asm__("_dt_prop$64");
 extern int dt_print(dt_node_t *node, int argc, const char **argv);
@@ -65,6 +65,7 @@ struct memmap
 };
 
 extern dt_node_t* dt_node(dt_node_t *node, const char *name);
+extern dt_node_t* dt_node_parent(dt_node_t *node);
 extern dt_node_t* dt_get(const char *name);
 extern void* dt_node_prop(dt_node_t *node, const char *prop, size_t *size);
 extern void* dt_get_prop(const char *device, const char *prop, size_t *size) __asm__("_dt_get_prop$64");

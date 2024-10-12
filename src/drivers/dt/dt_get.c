@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2023 checkra1n team
+ * Copyright (C) 2019-2024 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -39,6 +39,46 @@ dt_node_t* dt_node(dt_node_t *node, const char *name)
         panic("Missing DeviceTree node: %s", name);
     }
     return dev;
+}
+
+typedef struct
+{
+    dt_node_t *path[8];
+    dt_node_t *target;
+    dt_node_t *parent;
+} dt_node_parent_cb_t;
+
+static int dt_node_parent_cb(void *a, dt_node_t *node, int depth)
+{
+    dt_node_parent_cb_t *arg = a;
+    if(node == arg->target)
+    {
+        if(depth < 1)
+        {
+            panic("DeviceTree parent depth underflow: %d", depth);
+        }
+        arg->parent = arg->path[depth - 1];
+        return 1;
+    }
+    if(depth < 0 || depth >= 8)
+    {
+        panic("DeviceTree parent depth out of bunds: %d", depth);
+    }
+    arg->path[depth] = node;
+    return 0;
+}
+
+dt_node_t* dt_node_parent(dt_node_t *node)
+{
+    // Parsing the tree again just to find the parent node is really ugly and inefficient, but for now we're stuck with this.
+    // Ideally we'd parse the DeviceTree entirely into heap memory, so we can:
+    // a) traverse it faster and in either direction
+    // b) overwrite/relocate the original DeviceTree in memory (e.g. for loading a bigger kernel)
+    // The problem is that we currently allow clients to directly modify DeviceTree velues and we will need that
+    // in one form or another regardless, so we'd have to think about how to design such a writeback.
+    dt_node_parent_cb_t arg = { .target = node };
+    dt_parse(gDeviceTree, 0, NULL, &dt_node_parent_cb, &arg, NULL, NULL);
+    return arg.parent;
 }
 
 dt_node_t* dt_get(const char *name)

@@ -36,7 +36,7 @@ struct hal_device* gRootDevice, * gDeviceTreeDevice;
 
 void hal_probe_hal_services(struct hal_device* device) ;
 
-static int hal_load_dtree_child_node(void* arg, dt_node_t* node) {
+static int hal_load_dtree_child_node(void* arg, dt_node_t* node, int depth) {
     struct hal_device* parentDevice = arg;
     if (parentDevice->node == node) return 0;
 
