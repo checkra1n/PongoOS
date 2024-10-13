@@ -94,7 +94,8 @@ static dt_node_t* serial_dt_node(void)
     static dt_node_t *uart = NULL;
     if(!uart)
     {
-        uart = dt_node_parent(dt_get("debug-console"));
+        dt_node_t *console = dt_find(gDeviceTree, "debug-console");
+        uart = console ? dt_node_parent(console) : dt_get("uart0");
     }
     return uart;
 }
