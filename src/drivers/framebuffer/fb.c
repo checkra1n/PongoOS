@@ -1,7 +1,7 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
- * Copyright (C) 2019-2023 checkra1n team
+ *
+ * Copyright (C) 2019-2025 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,7 +22,7 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 #include <pongo.h>
 #include "font8x8_basic.h"
@@ -122,7 +122,7 @@ uint32_t colors_mix_alpha(uint32_t color1, uint32_t color2) {
     componentsw[1] /= total_alpha;
     componentsw[2] /= total_alpha;
     componentsw[3] = 0xff;
-    
+
     return color_compose_v32(componentsw);
 }
 
@@ -255,7 +255,7 @@ void screen_init(void) {
             gFramebuffer[ind] = curcolor;
         }
     }
-    
+
     memcpy(gFramebufferCopy, gFramebuffer, fbsize);
 
     basecolor = gFramebuffer[0];

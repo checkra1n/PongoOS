@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-#  Copyright (C) 2019-2023 checkra1n team
+#  Copyright (C) 2019-2025 checkra1n team
 #  This file is part of pongoOS.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -20,7 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-# 
+#
 import sys
 import usb.core
 dev = usb.core.find(idVendor=0x05ac, idProduct=0x4141)
