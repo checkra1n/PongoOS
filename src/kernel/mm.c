@@ -371,13 +371,11 @@ err_t vm_allocate(struct vm_space* vmspace, uint64_t* addr, uint64_t size, vm_fl
     uint32_t vm_scan_base = 0;
     uint64_t vm_scan_size = (VM_SPACE_SIZE / PAGE_SIZE);
     uint32_t found_pages = 0;
-    uint32_t vm_index_start = 0;
 
     if (flags & VM_FLAGS_FIXED) {
         uint64_t vm_offset = *addr - vmspace->vm_space_base;
         if (vm_offset > vmspace->vm_space_end) vm_scan_size = 0;
         else {
-            vm_index_start = vm_offset / PAGE_SIZE;
             vm_scan_size = ((size + PAGE_MASK) & ~PAGE_MASK) / PAGE_SIZE;
         }
     } else {
@@ -931,18 +929,15 @@ void ttbpage_free_walk(uint64_t base, bool is_tt1) {
 }
 bool tte_walk_get(struct vm_space* vmspace, uint64_t va, uint64_t** tte_out) {
     uint64_t bits = 64ULL;
-    bool is_tt1 = false;
     uint64_t* ttb = NULL;
     if (va & 0x7000000000000000) {
         bits -= t1sz;
         va -= (0xffffffffffffffff - ((1ULL << (65 - t1sz)) - 1));
         va &= (1ULL << bits) - 1;
-        is_tt1 = true;
         ttb = phystokv(vmspace->ttbr1);
     } else {
         bits -= t0sz;
         va &= (1ULL << bits) - 1;
-        is_tt1 = false;
         ttb = phystokv(vmspace->ttbr0);
     }
     uint32_t levels = ((bits - (tt_bits + 3ULL)) / tt_bits);

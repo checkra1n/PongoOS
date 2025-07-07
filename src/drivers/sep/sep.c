@@ -910,7 +910,7 @@ struct sep_command {
     void (*cb)(const char* cmd, char* args);
 };
 
-void sep_help();
+void sep_help(const char* cmd, char* args);
 #define SEP_COMMAND(_name, _desc, _cb) {.name = _name, .desc = _desc, .cb = _cb}
 void sep_pwned_peek(const char* cmd, char* args) {
     if(!sep_is_pwned) {
