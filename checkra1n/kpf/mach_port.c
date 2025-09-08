@@ -504,7 +504,7 @@ static bool kpf_task_conversion_eval_callback_bl(struct xnu_pf_patch *patch, uin
         {
             return false;
         }
-        if(op == 0x530a2900) // ubfx w0, w8, 0xa, 1
+        if(op == 0x530a2900 || op == 0x53071d00) // ubfx w0, w8, {0x7 / 0xa}, 1
         {
             found_task_conversion_eval_bl = true;
             return kpf_task_conversion_eval_callback_common(opcode_stream, false);
