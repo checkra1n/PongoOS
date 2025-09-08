@@ -100,6 +100,11 @@ static bool kpf_convert_port_to_map_callback_new_long(struct xnu_pf_patch *patch
     return kpf_convert_port_to_map_callback(patch, opcode_stream + 9);
 }
 
+static bool kpf_convert_port_to_map_callback_260(struct xnu_pf_patch *patch, uint32_t *opcode_stream)
+{
+    return kpf_convert_port_to_map_callback(patch, opcode_stream + 6);
+}
+
 static void kpf_convert_port_to_map_patch(xnu_pf_patchset_t *xnu_text_exec_patchset)
 {
     // This patch is required because in some iOS 14.0 beta, Apple started cracking down on tfp0 usage.
@@ -302,6 +307,41 @@ static void kpf_convert_port_to_map_patch(xnu_pf_patchset_t *xnu_text_exec_patch
         0xff00001e,
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches_184_variant, masks_184_variant, sizeof(matches_184_variant)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback_new_long);
+
+    // In tvOS 26 / bridgeOS 10 there's some new checks, so we need to match against them too:
+    //
+    // 0xfffffff007234cf4      88010036       tbz w8, 0, 0xfffffff007234d24
+    // 0xfffffff007234cf8      141440f9       ldr x20, [x0, 0x28] ; 0xda ; 218
+    // 0xfffffff007234cfc      882240f9       ldr x8, [x20, 0x40] ; 0xee ; 238
+    // 0xfffffff007234d00      e93d00b0       adrp x9, 0xfffffff0079f1000
+    // 0xfffffff007234d04      29e10191       add x9, x9, 0x78
+    // 0xfffffff007234d08      1f0109eb       cmp x8, x9
+    // 0xfffffff007234d0c      80020054       b.eq 0xfffffff007234d5c
+    //
+    // /x 00000036000040f9002040f900000090000000911f0000eb00000054:1000f8ff00c0ffff00f8ffff0000009f0000c0ff1ffce0ff1e0000ff
+
+    uint64_t matches_260[] =
+    {
+        0x36000000, // tbz w{0-15}, ...
+        0xf9400000, // ldr xN, [xM, {0x0-0x78}]
+        0xf9402000, // ldr xN, [xM, {0x40|0x48}]
+        0x90000000, // adrp
+        0x91000000, // add
+        0xeb00001f, // cmp
+        0x54000000, // b.ne / b.eq
+    };
+
+    uint64_t masks_260[] =
+    {
+        0xfff80010,
+        0xffffc000,
+        0xfffff800,
+        0x9f000000,
+        0xffc00000,
+        0xffe0fc1f,
+        0xff00001e,
+    };
+    xnu_pf_maskmatch(xnu_text_exec_patchset, "convert_port_to_map", matches_260, masks_260, sizeof(matches_260)/sizeof(uint64_t), false, (void*)kpf_convert_port_to_map_callback_260);
 }
 
 static bool found_task_conversion_eval_ldr = false;
