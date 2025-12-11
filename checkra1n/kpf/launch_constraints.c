@@ -108,6 +108,24 @@ static void kpf_launch_constraints_patch(xnu_pf_patchset_t *patchset)
         0xfc000000,
     };
     xnu_pf_maskmatch(patchset, "launch_constraints", matches_184, masks_184, sizeof(matches_184)/sizeof(uint64_t), false, (void*)kpf_launch_constraints_callback);
+
+    uint64_t matches_261b2[] =
+    {
+        0x90000000, // adrp x0, ...
+        0x91000000, // add x0, x0, ...
+        0xa94003e0, // ldp x{0-15}, x{0-15}, [sp, ...]
+        0xa90003e0, // stp x{0-15}, x{0-15}, [sp]
+        0x94000000, // bl IOLog
+    };
+    uint64_t masks_261b2[] =
+    {
+        0x9f00001f,
+        0xffc003ff,
+        0xffc043f0,
+        0xffffc3f0,
+        0xfc000000,
+    };
+    xnu_pf_maskmatch(patchset, "launch_constraints", matches_261b2, masks_261b2, sizeof(matches_261b2)/sizeof(uint64_t), false, (void*)kpf_launch_constraints_callback);
 }
 
 static void kpf_launch_constraints_init(struct mach_header_64 *hdr, xnu_pf_range_t *cstring, checkrain_option_t kpf_flags, checkrain_option_t checkra1n_flags)
