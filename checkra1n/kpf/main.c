@@ -594,12 +594,12 @@ static void kpf_vm_map_protect_patch(xnu_pf_patchset_t* xnu_text_exec_patchset)
     uint64_t matches17[] = {
         0x6a30001f, // bics wzr, wN, w{16-31}
         0x54000001, // b.ne 0x...
-        0x37a80000, // tbnz w{0-15}, {0x15 | 0x17}, 0x...
+        0x37a00000, // tbnz w{0-15}, {0x14-0x17}, 0x...
     };
     uint64_t masks17[] = {
         0xfff0fc1f,
         0xff00001f,
-        0xffe80010,
+        0xffe00010,
     };
     xnu_pf_maskmatch(xnu_text_exec_patchset, "vm_map_protect", matches17, masks17, sizeof(matches17)/sizeof(uint64_t), false, (void*)kpf_vm_map_protect_branch_short);
 
