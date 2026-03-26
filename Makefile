@@ -32,12 +32,14 @@ ifeq ($(HOST_OS),Darwin)
 	EMBEDDED_CC         ?= xcrun -sdk iphoneos clang
 	STRIP               ?= strip
 	STAT                ?= stat -L -f %z
+	LTO_FLAG            ?= -flto
 else
 ifeq ($(HOST_OS),Linux)
 	EMBEDDED_CC         ?= clang
 	EMBEDDED_LDFLAGS    ?= -fuse-ld=/usr/bin/ld64
 	STRIP               ?= cctools-strip
 	STAT                ?= stat -L -c %s
+	LTO_FLAG            ?=
 endif
 endif
 
@@ -52,7 +54,7 @@ RA1N                    := checkra1n/kpf
 
 # General options
 EMBEDDED_LD_FLAGS       ?= -nostdlib -static -Wl,-fatal_warnings -Wl,-dead_strip -Wl,-Z $(EMBEDDED_LDFLAGS)
-EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -std=gnu17 -Wall -Wunused-label -Werror -O3 -flto -ffreestanding -U__nonnull -nostdlibinc -DTARGET_OS_OSX=0 -DTARGET_OS_MACCATALYST=0 -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
+EMBEDDED_CC_FLAGS       ?= --target=arm64-apple-ios12.0 -std=gnu17 -Wall -Wunused-label -Werror -O3 $(LTO_FLAG) -ffreestanding -U__nonnull -nostdlibinc -DTARGET_OS_OSX=0 -DTARGET_OS_MACCATALYST=0 -I$(LIB)/include $(EMBEDDED_LD_FLAGS) $(EMBEDDED_CFLAGS)
 
 # Pongo options
 PONGO_LDFLAGS           ?= -L$(LIB)/lib -lc -lm -Wl,-preload -Wl,-no_uuid -Wl,-e,start -Wl,-order_file,$(SRC)/sym_order.txt -Wl,-image_base,0x100000000 -Wl,-sectalign,__DATA,__common,0x8 -Wl,-segalign,0x4000
