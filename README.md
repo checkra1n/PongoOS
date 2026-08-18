@@ -18,12 +18,17 @@ A pre-boot execution environment for Apple boards built on top of checkra1n.
     sudo apt-get update
     sudo apt-get install -y ld64 cctools-strip
     ```
+  - If your distro uses LLVM's linker instead, the build will fall back to `-fuse-ld=lld` and `llvm-strip` automatically.
   - On other Linux flavours you'll likely have to build them yourself. Maybe [this repo](https://github.com/Siguza/ld64) will help you.
 - Run `make all`
 
 If `clang`, `ld64` or `cctools-strip` don't have their default names/paths, you'll want to change their invocation. For reference, the default variables are equivalent to:
 
     EMBEDDED_CC=clang EMBEDDED_LDFLAGS=-fuse-ld=/usr/bin/ld64 STRIP=cctools-strip make all
+
+When a toolchain is installed under a different name, override the variables explicitly, for example:
+
+    EMBEDDED_CC=clang-14 EMBEDDED_LDFLAGS=-fuse-ld=lld STRIP=llvm-strip make all
 
 ## Build artifacts
 
