@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -28,22 +28,22 @@
 extern void set_timer_reg(uint64_t v);
 extern void set_timer_ctr(uint64_t v);
 
-void timer_enable() {
+void timer_enable(void) {
     set_timer_reg(1); // turn on timer
 
 }
-void timer_disable() {
+void timer_disable(void) {
     set_timer_reg(2); // turn off timer
 }
 
 #define LLKTRW_QUANTA 24000 // 1ms quanta
 char timer_inited = 0;
 
-void timer_rearm() {
+void timer_rearm(void) {
     set_timer_ctr(LLKTRW_QUANTA);
 }
 
-void timer_init() {
+void timer_init(void) {
     set_timer_reg(2); // turn off timer
     set_timer_ctr(0xfffffff);
     set_timer_reg(1); // turn on timer

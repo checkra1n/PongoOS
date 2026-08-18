@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -24,7 +24,7 @@
  * SOFTWARE.
  * 
  */
-void gpio_init();
-void gpio_early_init();
+void gpio_init(void);
+void gpio_early_init(void);
 
 extern uint64_t gGpioBase;

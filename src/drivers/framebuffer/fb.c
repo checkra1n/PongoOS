@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -46,10 +46,10 @@ void screen_fill(uint32_t color) {
     }
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
 }
-void screen_fill_basecolor() {
+void screen_fill_basecolor(void) {
     return screen_fill(basecolor);
 }
-void screen_clear_all()
+void screen_clear_all(void)
 {
     y_cursor = bannerHeight;
     for (int y = bannerHeight; y < gHeight; y++) {
@@ -59,7 +59,7 @@ void screen_clear_all()
     }
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
 }
-void screen_clear_row()
+void screen_clear_row(void)
 {
     for (int y = 0; y < (1 + 8 * SCALE_FACTOR); y++) {
         for (int x = 0; x < gWidth; x++) {
@@ -193,11 +193,11 @@ void screen_puts(const char* str)
     screen_write(str);
     screen_putc('\n');
 }
-void screen_mark_banner() {
+void screen_mark_banner(void) {
     bannerHeight = y_cursor;
 }
 
-void screen_invert() {
+void screen_invert(void) {
     for (int y = 0; y < gHeight; y++) {
         for (int x = 0; x < gWidth; x++) {
             gFramebuffer[x + y * gRowPixels] ^= 0xffffffff;
@@ -210,7 +210,7 @@ void screen_invert() {
 
 uint32_t gLogoBitmap[32] = { 0x0, 0xa00, 0x400, 0x5540, 0x7fc0, 0x3f80, 0x3f80, 0x1f00, 0x1f00, 0x1f00, 0x3f80, 0xffe0, 0x3f80, 0x3f80, 0x3f83, 0x103f9f, 0x18103ffb, 0xe3fffd5, 0x1beabfab, 0x480d7fd5, 0xf80abfab, 0x480d7fd5, 0x1beabfab, 0xe3fffd5, 0x18107ffb, 0x107fdf, 0x7fc3, 0xffe0, 0xffe0, 0xffe0, 0x1fff0, 0x1fff0 };
 
-void screen_init() {
+void screen_init(void) {
     gRowPixels = gBootArgs->Video.v_rowBytes >> 2;
     uint16_t width = gWidth = gBootArgs->Video.v_width;
     uint16_t height = gHeight = gBootArgs->Video.v_height;
@@ -260,7 +260,7 @@ void screen_init() {
 
     basecolor = gFramebuffer[0];
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
-    command_register("fbclear", "clears the framebuffer output (minus banner)", screen_clear_all);
-    command_register("fbinvert", "inverts framebuffer contents", screen_invert);
+    command_register("fbclear", "clears the framebuffer output (minus banner)", (void*)screen_clear_all);
+    command_register("fbinvert", "inverts framebuffer contents", (void*)screen_invert);
     scale_factor = 1;
 }

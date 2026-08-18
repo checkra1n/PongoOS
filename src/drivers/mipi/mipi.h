@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -25,6 +25,6 @@
  * 
  */
 void mipi_send_cmd(uint32_t cmd);
-void mipi_init();
-void mipi_sleep();
-void mipi_wake();
+void mipi_init(void);
+void mipi_sleep(void);
+void mipi_wake(void);

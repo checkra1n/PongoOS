@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -25,14 +25,22 @@
  *
  */
 #include <pongo.h>
-#include <sys/errno.h>
+#include <errno.h>
+#include <reent.h>
 
-pid_t _getpid(void)
+pid_t _getpid_r(struct _reent *reent)
 {
     return task_current()->pid;
 }
 
+struct _reent* __getreent(void)
+{
+    return &task_current()->reent;
+}
+
+#if 0
 int _kill(pid_t pid, int sig)
 {
     return ENOTSUP;
 }
+#endif

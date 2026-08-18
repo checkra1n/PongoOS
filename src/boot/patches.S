@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -25,13 +25,26 @@
  *
  */
 
-// ********************************************************
-// **                                                    **
-// ** THIS FILE IS SHARED BETWEEN PONGOOS AND CHECKRA1N! **
-// **                                                    **
-// **   MAKE SURE ANY EDIT IS REFLECTED IN BOTH REPOS!   **
-// **                                                    **
-// ********************************************************
+// ************************************************************
+// **                                                        **
+// **         THIS FILE IS USED BY MULTIPLE PROJECTS!        **
+// **                                                        **
+// ** Before committing changes to this file, make sure both **
+// ** PongoOS and the checkra1n payload project still build! **
+// **                                                        **
+// ************************************************************
+
+#ifdef NO_GLOBAL
+    .macro sym
+    L_$0:
+    .endmacro
+#else
+    .text
+    .macro sym
+    .globl $0
+    $0:
+    .endmacro
+#endif
 
 .align 2
 
@@ -69,6 +82,10 @@ Per SoC:
 +------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
 | A13  | 0x211050000 | 0x211150000 |             |             | 0x210050000 | 0x210150000 | 0x210250000 | 0x210350000 |
 +------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
+| A14  | 0x211050000 | 0x211150000 |             |             | 0x210050000 | 0x210150000 | 0x210250000 | 0x210350000 |
++------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
+| M1   | 0x211050000 | 0x211150000 | 0x211250000 | 0x211350000 | 0x210050000 | 0x210150000 | 0x210250000 | 0x210350000 |
++------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
 
 Bits [63:36] seem to be readonly, but do hold a value.
 Bits [35:11] are the RVBAR address (mask 0xffffff800).
@@ -103,12 +120,7 @@ We just yeet out the orr, so that iBoot sets the RVBAR address but doesn't lock 
 This means we change the instruction from orr-immediate to orr-register, with xzr as 3rd operand.
 */
 
-#ifndef NO_GLOBAL
-.globl iorvbar_yeet
-iorvbar_yeet:
-#else
-L_iorvbar_yeet:
-#endif
+sym iorvbar_yeet
     mov x2, x0 // instr
     movz w5, 0x9275, lsl 16 // and xN, x0, 0xfffffffffffff800
     movk w5, 0xd000
@@ -144,8 +156,6 @@ L_iorvbar_yeet:
     // Patch
     bfi w7, w4, 0, 10
     str w7, [x2]
-    dmb sy
-    isb sy
     ret
 
 
@@ -188,7 +198,11 @@ The following table shows the relevant MMIO addresses:
 +------+-------------+-------------+
 | A12X |      ?      |             |
 +------+-------------+-------------+
-| A13  |      ?      |             |
+| A13  | 0x23d2d0000 |             |
++------+-------------+-------------+
+| A14  | 0x23d2d0000 |             |
++------+-------------+-------------+
+| M1   | 0x23d2d0000 |             |
 +------+-------------+-------------+
 
 Note that iBoot issues a "dmb sy" after writing to the AES register.
@@ -232,12 +246,7 @@ We find this sequence, seek to the next bl, then dereference it and write a "ret
 We do this rather than nop'ing the branch because there is more than one call site.
 */
 
-#ifndef NO_GLOBAL
-.globl aes_keygen
-aes_keygen:
-#else
-L_aes_keygen:
-#endif
+sym aes_keygen
     mov x2, x0 // instr
     movz w7, 0x320e, lsl 16 // orr w0, wzr, 0x40000
     movk w7, 0x03e0
@@ -283,8 +292,6 @@ L_aes_keygen:
     sbfx w3, w3, 0, 26
     ldr w7, Lol
     str w7, [x2, w3, sxtw 2]
-    dmb sy
-    isb sy
 Lol:
     ret
 
@@ -318,27 +325,31 @@ prevent lockdown, and then we can operate on the final sequence conveniently fro
 
 The relevant addresses are:
 
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| SoC  | AOP_CFG_TABLE | AOP_CFG_LOCK | AOP_SRAM_BASE | AOP_SRAM_LOCK_RANGE | AOP_SRAM_LOCK_SET |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| A9   |  0x210000200  |              |  0x210800008  |     0x21000021c     |    0x210000220    |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| A9X  |  0x210000200  |              |  0x210800008  |     0x21000021c     |    0x210000220    |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| A10  |  0x210000100  |              |  0x210800008  |     0x21000011c     |    0x210000120    |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| A10X |  0x210000100  |              |  0x210800008  |     0x21000011c     |    0x210000120    |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| T2   |  0x2112c0200  | 0x2112c0214  |               |     0x211000200     |    0x211000204    |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| A11  |  0x2352c0200  | 0x2352c0214  |               |     0x235000200     |    0x235000204    |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| A12  |  0x23d2c0200  | 0x23d2c0214  |               |     0x23d000200     |    0x23d000204    |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| A12X |       ?       |      ?       |               |          ?          |         ?         |
-+------+---------------+--------------+---------------+---------------------+-------------------+
-| A13  |       ?       |      ?       |               |          ?          |         ?         |
-+------+---------------+--------------+---------------+---------------------+-------------------+
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| SoC  | AOP_CFG_TABLE | AOP_CFG_LOCK |       RECFG_SRAM        | AOP_SRAM_BASE | AOP_SRAM_LOCK_RANGE | AOP_SRAM_LOCK_SET |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A9   |  0x210000200  |              |                         |  0x210800008  |     0x21000021c     |    0x210000220    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A9X  |  0x210000200  |              |                         |  0x210800008  |     0x21000021c     |    0x210000220    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A10  |  0x210000100  |              |                         |  0x210800008  |     0x21000011c     |    0x210000120    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A10X |  0x210000100  |              |                         |  0x210800008  |     0x21000011c     |    0x210000120    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| T2   |  0x2112c0200  | 0x2112c0214  | 0x211f00000-0x211f10000 |               |     0x211000200     |    0x211000204    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A11  |  0x2352c0200  | 0x2352c0214  | 0x235f00000-0x235f10000 |               |     0x235000200     |    0x235000204    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A12  |  0x23d2c0200  | 0x23d2c0214  |            ?            |               |     0x23d000200     |    0x23d000204    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A12X |       ?       |      ?       |            ?            |               |          ?          |         ?         |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A13  |  0x23d2c0200  | 0x23d2c0214  | 0x23df00000-     ?      |               |     0x23d000200     |    0x23d000204    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| A14  |  0x23d2c0200  | 0x23d2c021c  | 0x23df00000-     ?      |               |     0x23d000200     |    0x23d000204    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
+| M1   |  0x23d2c0200  | 0x23d2c021c  | 0x23df00000-     ?      |               |     0x23d000200     |    0x23d000204    |
++------+---------------+--------------+-------------------------+---------------+---------------------+-------------------+
 
 - AOP_CFG_TABLE is a 32-bit offset from the SRAM base. Mask pre-A11 0x1fff80, T2/A11+ 0xff80.
   At the address it points to is an uint32_t[8] array of 36-bit physical addresses >> 4.
@@ -389,12 +400,7 @@ a ret to nop the lock. Absolutely everything else is deferred to PongoOS.
 
 #ifndef NO_RECFG
 
-#ifndef NO_GLOBAL
-.globl recfg_yoink
-recfg_yoink:
-#else
-L_recfg_yoink:
-#endif
+sym recfg_yoink
     mov x2, x0 // instr
     movz w8, 0x3200, lsl 16 // orr w0, wzr, 3
     movk w8, 0x07e0
@@ -428,9 +434,83 @@ L_recfg_yoink:
     sbfx w7, w7, 0, 26
     ldr w3, Lul
     str w3, [x2, w7, sxtw 2]
-    dmb sy
-    isb sy
 Lul:
     ret
 
 #endif
+
+
+// void fuse_jump(volatile void *boot_image)
+
+/*
+We already coerce the ROM into leaving the fuse array unlocked and patch iBootStage1 to skip the check,
+but nonetheless both iBootStage1 and iBootStage2 very stubbornly lock the fuse array again.
+
++------------------------+
+| movk x8, 0x...         |
+| ldr w9, [x8]           |
+| orr w9, w9, 0x80000000 |
+| str w9, [x8]           |
+| {dsb sy | ret}         |
++------------------------+
+
+In r2:
+
+/x 080080f2090140b929010132090100b9c0035fd6:1f0080ffffffffffffffffffffffffffffffffff
+/x 080080f2090140b929010132090100b99f3f03d5:1f0080ffffffffffffffffffffffffffffffffff
+
+We search for the pattern, then seek backwards for a "cbz w0, ..." with positive offset. If we find none
+within a short range, we skip this match, otherwise we replace that instruction with an unconditional branch.
+
+*/
+
+sym fuse_jump
+    mov x2, x0 // instr
+    mov w3, 0xb9400000 // ldr w9, [x8]
+    movk w3, 0x0109
+    mov w4, 0x32010000 // orr w9, w9, 0x80000000
+    movk w4, 0x0129
+    mov w5, 0xb9000000 // str w9, [x8]
+    movk w5, 0x0109
+    mov w6, 0xd5030000 // dsb sy
+    movk w6, 0x3f9f
+    mov w7, 0xd65f0000 // ret
+    movk w7, 0x03c0
+    mov w8, 0xf2800000 // movk x8, ...
+    movk w8, 0x0008
+    mov w9, 0x34000000 // cbz w0, ... (forward)
+    // Search for pattern
+1:
+    ldp w10, w11, [x2, 0x4]!
+    cmp w10, w3
+    ccmp w11, w4, 0, eq
+    b.ne 1b
+    ldp w10, w11, [x2, 0x8]
+    cmp w11, w6
+    ccmp w11, w7, 4, ne
+    ccmp w10, w5, 0, eq
+    b.ne 1b
+    ldr w10, [x2, -0x4]
+    and w10, w10, 0xff80001f
+    cmp w10, w8
+    b.ne 1b
+
+    // Search for preceding "cbz w0"
+    sub x10, x2, 0x4
+    sub x11, x10, 0x18
+2:
+    ldr w12, [x10, -0x4]!
+    and w13, w12, 0xff80001f
+    cmp w13, w9
+    b.eq 3f
+    cmp x10, x11
+    b.hi 2b
+    b 1b
+
+    // Turn the branch unconditional
+3:
+    sbfx w12, w12, 5, 19
+    mov w8, 0x14000000 // b
+    bfi w8, w12, 0, 26
+    str w8, [x10]
+    ret

@@ -1,7 +1,7 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
- * Copyright (C) 2019-2021 checkra1n team
+ *
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,21 +22,24 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
+#include <reent.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <pongo.h>
 
-int _fstat(int file, struct stat *st) {
-    st->st_mode = S_IFCHR;
+int _fstat_r(struct _reent *reent, int file, struct stat *st) {
+    *st = (struct stat){ .st_mode = S_IFCHR };
     return 0;
 }
 
-int _isatty(int file) { return 1; }
+int _isatty_r(struct _reent *reent, int file) { return 1; }
+#if 0
 int _open(const char *name, int flags, int mode) { return -1; }
-int _lseek(int file, int ptr, int dir) { return 0; }
-int _close(int file) { return -1; }
+#endif
+off_t _lseek_r(struct _reent *reent, int file, off_t ptr, int dir) { return 0; }
+int _close_r(struct _reent *reent, int file) { return -1; }
 
 static char stdout_buf[STDOUT_BUFLEN];
 static volatile int stdout_buf_len;
@@ -60,7 +63,7 @@ void fetch_stdoutbuf(char* to, int* len) {
     lock_release(&stdout_lock);
 }
 
-int _write(int file, char *ptr, int len)
+ssize_t _write_r(struct _reent *reent, int file, const void *ptr, size_t len)
 {
     switch(file)
     {
@@ -76,11 +79,12 @@ int _write(int file, char *ptr, int len)
         lock_take(&stdout_lock);
     }
     int i;
+    const char *str = ptr;
     for(i = 0; i < len; i++)
     {
-        if (ptr[i] == '\0') serial_putc('\r');
-        serial_putc(ptr[i]);
-        screen_putc(ptr[i]);
+        if (str[i] == '\0') serial_putc('\r');
+        serial_putc(str[i]);
+        screen_putc(str[i]);
 
         if(file != 1) continue;
 
@@ -100,7 +104,7 @@ int _write(int file, char *ptr, int len)
                 memmove(stdout_buf, stdout_buf+1, stdout_buf_len);
             }
         }
-        stdout_buf[stdout_buf_len++] = ptr[i];
+        stdout_buf[stdout_buf_len++] = str[i];
     }
     if(file == 1) lock_release(&stdout_lock);
     return len;
@@ -139,9 +143,9 @@ void queue_rx_char(char inch) {
 void queue_rx_string(char* string) {
     while (*string) queue_rx_char(*string++);
 }
-int _read(int file, char *ptr, int len) {
+ssize_t _read_r(struct _reent *reent, int file, void *ptr, size_t len) {
     if (!len) return len;
-    int readln = 0;
+    ssize_t readln = 0;
     lock_take(&stdin_lock);
     while (!bufoff) {
         lock_release(&stdin_lock);

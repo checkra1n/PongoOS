@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2021 checkra1n team
+ * Copyright (C) 2021-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -25,8 +25,8 @@
  *
  */
 
-#ifndef RECFG_SOC
-#define RECFG_SOC
+#ifndef RECFG_SOC_PRIVATE_H
+#define RECFG_SOC_PRIVATE_H
 
 #ifdef PONGO_PRIVATE
 

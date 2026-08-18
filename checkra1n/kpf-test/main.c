@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -42,10 +42,10 @@
 #include <mach/mach.h>
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
+#include <libkern/OSCacheControl.h>
 #include <TargetConditionals.h>
 #if TARGET_OS_OSX
 #   include <pthread.h>
-#   include <libkern/OSCacheControl.h>
 #endif
 
 #define SWAP32(x) (((x & 0xff000000) >> 24) | ((x & 0xff0000) >> 8) | ((x & 0xff00) << 8) | ((x & 0xff) << 24))
@@ -132,9 +132,9 @@ void command_register(const char* name, const char* desc, void (*cb)(const char*
     // nop
 }
 
-void sep_setup(void)
+void* alloc_static(uint32_t size)
 {
-    // nah, we good
+    return malloc(size);
 }
 
 void invalidate_icache(void)
@@ -144,18 +144,28 @@ void invalidate_icache(void)
     {
         if(jits[i].addr)
         {
-#if TARGET_OS_OSX
             sys_icache_invalidate(jits[i].addr, jits[i].size);
-#else
-            register uint64_t addr __asm__("x0") = (uint64_t)jits[i].addr;
-            register uint64_t size __asm__("x1") = (uint64_t)jits[i].size;
-            register uint32_t selector __asm__("w3") = 0;
-            register uint32_t trap_no __asm__("w16") = 0x80000000;
-            __asm__ volatile("svc 0x80" :: "r"(addr), "r"(size), "r"(selector), "r"(trap_no));
-#endif
         }
     }
 }
+
+#if !TARGET_OS_OSX
+void pthread_jit_write_protect_np(int exec)
+{
+    for(uint32_t i = 0; i < NUM_JIT; ++i)
+    {
+        if(jits[i].addr)
+        {
+            kern_return_t ret = mach_vm_protect(mach_task_self(), (mach_vm_address_t)jits[i].addr, jits[i].size, 0, VM_PROT_READ | (exec ? VM_PROT_EXECUTE : VM_PROT_WRITE));
+            if(ret != KERN_SUCCESS)
+            {
+                fprintf(stderr, "mach_vm_protect(JIT): %s\n", mach_error_string(ret));
+                exit(-1);
+            }
+        }
+    }
+}
+#endif
 
 void* jit_alloc(size_t count, size_t size)
 {
@@ -180,20 +190,9 @@ void* jit_alloc(size_t count, size_t size)
         exit(-1);
     }
 
-#if TARGET_OS_OSX
     pthread_jit_write_protect_np(0);
-#endif
 
     bzero(mem, len);
-
-#if !TARGET_OS_OSX
-    kern_return_t ret = mach_vm_protect(mach_task_self(), (mach_vm_address_t)mem, len, 0, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
-    if(ret != KERN_SUCCESS)
-    {
-        fprintf(stderr, "mach_vm_protect(JIT): %s\n", mach_error_string(ret));
-        exit(-1);
-    }
-#endif
 
     for(uint32_t i = 0; i < NUM_JIT; ++i)
     {
@@ -246,6 +245,7 @@ static void __attribute__((noreturn)) process_kernel(int fd)
     }
 
     fat_hdr_t *fat = file;
+    uint32_t fatoff = 0;
     if(fat->magic == FAT_CIGAM)
     {
         bool found = false;
@@ -254,9 +254,9 @@ static void __attribute__((noreturn)) process_kernel(int fd)
         {
             if(SWAP32(arch[i].cputype) == CPU_TYPE_ARM64)
             {
-                uint32_t offset = SWAP32(arch[i].offset);
+                fatoff = SWAP32(arch[i].offset);
                 uint32_t newsize = SWAP32(arch[i].size);
-                if(offset > flen || newsize > flen - offset)
+                if(fatoff > flen || newsize > flen - fatoff)
                 {
                     fprintf(stderr, "Fat arch out of bounds.\n");
                     exit(-1);
@@ -266,7 +266,7 @@ static void __attribute__((noreturn)) process_kernel(int fd)
                     fprintf(stderr, "Fat arch is too short to contain a Mach-O.\n");
                     exit(-1);
                 }
-                file = (void*)((uintptr_t)file + offset);
+                file = (void*)((uintptr_t)file + fatoff);
                 flen = newsize;
                 found = true;
                 break;
@@ -278,6 +278,8 @@ static void __attribute__((noreturn)) process_kernel(int fd)
             exit(-1);
         }
     }
+    bool use_mmap = (fatoff & 0x3fff) == 0;
+    printf("%s mmap\n", use_mmap ? "Using" : "Not using");
 
     mach_hdr_t *hdr = file;
     if(hdr->magic != MACH_MAGIC)
@@ -306,9 +308,9 @@ static void __attribute__((noreturn)) process_kernel(int fd)
         {
             mach_seg_t *seg = (mach_seg_t*)cmd;
             size_t off = seg->fileoff + seg->filesize;
-            if(off > flen || off < seg->fileoff)
+            if(off > flen || off < seg->fileoff || (seg->fileoff & 0x3fff) || (seg->vmaddr & 0x3fff))
             {
-                fprintf(stderr, "Bad segment: 0x%lx\n", (uintptr_t)cmd - (uintptr_t)hdr);
+                fprintf(stderr, "Bad segment: %.16s\n", seg->segname);
                 exit(-1);
             }
             uintptr_t start = seg->vmaddr;
@@ -351,7 +353,7 @@ static void __attribute__((noreturn)) process_kernel(int fd)
         exit(-1);
     }
     size_t mlen = highest - lowest;
-    void *mem = mmap(NULL, mlen, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+    void *mem = mmap(NULL, mlen, use_mmap ? PROT_NONE : PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
     if(mem == MAP_FAILED)
     {
         fprintf(stderr, "mmap: %s\n", strerror(errno));
@@ -362,8 +364,40 @@ static void __attribute__((noreturn)) process_kernel(int fd)
         if(cmd->cmd == MACH_SEGMENT)
         {
             mach_seg_t *seg = (mach_seg_t*)cmd;
-            size_t size = seg->filesize < seg->vmsize ? seg->filesize : seg->vmsize;
-            memcpy((void*)((uintptr_t)mem + (seg->vmaddr - lowest)), (void*)((uintptr_t)hdr + seg->fileoff), size);
+            if(!seg->vmsize)
+            {
+                continue;
+            }
+            uintptr_t segbase = (uintptr_t)mem + (seg->vmaddr - lowest);
+            if(use_mmap)
+            {
+                size_t segsize = (seg->vmsize + 0x3fff) & ~0x3fff;
+                if(seg->filesize > 0)
+                {
+                    size_t mapsize = (seg->filesize + 0x3fff) & ~0x3fff;
+                    void *map = mmap((void*)segbase, seg->filesize, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_FILE | MAP_PRIVATE, fd, fatoff + seg->fileoff);
+                    if(map == MAP_FAILED)
+                    {
+                        fprintf(stderr, "mmap(%.16s): %s\n", seg->segname, strerror(errno));
+                        exit(-1);
+                    }
+                    segbase += mapsize;
+                    segsize -= mapsize;
+                }
+                if(segsize > 0)
+                {
+                    void *map = mmap((void*)segbase, segsize, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANON | MAP_PRIVATE, -1, 0);
+                    if(map == MAP_FAILED)
+                    {
+                        fprintf(stderr, "mmap(%.16s zerofill): %s\n", seg->segname, strerror(errno));
+                        exit(-1);
+                    }
+                }
+            }
+            else
+            {
+                memcpy((void*)segbase, (void*)((uintptr_t)hdr + seg->fileoff), seg->filesize);
+            }
         }
     }
 

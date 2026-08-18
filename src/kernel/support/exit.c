@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -26,7 +26,7 @@
  */
 #include <pongo.h>
 
-int _exit() {
+int _exit(void) {
    task_exit();
    return -1; // should never be reached, ever.
 }

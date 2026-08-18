@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -66,7 +66,7 @@ void file_release(struct file* file) {
         free(file);
     }
 }
-struct file* file_create() {
+struct file* file_create(void) {
     struct file* file = malloc(sizeof(struct file));
     bzero(file, sizeof(struct file));
     file->refcount = 1;

@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -24,13 +24,16 @@
  * SOFTWARE.
  *
  */
-#include <pongo.h>
-#include <recfg/recfg_soc.h>
+#include "fuse/fuse_private.h"
+#include "dt/dt_private.h"
+#include "recfg/recfg_soc.h"
+#include "pongo.h"
+#include <reent.h>
 
 boot_args *gBootArgs;
+uint64_t gTopOfKernelData;
 void *gEntryPoint;
 volatile char gBootFlag = 0;
-dt_node_t *gDeviceTree;
 uint64_t gIOBase;
 
 char* gDevType;
@@ -46,7 +49,7 @@ struct task pongo_task = {.name = "main"};
 
 */
 
-int pongo_fiq_handler() {
+int pongo_fiq_handler(void) {
     timer_rearm();
     return !!(task_current()->flags & TASK_PREEMPT);
 }
@@ -58,7 +61,7 @@ int pongo_fiq_handler() {
 
 */
 
-__attribute__((noinline)) void pongo_reinstall_vbar() {
+__attribute__((noinline)) void pongo_reinstall_vbar(void) {
     set_vbar_el1((uint64_t)&exception_vector);
 }
 
@@ -78,7 +81,7 @@ uint32_t sched_tick_index = 0;
 
 struct task* pongo_sched_head;
 
-char pongo_sched_tick() {
+char pongo_sched_tick(void) {
     char rvalue = 0;
     disable_interrupts();
     if (!pongo_sched_head) panic("no tasks to schedule");
@@ -116,20 +119,27 @@ out:
 
 */
 
+extern void _task_set_current(struct task* t);
+extern struct vm_space kernel_vm_space;
+extern void _task_switch_asserted(struct task* new);
+
 char soc_name[9] = {};
 uint32_t socnum = 0x0;
 void (*sep_boot_hook)(void);
 
-__attribute__((noinline)) void pongo_entry_cached()
+__attribute__((noinline)) void pongo_entry_cached(void)
 {
     extern char preemption_over;
     preemption_over = 1;
-    gDeviceTree = (void*)((uint64_t)gBootArgs->deviceTreeP - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000 + kCacheableView);
-    gIOBase = dt_get_u64_prop_i("arm-io", "ranges", 1);
 
-    map_full_ram(gBootArgs->physBase & 0xFFFFFFFF, gBootArgs->memSize);
+    // Literally everything depends on this
+    dt_init((void*)((uint64_t)gBootArgs->deviceTreeP - gBootArgs->virtBase + gBootArgs->physBase - 0x800000000 + kCacheableView), gBootArgs->deviceTreeLength);
 
-    gDevType = dt_get_prop("arm-io", "device_type", NULL);
+    gIOBase = dt_get_u64("/arm-io", "ranges", 1);
+
+    map_full_ram(gBootArgs->physBase & 0x7ffffffff, gBootArgs->memSize);
+
+    gDevType = dt_get_prop("/arm-io", "device_type", NULL);
     size_t len = strlen(gDevType) - 3;
     len = len < 8 ? len : 8;
     strncpy(soc_name, gDevType, len);
@@ -143,7 +153,7 @@ __attribute__((noinline)) void pongo_entry_cached()
     else if(strcmp(soc_name, "t8015") == 0) socnum = 0x8015;
     else if(strcmp(soc_name, "s8000") == 0)
     {
-        const char *sgx = dt_get_prop("sgx", "compatible", NULL);
+        const char *sgx = dt_get_prop("/arm-io/sgx", "compatible", NULL);
         if(strlen(sgx) > 4 && strcmp(sgx + 4, "s8003") == 0)
         {
             socnum = 0x8003;
@@ -155,34 +165,34 @@ __attribute__((noinline)) void pongo_entry_cached()
         }
     }
 
-    /*
-        Set up IRQ handling
-    */
+    // Do fuse init as early as possible
+    fuse_init();
 
+    // Setup GPIO Base
+    gpio_early_init();
+
+    // Setup serial pinmux
+    serial_pinmux_init();
+
+    // Enable serial TX
+    serial_early_init();
+
+    // Set up IRQ handling
     pongo_reinstall_vbar();
-
-
-    extern void _task_set_current(struct task* t);
 
     task_alloc_fast_stacks(&sched_task);
 
     task_link(&sched_task);
     _task_set_current(&sched_task);
-    // Setup VM
 
+    // Setup VM
     vm_init();
 
-    /*
-        Draw logo and set up framebuffer
-    */
-
+    // Draw logo and set up framebuffer
     screen_init();
 
-    /*
-        Set up main task for scheduling
-    */
-
-    extern struct vm_space kernel_vm_space;
+    // Set up main task for scheduling
+    _REENT_INIT_PTR_ZEROED(&task_current()->reent);
     task_current()->vm_space = &kernel_vm_space;
     task_current()->cpsr = 0x205;
     task_current()->ttbr0 = kernel_vm_space.ttbr0;
@@ -190,21 +200,14 @@ __attribute__((noinline)) void pongo_entry_cached()
     task_current()->proc = proc_create(NULL, "kernel", PROC_NO_VM);
     task_current()->proc->vm_space = &kernel_vm_space;
 
-    void pongo_main_task();
+    void pongo_main_task(void);
     task_register(&pongo_task, pongo_main_task);
 
-    /*
-        Set up FIQ timer
-    */
-
+    // Set up FIQ timer
     preemption_over = 0;
-
     enable_interrupts();
-
     timer_init();
     timer_rearm();
-
-    extern void _task_switch_asserted(struct task* new);
 
     char has_been_preempted = 0;
     while (!gBootFlag) {
@@ -228,6 +231,9 @@ __attribute__((noinline)) void pongo_entry_cached()
         }
     }
 
+    // Release any potential sync USB listeners
+    event_fire(&command_handler_iter);
+
     timer_disable();
     usb_teardown();
     disable_interrupts();
@@ -239,11 +245,7 @@ __attribute__((noinline)) void pongo_entry_cached()
     {
         default: // >4
         case BOOT_FLAG_RAW: // 4
-            break;
-
-        case BOOT_FLAG_LINUX: // 3
-            linux_prep_boot();
-            boot_msg = "Booting Linux...";
+        case BOOT_FLAG_M1N1: // 3
             break;
 
         case BOOT_FLAG_HOOK: // 2
@@ -282,44 +284,62 @@ __attribute__((noinline)) void pongo_entry_cached()
         screen_fill_basecolor();
 }
 
+extern uint64_t gM1N1Base;
+
 /*
 
     Name: pongo_entry
     Description: entry point in llktrw
 
 */
-volatile void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t original_image);
+extern void set_exception_stack_core0(void);
+extern void lowlevel_set_identity(void);
+extern _Noreturn void jump_to_image_extended(void *image, void *args, void *tramp, void *original_image);
 extern uint64_t gPongoSlide;
 
-void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point))
+_Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point, void *trampoline))
 {
     gBootArgs = (boot_args*)kernel_args;
+    gTopOfKernelData = gBootArgs->topOfKernelData;
     gEntryPoint = entryp;
-    lowlevel_setup(gBootArgs->physBase & 0xFFFFFFFF, gBootArgs->memSize);
+    lowlevel_setup(gBootArgs->physBase & 0x7ffffffff, gBootArgs->memSize);
     rebase_pc(gPongoSlide);
-    extern void set_exception_stack_core0();
     set_exception_stack_core0();
     pongo_entry_cached();
-    extern void lowlevel_set_identity(void);
     lowlevel_set_identity();
     rebase_pc(-gPongoSlide);
     set_exception_stack_core0();
     gFramebuffer = (uint32_t*)gBootArgs->Video.v_baseAddr;
     lowlevel_cleanup();
-    if(gBootFlag == BOOT_FLAG_RAW)
+    gBootArgs->topOfKernelData = gTopOfKernelData;
+
+    // Unused space above kernel static area
+    void *boot_tramp = (void*)((gTopOfKernelData + 0x3fffULL) & ~0x3fffULL);
+    if(gBootFlag == BOOT_FLAG_RAW || gBootFlag == BOOT_FLAG_M1N1)
     {
-        jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000000, (uint64_t)gBootArgs, (uint64_t)gEntryPoint);
-    }
-    else if(gBootFlag == BOOT_FLAG_LINUX)
-    {
-        linux_boot();
+        uint64_t entry;
+        // We're in EL1 here, but we might need to go back to EL3
+        if((__builtin_arm_rsr64("id_aa64pfr0_el1") & 0xf000) != 0)
+        {
+            __asm__ volatile("smc 0"); // elevate to EL3
+        }
+        if(gBootFlag == BOOT_FLAG_RAW)
+        {
+            entry = (uint64_t)loader_xfer_recv_data - kCacheableView + 0x800000000;
+            boot_tramp = NULL;
+        }
+        else
+        {
+            entry = gM1N1Base + 0x800;
+        }
+        jump_to_image_extended((void*)entry, gBootArgs, boot_tramp, gEntryPoint);
     }
     else
     {
-        tz_lockdown();
         xnu_boot();
+        exit_to_el1_image(gBootArgs, gEntryPoint, boot_tramp);
     }
-    exit_to_el1_image((void*)gBootArgs, gEntryPoint);
+
     screen_puts("didn't boot?!");
     while(1)
     {}

@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -24,6 +24,6 @@
  * SOFTWARE.
  *
  */
-void sep_setup();
+void sep_setup(void);
 void sep_teardown(void);
 extern void (*sepfw_kpf_hook)(void* sepfw_bytes, size_t sepfw_size);

@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -91,7 +91,7 @@ bool reallocate_loader_xfer_data(const void* data, uint32_t size) {
     return true;
 }
 
-void usbloader_init() {
+void usbloader_init(void) {
     loader_xfer_recv_data = alloc_contig(UPLOADSZ);
     loader_xfer_size = UPLOADSZ;
     loader_xfer_recv_size = UPLOADSZ;
@@ -99,7 +99,7 @@ void usbloader_init() {
 } // fetch_stdoutbuf
 
 char stdoutbuf_copy[STDOUT_BUFLEN];
-void usb_read_stdout_cb() {
+void usb_read_stdout_cb(void) {
 
 }
 bool ep0_device_request(struct setup_packet *setup) {

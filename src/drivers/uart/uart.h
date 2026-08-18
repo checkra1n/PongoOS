@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -24,13 +24,15 @@
  * SOFTWARE.
  *
  */
-void serial_init();
-void serial_early_init();
-void serial_pinmux_init();
+void serial_init(void);
+void serial_early_init(void);
+void serial_pinmux_init(void);
 void serial_putc(char c);
-void serial_disable_rx();
-void serial_enable_rx();
-void uart_flush();
+void serial_write(const char *s);
+void serial_puts(const char *s);
+void serial_disable_rx(void);
+void serial_enable_rx(void);
+void uart_flush(void);
 void serial_teardown(void);
 
 #ifdef UART_INTERNAL

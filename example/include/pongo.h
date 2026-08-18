@@ -17,7 +17,7 @@
 // SOFTWARE.
 //
 //
-//  Copyright (C) 2019-2021 checkra1n team
+//  Copyright (C) 2019-2023 checkra1n team
 //  This file is part of pongoOS.
 //
 #ifndef PONGOH
@@ -144,6 +144,7 @@ struct task {
 
 extern void task_switch_irq(struct task* to_task);
 extern void task_exit_irq();
+extern void task_exit_irq_asserted();
 extern void task_switch(struct task* to_task);
 extern void task_link(struct task* to_task);
 extern void task_unlink(struct task* to_task);
@@ -167,6 +168,7 @@ extern void sleep(uint32_t sec);
 extern volatile uint8_t get_el(void);
 extern void cache_invalidate(void *address, size_t size);
 extern void cache_clean_and_invalidate(void *address, size_t size);
+extern void cache_clean_and_invalidate_all(void);
 extern void clock_gate(uint64_t addr, char val);
 extern void disable_preemption();
 extern void enable_preemption();
@@ -192,6 +194,7 @@ extern void wdt_disable();
 
 extern void (*preboot_hook)();
 extern boot_args * gBootArgs;
+extern uint64_t gTopOfKernelData;
 extern void* gEntryPoint;
 extern dt_node_t *gDeviceTree;
 extern uint64_t gIOBase;
@@ -199,7 +202,6 @@ extern uint64_t gPMGRBase;
 extern char* gDevType;
 extern void* ramdisk_buf;
 extern uint32_t ramdisk_size;
-extern uint32_t autoboot_count;
 extern uint8_t * loader_xfer_recv_data;
 extern uint32_t loader_xfer_recv_count;
 #endif

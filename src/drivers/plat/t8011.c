@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -24,7 +24,7 @@
  * SOFTWARE.
  * 
  */
-#import <pongo.h>
+#include <pongo.h>
 
 static bool t8011_probe(struct hal_platform_driver* device_driver, struct hal_platform* device) {
     if (device->cpid == 0x8011) {

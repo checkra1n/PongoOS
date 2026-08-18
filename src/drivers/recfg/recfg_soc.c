@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2021 checkra1n team
+ * Copyright (C) 2021-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -518,7 +518,7 @@ static void recfg_cmd(const char* cmd, char *args)
         {
             if(strcmp(args, command_table[i].name) == 0)
             {
-                command_table[i].cb(args, arguments);
+                command_table[i].cb(cmd, arguments);
                 return;
             }
         }

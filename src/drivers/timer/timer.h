@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -24,7 +24,7 @@
  * SOFTWARE.
  * 
  */
-void timer_init();
-void timer_rearm();
-void timer_disable();
-void timer_enable();
+void timer_init(void);
+void timer_rearm(void);
+void timer_disable(void);
+void timer_enable(void);

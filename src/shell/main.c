@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -25,7 +25,6 @@
  *
  */
 #include <pongo.h>
-uint32_t autoboot_count;
 
 extern volatile char gBootFlag;
 
@@ -37,13 +36,33 @@ extern volatile char gBootFlag;
 
 */
 
-void pongo_boot_raw() {
+void pongo_boot_raw(const char *cmd, char *args) {
     if (!loader_xfer_recv_count) {
         iprintf("please upload a raw image before issuing this command\n");
         return;
     }
     loader_xfer_recv_count = 0;
     gBootFlag = BOOT_FLAG_RAW;
+    task_yield();
+}
+
+uint64_t gM1N1Base;
+extern char gFWVersion[256];
+void pongo_boot_m1n1(const char *cmd, char *args) {
+    if (!loader_xfer_recv_count) {
+        iprintf("please upload a raw m1n1.bin before issuing this command\n");
+        return;
+    }
+
+    char *fwversion = dt_get_prop("/chosen", "firmware-version", NULL);
+    strlcpy(fwversion, gFWVersion, 256);
+
+    void *m1n1 = alloc_static(loader_xfer_recv_count);
+    memmove(m1n1, loader_xfer_recv_data, loader_xfer_recv_count);
+    loader_xfer_recv_count = 0;
+    gM1N1Base = vatophys_static(m1n1);
+
+    gBootFlag = BOOT_FLAG_M1N1;
     task_yield();
 }
 
@@ -57,7 +76,7 @@ uint32_t ramdisk_size;
 
  */
 
-void ramdisk_cmd() {
+void ramdisk_cmd(const char *cmd, char *args) {
     if (!loader_xfer_recv_count) {
         iprintf("please upload a ramdisk before issuing this command\n");
         return;
@@ -77,17 +96,14 @@ void ramdisk_cmd() {
 
 */
 
-void pongo_spin() {
+void pongo_spin(const char *cmd, char *args) {
     spin(1000000);
 }
 
-extern char is_masking_autoboot;
-void start_host_shell() {
+void start_host_shell(const char *cmd, char *args) {
     task_current()->flags |= TASK_CAN_EXIT;
 
-    is_masking_autoboot = 1;
     command_unregister("shell");
-    command_unregister("autoboot");
     serial_enable_rx();
     screen_puts("Enabling USB");
     usb_init();
@@ -123,7 +139,7 @@ void hexdump(void *mem, unsigned int len)
         }
 }
 
-void md8_cmd(const char* cmd, char* args) {
+void md8_cmd(const char *cmd, char *args) {
     uint64_t base = strtoull(args, NULL, 16);
     uint64_t size = 0x20;
     char* arg1 = command_tokenize(args, 0x1ff - (args - cmd));
@@ -138,7 +154,7 @@ void md8_cmd(const char* cmd, char* args) {
 
     hexdump((void*)base, size);
 }
-void phys_page_dump(const char* cmd, char* args) {
+void phys_page_dump(const char *cmd, char *args) {
     uint64_t base = strtoull(args, NULL, 16);
 
     if (! *args) {
@@ -149,7 +165,7 @@ void phys_page_dump(const char* cmd, char* args) {
 
     hexdump((void*)0xc10000000, 0x4000);
 }
-void peek_cmd(const char* cmd, char* args) {
+void peek_cmd(const char *cmd, char *args) {
     if (! *args) {
         iprintf("peek usage: peek [addr]\n");
         return;
@@ -159,7 +175,7 @@ void peek_cmd(const char* cmd, char* args) {
     uint32_t rv = *((uint32_t*)addr);
     iprintf("0x%llx: %x (%x %x %x %x)\n", (uint64_t)addr, rv, rv&0xff, (rv>>8)&0xff, (rv>>16)&0xff, (rv>>24)&0xff);
 }
-void poke_cmd(const char* cmd, char* args) {
+void poke_cmd(const char *cmd, char *args) {
     if (! *args) {
         iprintf("poke usage: poke [addr] [val32]\n");
         return;
@@ -175,7 +191,7 @@ void poke_cmd(const char* cmd, char* args) {
     *((uint32_t*)addr) = value;
 }
 
-void panic_cmd(const char* cmd, char* args) {
+void panic_cmd(const char *cmd, char *args) {
     if (! *args) {
         panic("panic called from shell");
     } else {
@@ -183,7 +199,7 @@ void panic_cmd(const char* cmd, char* args) {
     }
 }
 
-void spawn_cmd(const char* cmd, char* args) {
+void spawn_cmd(const char *cmd, char *args) {
     if (! *args) {
         iprintf("usage: spawn syscallnr [x0]\n");
         return;
@@ -245,7 +261,7 @@ void recursion_cmd(const char* cmd, char* args) {
 
 */
 
-void shell_main() {
+void shell_main(void) {
     /*
         Load command handler
     */
@@ -253,8 +269,9 @@ void shell_main() {
     extern void task_list(const char *, char*);
     command_register("panic", "calls panic()", panic_cmd);
     command_register("ps", "lists current tasks and irq handlers", task_list);
-    command_register("ramdisk", "loads a ramdisk for xnu or linux", ramdisk_cmd);
+    command_register("ramdisk", "loads a ramdisk for xnu", ramdisk_cmd);
     command_register("bootr", "boot raw image", pongo_boot_raw);
+    command_register("bootm", "boots m1n1", pongo_boot_m1n1);
     command_register("spin", "spins 1 second", pongo_spin);
     command_register("md8", "memory dump", md8_cmd);
     command_register("peek", "32bit mem read", peek_cmd);
@@ -264,24 +281,17 @@ void shell_main() {
     command_register("spawn", "starts a usermode process", spawn_cmd);
     command_register("paging", "tests paging", paging_cmd);
     command_register("recursion", "tests stack guards", recursion_cmd);
-    extern void linux_commands_register(void);
-    linux_commands_register();
     usbloader_init();
 
     /*
         Load USB Loader
     */
 
-    extern void modload_cmd();
+    extern void modload_cmd(const char *cmd, char *args);
     command_register("modload", "loads module", modload_cmd);
     command_init();
 
     xnu_init();
-
-#ifdef AUTOBOOT
-    extern void pongo_autoboot();
-    pongo_autoboot();
-#endif
 
     queue_rx_string("shell\n");
 

@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -39,7 +39,7 @@ static struct driver __attribute__((used,section("__DATA,__drivers"))) _name = {
     .name = #_name, .initializer = _initializer, .context = _context, .flags = _flags\
 };
 
-void hal_init();
+void hal_init(void);
 struct hal_platform;
 struct hal_platform_driver {
     struct hal_platform_driver* next;
@@ -84,6 +84,6 @@ struct hal_platform {
 
 extern struct hal_platform* gPlatform;
 extern void hal_register_platform_driver(struct hal_platform_driver* driver);
-extern const char* hal_platform_name();
+extern const char* hal_platform_name(void);
 extern bool hal_get_platform_value(const char* name, void* value, size_t* size);
 extern int hal_invoke_service_op(struct hal_device* device, const char* svc_name, uint32_t method, void* data_in, size_t data_in_size, void* data_out, size_t *data_out_size);

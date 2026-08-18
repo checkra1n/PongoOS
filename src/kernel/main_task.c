@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -28,7 +28,7 @@
 #include <aes/aes_private.h>
 #include <recfg/recfg_soc_private.h>
 
-void shell_main();
+void shell_main(void);
 
 /*
 
@@ -38,17 +38,9 @@ void shell_main();
 */
 
 uint64_t gBootTimeTicks;
-void pongo_main_task() {
+char gFWVersion[256];
+void pongo_main_task(void) {
     gBootTimeTicks = get_ticks();
-
-    // Setup GPIO Base
-    gpio_early_init();
-
-    // Setup serial pinmux
-    serial_pinmux_init();
-
-    // Enable serial TX
-    serial_early_init();
 
     // Setup HAL
     hal_init();
@@ -94,9 +86,10 @@ void pongo_main_task() {
     puts("#==================");
     screen_mark_banner();
 
-    iprintf("Booted by: %s\n", (const char*)dt_get_prop("chosen", "firmware-version", NULL));
-    strcpy(dt_get_prop("chosen", "firmware-version", NULL), "pongoOS-");
-    strcat(dt_get_prop("chosen", "firmware-version", NULL), PONGO_VERSION);
+    char *fwversion = dt_get_prop("/chosen", "firmware-version", NULL);
+    iprintf("Booted by: %s\n", fwversion);
+    strlcpy(gFWVersion, fwversion, 256);
+    strcpy(fwversion, "pongoOS-" PONGO_VERSION);
 #ifdef __clang__
     iprintf("Built with: Clang %s\n", __clang_version__);
 #else

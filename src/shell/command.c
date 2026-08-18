@@ -1,7 +1,7 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
- * Copyright (C) 2019-2021 checkra1n team
+ *
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,8 +22,9 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
+#include <stdbool.h>
 #include <stdlib.h>
 #include <pongo.h>
 struct task* command_task;
@@ -34,8 +35,8 @@ struct command {
     const char* name;
     const char* desc;
     void (*cb)(const char* cmd, char* args);
+    bool hidden;
 } commands[64];
-char is_masking_autoboot;
 static lock command_lock;
 
 static int cmp_cmd(const void *a, const void *b)
@@ -54,19 +55,20 @@ void command_unregister(const char* name) {
             commands[i].name = 0;
             commands[i].desc = 0;
             commands[i].cb = 0;
+            commands[i].hidden = false;
         }
     }
     qsort(commands, 64, sizeof(struct command), &cmp_cmd);
     lock_release(&command_lock);
 }
-void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args)) {
-    if (is_masking_autoboot && strcmp(name,"autoboot") == 0) return;
+void _command_register_internal(const char* name, const char* desc, void (*cb)(const char* cmd, char* args), bool hidden) {
     lock_take(&command_lock);
     for (int i=0; i<64; i++) {
         if (!commands[i].name || strcmp(commands[i].name, name) == 0) {
             commands[i].name = name;
             commands[i].desc = desc;
             commands[i].cb = cb;
+            commands[i].hidden = hidden;
             qsort(commands, 64, sizeof(struct command), &cmp_cmd);
             lock_release(&command_lock);
             return;
@@ -74,6 +76,9 @@ void command_register(const char* name, const char* desc, void (*cb)(const char*
     }
     lock_release(&command_lock);
     panic("too many commands");
+}
+void command_register(const char* name, const char* desc, void (*cb)(const char* cmd, char* args)) {
+    _command_register_internal(name, desc, cb, false);
 }
 
 char* command_tokenize(char* str, uint32_t strbufsz) {
@@ -132,7 +137,7 @@ static inline void put_serial_modifier(const char* str) {
     while (*str) serial_putc(*str++);
 }
 
-void command_main() {
+void command_main(void) {
     while (1) {
         if (!uart_should_drop_rx) {
             fflush(stdout);
@@ -166,13 +171,13 @@ void command_main() {
 void help(const char * cmd, char* arg) {
     lock_take(&command_lock);
     for (int i=0; i<64; i++) {
-        if (commands[i].name) {
+        if (commands[i].name && !commands[i].hidden) {
             iprintf("%16s | %s\n", commands[i].name, commands[i].desc ? commands[i].desc : "no description");
         }
     }
     lock_release(&command_lock);
 }
-void command_init() {
+void command_init(void) {
     command_task = task_create("command", command_main);
     command_task->flags |= TASK_RESTART_ON_EXIT;
     command_task->flags &= ~TASK_CAN_EXIT;

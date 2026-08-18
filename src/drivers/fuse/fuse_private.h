@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -24,32 +24,14 @@
  * SOFTWARE.
  *
  */
-.globl _clear_hook
-.globl _clear_hook_end
-.globl _clear_hook_orig_backing
 
+#ifndef FUSE_PRIVATE_H
+#define FUSE_PRIVATE_H
 
-.align 4
-_clear_hook:
-mov x16, x30
-mov x30, x5
-mov x3, #0x800000000
-movk x3, #0x1800, lsl#16
-cmp x0, x3
-b.hi _clear_hook_orig_backing
-add x2, x1, x0
-cmp x2, x3
-b.lo _clear_hook_orig_backing
-mov x3, #0x800000000
-movk x3, #0x18e0, lsl#16
-cmp x0, x3
-b.hi _clear_hook_orig_backing
-add x2, x1, x0
-cmp x2, x3
-b.lo _clear_hook_orig_backing
-mov x1, #0
-_clear_hook_orig_backing:
-nop
-nop
-br x16
-_clear_hook_end:
+#ifdef PONGO_PRIVATE
+
+void fuse_init(void);
+
+#endif
+
+#endif

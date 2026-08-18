@@ -1,7 +1,7 @@
 /* 
  * pongoOS - https://checkra.in
  * 
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -38,11 +38,11 @@ extern uint32_t y_cursor;
 extern uint32_t x_cursor;
 extern uint8_t scale_factor;
 
-void screen_init();
+void screen_init(void);
 void screen_puts(const char* str);
 void screen_write(const char* str);
 void screen_putc(uint8_t c);
-void screen_clear_row();
-void screen_mark_banner();
-void screen_fill_basecolor();
+void screen_clear_row(void);
+void screen_mark_banner(void);
+void screen_fill_basecolor(void);
 void screen_fill(uint32_t color);

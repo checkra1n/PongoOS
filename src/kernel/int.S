@@ -1,7 +1,7 @@
-/* 
+/*
  * pongoOS - https://checkra.in
- * 
- * Copyright (C) 2019-2021 checkra1n team
+ *
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -11,10 +11,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,9 +22,12 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
-.align 12
+.text
+// XXX: Why do some of these do "msr spsel, 1"? Exception entry already
+//      does that for us. Moreover, why is it done *twice*?
+.align 11
 .globl _exception_vector
 _exception_vector:
     /* Current EL with SP0, handle within SP0 */
@@ -63,8 +66,8 @@ _exception_vector:
     msr spsel, #1
     adr x0, Jserror_exc
     b exc_handler /* SError/vSError */
-.balign 128
 
+.balign 128
     /* Current EL with SPn */
     sub sp, sp, #0x340
     stp x0,x1,[sp]
@@ -89,8 +92,8 @@ _exception_vector:
     adr x0, Jserror_exc
     add x1, sp, #0x340
     b exc_handler /* SError/vSError */
-.balign 128
 
+.balign 128
     /* Lower EL with Aarch64 */
     msr spsel, #1
     str x0, [sp, #-0x10]
@@ -144,7 +147,6 @@ _exception_vector:
     mov sp, x0
     adr x0, Jserror_exc
     b exc_handler /* SError/vSError */
-.balign 128
 
     /* Lower EL with Aarch32 */
 
@@ -193,31 +195,22 @@ exc_handler:
     stp x26,x27,[sp,#0xd0]
     stp x28,x29,[sp,#0xe0]
 
-    stp d0, d1, [sp,#0x130]
-    stp d2, d3, [sp,#0x150]
-    stp d4, d5, [sp,#0x170]
-    stp d6, d7, [sp,#0x190]
-    stp d8, d9, [sp,#0x1B0]
-    stp d10, d11, [sp,#0x1D0]
-    stp d12, d13, [sp,#0x1F0]
-    str d14, [sp,#0x210]
-    str d15, [sp,#0x220]
-    str d16, [sp,#0x230]
-    str d17, [sp,#0x240]
-    str d18, [sp,#0x250]
-    str d19, [sp,#0x260]
-    str d20, [sp,#0x270]
-    str d21, [sp,#0x280]
-    str d22, [sp,#0x290]
-    str d23, [sp,#0x2a0]
-    str d24, [sp,#0x2b0]
-    str d25, [sp,#0x2c0]
-    str d26, [sp,#0x2d0]
-    str d27, [sp,#0x2e0]
-    str d28, [sp,#0x2f0]
-    str d29, [sp,#0x300]
-    str d30, [sp,#0x310]
-    str d31, [sp,#0x320]
+    stp q0, q1, [sp,#0x130]
+    stp q2, q3, [sp,#0x150]
+    stp q4, q5, [sp,#0x170]
+    stp q6, q7, [sp,#0x190]
+    stp q8, q9, [sp,#0x1B0]
+    stp q10, q11, [sp,#0x1D0]
+    stp q12, q13, [sp,#0x1F0]
+    stp q14, q15, [sp,#0x210]
+    stp q16, q17, [sp,#0x230]
+    stp q18, q19, [sp,#0x250]
+    stp q20, q21, [sp,#0x270]
+    stp q22, q23, [sp,#0x290]
+    stp q24, q25, [sp,#0x2b0]
+    stp q26, q27, [sp,#0x2d0]
+    stp q28, q29, [sp,#0x2f0]
+    stp q30, q31, [sp,#0x310]
 
     mrs x29, esr_el1
     stp x30,x29,[sp,#0xf0]
@@ -243,9 +236,9 @@ exc_done:
 
     ldr x1, [sp, #0x110]
     msr spsr_el1, x1
-    
+
     mov x0, sp
-    
+
     ldp x2,x3,[x0,#0x10]
     ldp x4,x5,[x0,#0x20]
     ldp x6,x7,[x0,#0x30]
@@ -262,31 +255,22 @@ exc_done:
     ldp x28,x29,[x0,#0xe0]
     ldr x30,[x0,#0xf0]
 
-    ldp d0, d1, [x0,#0x130]
-    ldp d2, d3, [x0,#0x150]
-    ldp d4, d5, [x0,#0x170]
-    ldp d6, d7, [x0,#0x190]
-    ldp d8, d9, [x0,#0x1B0]
-    ldp d10, d11, [x0,#0x1D0]
-    ldp d12, d13, [x0,#0x1F0]
-    ldr d14, [x0,#0x210]
-    ldr d15, [x0,#0x220]
-    ldr d16, [x0,#0x230]
-    ldr d17, [x0,#0x240]
-    ldr d18, [x0,#0x250]
-    ldr d19, [x0,#0x260]
-    ldr d20, [x0,#0x270]
-    ldr d21, [x0,#0x280]
-    ldr d22, [x0,#0x290]
-    ldr d23, [x0,#0x2a0]
-    ldr d24, [x0,#0x2b0]
-    ldr d25, [x0,#0x2c0]
-    ldr d26, [x0,#0x2d0]
-    ldr d27, [x0,#0x2e0]
-    ldr d28, [x0,#0x2f0]
-    ldr d29, [x0,#0x300]
-    ldr d30, [x0,#0x310]
-    ldr d31, [x0,#0x320]
+    ldp q0, q1, [x0,#0x130]
+    ldp q2, q3, [x0,#0x150]
+    ldp q4, q5, [x0,#0x170]
+    ldp q6, q7, [x0,#0x190]
+    ldp q8, q9, [x0,#0x1B0]
+    ldp q10, q11, [x0,#0x1D0]
+    ldp q12, q13, [x0,#0x1F0]
+    ldp q14, q15, [x0,#0x210]
+    ldp q16, q17, [x0,#0x230]
+    ldp q18, q19, [x0,#0x250]
+    ldp q20, q21, [x0,#0x270]
+    ldp q22, q23, [x0,#0x290]
+    ldp q24, q25, [x0,#0x2b0]
+    ldp q26, q27, [x0,#0x2d0]
+    ldp q28, q29, [x0,#0x2f0]
+    ldp q30, q31, [x0,#0x310]
 
     add sp, sp, #0x340 // unwind frame in case we're returning to spsel 0 from spsel 1
 
@@ -332,7 +316,7 @@ __task_switch_asserted:
     stp x4, x5, [x2,#0x20]
     stp x6, x7, [x2,#0x30]
     stp x8, x9, [x2,#0x40]
-    
+
     mrs x1, ttbr1_el1
     str x1, [x2, #0x1C8]
     mrs x1, spsel
@@ -447,7 +431,7 @@ _task_load_asserted:
     ldp d10, d11, [x0,#0x140]
     ldp d12, d13, [x0,#0x160]
     ldp d14, d15, [x0,#0x180]
-        
+
     msr tpidr_el1, x0
     mov sp, x1
     ldr x1, [x0, #0x100]
@@ -469,7 +453,7 @@ _task_entry_j:
     mov x29, xzr
     mrs x0, tpidr_el1
     add x0, x0, #0x220 // -> struct task initial_state
-    
+
     ldp x2, x3, [x0,#0x10]
     ldp x4, x5, [x0,#0x20]
     ldp x6, x7, [x0,#0x30]

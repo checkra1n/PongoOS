@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -30,6 +30,7 @@ uint64_t gPMGRBase;
 uint64_t gWDTBase;
 
 __asm__(
+    ".text\n"
     ".globl _get_el\n"
     ".globl _rebase_pc\n"
     ".globl _set_vbar_el1\n"
@@ -48,6 +49,10 @@ __asm__(
     ".globl _copy_retn\n"
     ".globl _pan_on\n"
     ".globl _pan_off\n"
+    ".globl _cache_invalidate\n"
+    ".globl _cache_clean_and_invalidate\n"
+    ".globl _cache_clean\n"
+    ".globl _cache_clean_and_invalidate_all\n"
 
     "_get_el:\n"
     "    mrs x0, currentel\n"
@@ -144,7 +149,7 @@ __asm__(
     "_copy_trap_internal:\n"
     "    stp x29, x30, [sp, -0x10]!\n"
     "    mov x4, xzr\n"
-    "    1:\n"
+    "1:\n"
     "    cbz x2, 2f\n"
     "    ldrb w5, [x1], #1\n"
     "    strb w5, [x0], #1\n"
@@ -156,11 +161,80 @@ __asm__(
     "    mov x0, x4\n"
     "    ldp x29, x30, [sp], 0x10\n"
     "    ret\n"
-    );
+
+    "_cache_invalidate:\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "   add x1, x0, x1\n"
+    "1:\n"
+    "   dc ivac, x0\n"
+    "   add x0, x0, 0x40\n"
+    "   cmp x0, x1\n"
+    "   b.lo 1b\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "   ret\n"
+
+    "_cache_clean_and_invalidate:\n"
+    "_cache_clean:\n" // invalidates too, because Apple
+    "   dsb sy\n"
+    "   isb\n"
+    "   add x1, x0, x1\n"
+    "1:\n"
+    "   dc civac, x0\n"
+    "   add x0, x0, 0x40\n"
+    "   cmp x0, x1\n"
+    "   b.lo 1b\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "   ret\n"
+
+    "_cache_clean_and_invalidate_all:\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "   mrs x1, clidr_el1\n"
+    "   and x2, x1, 0xf\n"
+    "   cbz x2, 5f\n" // No cache?
+    "   mov w0, 0\n" // w0 = Cache level
+    "1:\n"
+    "   lsr x1, x1, 4\n"
+    "   and x2, x1, 0xf\n"
+    "   cbz x2, 2f\n"
+    "   add x0, x0, 2\n"
+    "   cmp x0, 14\n"
+    "   b.eq 2f\n"
+    "   b 1b\n"
+    "2:\n"
+    "   msr csselr_el1, x0\n"
+    "   isb\n"
+    "   mrs x5, ccsidr_el1\n"
+    "   ubfx w3, w5, 13, 15\n" // w3 = Sets
+    "   ubfx w5, w5, 3, 10\n"  // w5 = Ways
+    "   clz w6, w5\n" // lsb of ways
+    "   mov w4, 0\n" // w4 = Way counter
+    "3:\n"
+    "   mov w2, 0\n" // w2 = Set counter
+    "4:\n"
+    "   lsl w1, w4, w6\n"
+    "   bfi w1, w2, 6, 13\n"
+    "   orr w1, w1, w0\n"
+    "   dc cisw, x1\n"
+    "   add w2, w2, 1\n"
+    "   cmp w2, w3\n"
+    "   b.ls 4b\n"
+    "   add w4, w4, 1\n"
+    "   cmp w4, w5\n"
+    "   b.ls 3b\n"
+    "   dsb sy\n"
+    "   isb\n"
+    "5:\n"
+    "   ret\n"
+);
+
 extern void copy_retn(void);
 extern size_t copy_trap_internal(void* dest, void* src, size_t size);
-uint64_t exception_stack[0x4000/8] = {1};
-uint64_t sched_stack[0x4000/8] = {1};
+uint64_t exception_stack[0x4000/8] = {};
+uint64_t sched_stack[0x4000/8] = {};
 size_t memcpy_trap(void* dest, void* src, size_t size) {
     disable_interrupts();
     if (!task_current()) panic("memcpy_trap requires task_current() to be populated");
@@ -171,13 +245,13 @@ size_t memcpy_trap(void* dest, void* src, size_t size) {
 
     if (ID_MMFR3_EL1 & 0xF0000) // PAN exists!
     {
-        extern volatile void pan_off();
+        extern volatile void pan_off(void);
         pan_off();
     }
     size_t retn = copy_trap_internal(dest, src, size);
     if (ID_MMFR3_EL1 & 0xF0000) // PAN exists!
     {
-        extern volatile void pan_on();
+        extern volatile void pan_on(void);
         pan_on();
     }
 
@@ -189,20 +263,20 @@ size_t memcpy_trap(void* dest, void* src, size_t size) {
 extern _Noreturn void panic_new_fp(const char* string, ...);
 
 uint64_t dis_int_count = 1;
-void _enable_interrupts();
-void enable_interrupts() {
+void _enable_interrupts(void);
+void enable_interrupts(void) {
     if (!dis_int_count) panic("irq over-enable");
     dis_int_count--;
     if (!dis_int_count) {
         _enable_interrupts();
     }
 }
-void enable_interrupts_asserted() {
+void enable_interrupts_asserted(void) {
     if (!dis_int_count) panic("irq over-enable");
     dis_int_count--;
 }
-void _disable_interrupts();
-void disable_interrupts() {
+void _disable_interrupts(void);
+void disable_interrupts(void) {
     _disable_interrupts();
     dis_int_count++;
     if (!dis_int_count) panic("irq over-disable");
@@ -333,22 +407,22 @@ int sync_exc_el0(uint64_t* state) {
     dis_int_count = 0;
     return sync_exc(state);
 }
-uint32_t interrupt_vector() {
+uint32_t interrupt_vector(void) {
     return (*(volatile uint32_t *)(gInterruptBase + 0x2004));
 }
 uint64_t interruptCount = 0, fiqCount = 0;
 uint32_t do_preempt = 1;
-void disable_preemption() {
+void disable_preemption(void) {
     disable_interrupts();
     do_preempt++;
     enable_interrupts();
 }
-void enable_preemption() {
+void enable_preemption(void) {
     disable_interrupts();
     do_preempt--;
     enable_interrupts();
 }
-int irq_exc() {
+int irq_exc(void) {
     timer_disable();
     dis_int_count = 1;
     is_in_exception = 1;
@@ -375,7 +449,7 @@ int serror_exc(uint64_t* state) {
     is_in_exception = 0;
     return 0;
 }
-int _fiq_exc() {
+int _fiq_exc(void) {
     is_in_exception = 1;
     fiqCount++;
     dis_int_count = 1;
@@ -387,17 +461,17 @@ int _fiq_exc() {
     return ret_val;
 }
 extern uint64_t preemption_counter;
-int fiq_exc() {
+int fiq_exc(void) {
     int fiq_r = _fiq_exc();
     if (fiq_r) {
         preemption_counter++;
     }
     return fiq_r;
 }
-void fiq_sp1() {
+void fiq_sp1(void) {
     panic("got FIQ in EL1h SP1?!");
 }
-void irq_sp1() {
+void irq_sp1(void) {
     panic("got FIQ in EL1h SP1?!");
 }
 void spin(uint32_t usec)
@@ -461,7 +535,7 @@ void mask_interrupt(uint32_t reg) {
 #define WDT_SYS_RST (*(volatile uint32_t*)(gWDTBase + 0x14))
 #define WDT_SYS_CTL (*(volatile uint32_t*)(gWDTBase + 0x1c))
 
-void wdt_reset()
+void wdt_reset(void)
 {
     if(!gWDTBase)
     {
@@ -477,7 +551,7 @@ void wdt_reset()
     }
     panic("wdt reset");
 }
-void wdt_enable()
+void wdt_enable(void)
 {
     // TODO: We should probably change this func signature to include a timeout, if we actually plan to use it?
     return;
@@ -490,7 +564,7 @@ void wdt_enable()
     *(volatile uint32_t*)(gWDTBase + 0x0) = 0;
 #endif
 }
-void wdt_disable()
+void wdt_disable(void)
 {
     if (!gWDTBase) return;
     WDT_CHIP_CTL = 0x0; // Disable WDT
@@ -527,37 +601,38 @@ typedef struct
     char name[0x10];
 } pmgr_dev_t;
 
-static uint32_t gPMGRreglen = 0;
-static uint32_t gPMGRmaplen = 0;
-static uint32_t gPMGRdevlen = 0;
+static size_t gPMGRreglen = 0;
+static size_t gPMGRmaplen = 0;
+static size_t gPMGRdevlen = 0;
 static pmgr_reg_t *gPMGRreg = NULL;
 static pmgr_map_t *gPMGRmap = NULL;
 static pmgr_dev_t *gPMGRdev = NULL;
 
-void pmgr_init()
+void pmgr_init(void)
 {
-    dt_node_t *pmgr = dt_find(gDeviceTree, "pmgr");
-    gPMGRreg = dt_prop(pmgr, "reg",     &gPMGRreglen);
-    gPMGRmap = dt_prop(pmgr, "ps-regs", &gPMGRmaplen);
-    gPMGRdev = dt_prop(pmgr, "devices", &gPMGRdevlen);
+    dt_node_t *pmgr = dt_get("/arm-io/pmgr");
+    gPMGRreg = dt_node_prop(pmgr, "reg",     &gPMGRreglen);
+    gPMGRmap = dt_node_prop(pmgr, "ps-regs", &gPMGRmaplen);
+    gPMGRdev = dt_node_prop(pmgr, "devices", &gPMGRdevlen);
     gPMGRreglen /= sizeof(*gPMGRreg);
     gPMGRmaplen /= sizeof(*gPMGRmap);
     gPMGRdevlen /= sizeof(*gPMGRdev);
     gPMGRBase = gIOBase + gPMGRreg[0].addr;
-    gWDTBase  = gIOBase + dt_get_u64_prop("wdt", "reg");
-    command_register("reset", "resets the device", wdt_reset);
+    gWDTBase  = gIOBase + dt_get_u64("/arm-io/wdt", "reg", 0);
+    command_register("reset", "resets the device", (void*)wdt_reset);
     command_register("crash", "branches to an invalid address", (void*)0x41414141);
 }
-void interrupt_init() {
-    gInterruptBase = dt_get_u32_prop("aic", "reg");
-    gInterruptBase += gIOBase;
-
-    gAICVersion = dt_get_u32_prop("aic", "aic-version");
+void interrupt_init(void)
+{
+    dt_node_t *aic = dt_get("/arm-io/aic");
+    gInterruptBase = gIOBase + dt_node_u64(aic, "reg", 0);
+    gAICVersion = dt_node_u32(aic, "aic-version", 0);
 
     interrupt_or_config(0xE0000000);
     interrupt_or_config(1); // enable interrupt
 }
-void interrupt_teardown() {
+void interrupt_teardown(void)
+{
     wdt_disable();
     task_irq_teardown();
 }
@@ -624,47 +699,6 @@ void clock_gate(uint64_t addr, char val)
     }
 }
 
-void
-cache_invalidate(void *address, size_t size) {
-    uint64_t cache_line_size = 64;
-    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-    asm volatile("isb");
-    asm volatile("dsb sy");
-    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-        asm volatile("dc ivac, %0" : : "r"(addr));
-    }
-    asm volatile("dsb sy");
-    asm volatile("isb");
-}
-
-void
-cache_clean_and_invalidate(void *address, size_t size) {
-    uint64_t cache_line_size = 64;
-    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-    asm volatile("isb");
-    asm volatile("dsb sy");
-    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-        asm volatile("dc civac, %0" : : "r"(addr));
-    }
-    asm volatile("dsb sy");
-    asm volatile("isb");
-}
-
-void
-cache_clean(void *address, size_t size) { // invalidates too, because Apple
-    uint64_t cache_line_size = 64;
-    uint64_t start = ((uintptr_t) address) & ~(cache_line_size - 1);
-    uint64_t end = ((uintptr_t) address + size + cache_line_size - 1) & ~(cache_line_size - 1);
-    asm volatile("isb");
-    asm volatile("dsb sy");
-    for (uint64_t addr = start; addr < end; addr += cache_line_size) {
-        asm volatile("dc civac, %0" : : "r"(addr));
-    }
-    asm volatile("dsb sy");
-    asm volatile("isb");
-}
 extern uint64_t heap_base;
 extern uint64_t heap_end;
 extern uint64_t linear_kvm_base;

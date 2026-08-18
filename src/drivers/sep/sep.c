@@ -1,7 +1,7 @@
 /*
  * pongoOS - https://checkra.in
  *
- * Copyright (C) 2019-2021 checkra1n team
+ * Copyright (C) 2019-2023 checkra1n team
  *
  * This file is part of pongoOS.
  *
@@ -26,6 +26,7 @@
  */
 #include <pongo.h>
 #include <img4/img4.h>
+#include <fuse/fuse.h>
 #include <recfg/recfg_soc.h>
 
 #define IRQ_T8015_SEP_INBOX_NOT_EMPTY 0x79
@@ -91,8 +92,14 @@ void (*sepfw_kpf_hook)(void* sepfw_bytes, size_t sepfw_size);
 void sepfw_kpf(void* sepfw_bytes, size_t sepfw_size) {
     uint32_t* insn_stream = sepfw_bytes;
     for (uint32_t i=0; i < sepfw_size/4; i++) {
-        if (insn_stream[i] == 0xe1810200) {
-            insn_stream[i] = 0xe3a00000;
+        if (insn_stream[i] == 0xe1810200) { // orr r0, r1, r0, lsl 4
+            insn_stream[i] = 0xe3a00000; // mov r0, 0
+#ifdef SEP_DEBUG
+            fiprintf(stderr, "patched out bpr check\n");
+#endif
+            break;
+        } else if ((insn_stream[i] & 0xfff8ffff) == 0xe1900200) { // orrs r0, r{0-7}, r0, lsl 4
+            insn_stream[i] = 0xe1500000; // cmp r0, r0
 #ifdef SEP_DEBUG
             fiprintf(stderr, "patched out bpr check\n");
 #endif
@@ -117,7 +124,7 @@ static inline void mailbox_write(uint64_t value) {
         mailboxregs32->snd1 = (value >> 32ULL) & 0xffffffff;
     }
 }
-static inline uint64_t mailbox_read() {
+static inline uint64_t mailbox_read(void) {
     uint64_t rd;
 
     if (is_sep64) {
@@ -145,7 +152,7 @@ static inline void mailbox_write_fast(uint64_t value) {
         mailboxregs32->snd1 = (value >> 32ULL) & 0xffffffff;
     }
 }
-static inline uint64_t mailbox_read_fast() {
+static inline uint64_t mailbox_read_fast(void) {
     uint64_t rd;
 
     if (is_sep64) {
@@ -239,7 +246,7 @@ void sep_handle_msg_from_sep(union sep_message_u msg) {
 
     // [tbd]
 }
-void sep_check_mailbox() {
+void sep_check_mailbox(void) {
     uint32_t sts = (is_sep64) ? mailboxregs64->recv_sts : mailboxregs32->recv_sts;
     if ((sts & 0x20000) == 0) {
         union sep_message_u msg;
@@ -248,20 +255,20 @@ void sep_check_mailbox() {
         event_fire(&sep_msg_event);
     }
 }
-uint64_t sep_fast_check_mailbox() {
+uint64_t sep_fast_check_mailbox(void) {
     uint32_t sts = (is_sep64) ? mailboxregs64->recv_sts : mailboxregs32->recv_sts;
     if ((sts & 0x20000) == 0) {
         return mailbox_read_fast();
     }
     return 0;
 }
-void sep_irq() {
+void sep_irq(void) {
     while (1) {
         sep_check_mailbox();
         task_exit_irq();
     }
 }
-void seprom_ping() {
+void seprom_ping(void) {
     disable_interrupts();
     seprom_execute_opcode(1, 0, 0);
     event_wait_asserted(&sep_msg_event);
@@ -340,14 +347,16 @@ static bool seprom_config_integrity_tree(bool sync) {
     else     spin(2400);
     return true;
 }
-void seprom_boot_tz0() {
+void seprom_boot_tz0(void) {
+    fuse_lock();
     // This needs disable_interrupts after
     if(!seprom_config_integrity_tree(true)) return;
     disable_interrupts();
     seprom_execute_opcode(5, 0, 0);
     event_wait_asserted(&sep_done_tz0_event);
 }
-void seprom_boot_tz0_async() {
+void seprom_boot_tz0_async(void) {
+    fuse_lock();
     // This needs disable_interrupts first
     disable_interrupts();
     if(seprom_config_integrity_tree(false))
@@ -364,7 +373,7 @@ void seprom_load_sepos(void *firmware, char mode) {
     seprom_execute_opcode(6, mode, vatophys((uint64_t) (firmware)) >> 12);
     event_wait_asserted(&sep_msg_event);
 }
-void seprom_fwload() {
+void seprom_fwload(void) {
     // We clear this here to account for "sep auto" followed by manual invocation
     is_waiting_to_boot = 0;
     seprom_load_sepos(gSEPFW, 0);
@@ -427,7 +436,7 @@ static void sep_blackbird_boot(uint32_t sepb) {
     return sep_blackbird_jump_noreturn(0, sepb);
 }
 static uint32_t sepbp;
-static void sep_pwned_boot_auto() {
+static void sep_pwned_boot_auto(void) {
     if (is_waiting_to_boot) {
         if(!sep_is_pwned) {
             fiprintf(stderr, "sep is not pwned!\n");
@@ -642,7 +651,7 @@ no_kbag:
 }
 
 
-void seprom_fwload_race() {
+void seprom_fwload_race(void) {
     uint32_t volatile* shmshc = (uint32_t*)0x210E00000;
 
     if (shmshc[0] == 0xea000002) {
@@ -833,9 +842,7 @@ void seprom_fwload_race() {
     msg.msg.opcode = 6;
     msg.msg.param = 0;
     msg.msg.data = vatophys((uint64_t)sep_image) >> 12ULL;
-    wdt_disable();
     do_sep_racer(image_victim, tz0_shc, (void*)b0, (void*)bs, replay_layout, range_size*2, replay_shc, (void*)shared_value, msg.val);
-    wdt_enable();
 
     if (sep_has_panicked) {
         fiprintf(stderr, "sep race failed: seprom panic\n");
@@ -879,24 +886,24 @@ void seprom_load_art(void* art, char mode) {
     seprom_execute_opcode(6, mode, (vatophys((uint64_t)art)) >> 12);
     event_wait_asserted(&sep_msg_event);
 }
-void seprom_artload() {
+void seprom_artload(void) {
     if (!loader_xfer_recv_count) {
         iprintf("please upload an ART before issuing this command\n");
         return;
     }
     seprom_load_art((void*)loader_xfer_recv_data, 0);
 }
-void seprom_resume() {
+void seprom_resume(void) {
     disable_interrupts();
     seprom_execute_opcode(8, 0, 0);
     event_wait_asserted(&sep_msg_event);
 }
-void seprom_panic() {
+void seprom_panic(void) {
     disable_interrupts();
     seprom_execute_opcode(10, 0, 0);
     event_wait_asserted(&sep_msg_event);
 }
-void seprom_rand() {
+void seprom_rand(void) {
     disable_interrupts();
     seprom_execute_opcode(16, 0, 0);
     event_wait_asserted(&sep_rand_event);
@@ -910,7 +917,7 @@ struct sep_command {
     void (*cb)(const char* cmd, char* args);
 };
 
-void sep_help();
+void sep_help(const char* cmd, char* args);
 #define SEP_COMMAND(_name, _desc, _cb) {.name = _name, .desc = _desc, .cb = _cb}
 void sep_pwned_peek(const char* cmd, char* args) {
     if(!sep_is_pwned) {
@@ -1124,15 +1131,15 @@ static struct sep_command command_table[] = {
     SEP_COMMAND("help", "show usage", sep_help),
     SEP_COMMAND("auto", "automatically decide what to do", sep_auto),
 #ifndef SEP_AUTO_ONLY
-    SEP_COMMAND("ping", "ping seprom", seprom_ping),
-    SEP_COMMAND("tz0", "tell seprom to boot_tz0", seprom_boot_tz0),
-    SEP_COMMAND("tz0a", "tell seprom to boot_tz0 without waiting", seprom_boot_tz0_async),
-    SEP_COMMAND("fwload", "tell seprom to load sepos image", seprom_fwload),
-    SEP_COMMAND("artload", "tell seprom to load anti-replay token", seprom_artload),
-    SEP_COMMAND("resume", "tell seprom to resume", seprom_resume),
-    SEP_COMMAND("panic", "tell seprom to panic", seprom_panic),
-    SEP_COMMAND("rand", "ask seprom for randomness", seprom_rand),
-    SEP_COMMAND("pwn", "get sep code execution (must run while in seprom before tz0 lockdown / initialization)", seprom_fwload_race),
+    SEP_COMMAND("ping", "ping seprom", (void*)seprom_ping),
+    SEP_COMMAND("tz0", "tell seprom to boot_tz0", (void*)seprom_boot_tz0),
+    SEP_COMMAND("tz0a", "tell seprom to boot_tz0 without waiting", (void*)seprom_boot_tz0_async),
+    SEP_COMMAND("fwload", "tell seprom to load sepos image", (void*)seprom_fwload),
+    SEP_COMMAND("artload", "tell seprom to load anti-replay token", (void*)seprom_artload),
+    SEP_COMMAND("resume", "tell seprom to resume", (void*)seprom_resume),
+    SEP_COMMAND("panic", "tell seprom to panic", (void*)seprom_panic),
+    SEP_COMMAND("rand", "ask seprom for randomness", (void*)seprom_rand),
+    SEP_COMMAND("pwn", "get sep code execution (must run while in seprom before tz0 lockdown / initialization)", (void*)seprom_fwload_race),
     SEP_COMMAND("peek", "read a 32 bit value", sep_pwned_peek),
     SEP_COMMAND("poke", "write a 32 bit value", sep_pwned_poke),
     SEP_COMMAND("jump", "jump to address", sep_pwned_jump),
@@ -1170,16 +1177,15 @@ void sep_cmd(const char* cmd, char* args) {
     }
 }
 
-void sep_setup() {
-    gSEPDev = dt_find(gDeviceTree, "/device-tree/arm-io/sep");
-    if(!gSEPDev) panic("sep_setup: no device!");
+void sep_setup(void)
+{
+    gSEPDev = dt_get("/arm-io/sep");
 
-    uint32_t len = 0;
+    size_t len = 0;
     uint32_t *xnu_wants_booted = dt_prop(gSEPDev, "sepfw-booted", &len);
     gXNUExpectsBooted = xnu_wants_booted && len == 4 && *xnu_wants_booted != 0;
 
-    dt_node_t *map = dt_find(gDeviceTree, "/device-tree/chosen/memory-map");
-    if(!map) panic("sep_setup: no memory-map!");
+    dt_node_t *map = dt_get("/chosen/memory-map");
     uint64_t *fw = dt_prop(map, "SEPFW", &len);
     if(fw)
     {
@@ -1188,8 +1194,7 @@ void sep_setup() {
         gSEPFWLen = fw[1];
     }
 
-    uint64_t* reg = dt_prop(gSEPDev, "reg", &len);
-    if(!reg) panic("sep_setup: no reg prop!");
+    uint64_t* reg = dt_node_prop(gSEPDev, "reg", &len);
     if(len < 16) panic("sep_setup: sep reg prop too short");
 
     uint64_t sep_reg_u = reg[0] + gIOBase;
@@ -1201,8 +1206,7 @@ void sep_setup() {
         is_sep64 = 0;
     }
 
-    uint32_t* ints = dt_prop(gSEPDev, "interrupts", &len);
-    if(!ints) panic("sep_setup: no interrupts prop!");
+    uint32_t* ints = dt_node_prop(gSEPDev, "interrupts", &len);
     if(len != 16) panic("sep_setup: sep interrupts != 4");
 
     struct task* sep_irq_task = task_create_extended("sep", sep_irq, TASK_IRQ_HANDLER|TASK_PREEMPT, 0);
