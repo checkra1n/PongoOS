@@ -76,13 +76,13 @@ void sepfw_kpf(void* sepfw_bytes, size_t sepfw_size) {
 }
 
 void patch_cleartext_sepos(void* decrypted_buffer, size_t buffer_size) {
-    if (socnum == 0x7000) {
+    if (socnum == 0x7000 || socnum == 0x7001) {
         uint32_t* cleartext_stream = (uint32_t*)decrypted_buffer;
         for (uint32_t i = 0; i < buffer_size / 4; i++) {
             if ((cleartext_stream[i] & 0xfff00000) == 0xe1800000) {
-                cleartext_stream[i] = 0xe3a00000; 
+                cleartext_stream[i] = 0xe3a00000;
 #ifdef SEP_DEBUG
-                fiprintf(stderr, "[+] PongoOS: Successfully patched decrypted A8 SEPOS.\n");
+                fiprintf(stderr, "[+] PongoOS: Successfully patched decrypted A8(X) SEPOS.\n");
 #endif
                 break;
             }
@@ -418,6 +418,7 @@ static void sep_pwned_boot_auto() {
     switch(socnum)
     {
         case 0x7000:
+        case 0x7001:
             bpr = 0x2002d0030;
             break;
         case 0x8010:
@@ -940,7 +941,7 @@ void sep_pwned_boot(const char* cmd, char* args) {
 }
 
 void sep_aes_kbag(uint32_t* kbag_bytes_32, uint32_t * kbag_out, char mode) {
-    uint32_t aes_base = (socnum == 0x7000) ? 0x200300000 : 0xcd300000;
+    uint32_t aes_base = (socnum == 0x7000 || socnum == 0x7001) ? 0x200300000 : 0xcd300000;
     sep_blackbird_write(aes_base + 8, 0x20a - mode);
 
     uint32_t iv[4] = {0};
@@ -1039,6 +1040,7 @@ void sep_auto(const char* cmd, char* args)
     switch(socnum)
     {
         case 0x7000:
+        case 0x7001:
         case 0x8010:
         case 0x8011:
         case 0x8012:
