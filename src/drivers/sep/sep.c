@@ -432,6 +432,9 @@ static void sep_pwned_boot_auto() {
     uintptr_t bpr = 0;
     switch(socnum)
     {
+        case 0x7000:
+            bpr = 0x2002d0030;
+            break;
         case 0x8010:
         case 0x8011:
             bpr = 0x2102d0030;
@@ -971,7 +974,8 @@ void sep_pwned_boot(const char* cmd, char* args) {
 }
 
 void sep_aes_kbag(uint32_t* kbag_bytes_32, uint32_t * kbag_out, char mode) {
-    sep_blackbird_write(0xcd300000 + 8, 0x20a - mode); // select key
+    uint32_t aes_base = (socnum == 0x7000) ? 0x200300000 : 0xcd300000; //replace with correct A8 crypto base if different from A10's 0xcd300000
+    sep_blackbird_write(aes_base + 8, 0x20a - mode); // select key
     // 4 = clk, 8 = ctl, c = sts, 40 = in, 50 = iv, 70 = out
 
     uint32_t iv[4] = {0};
@@ -1090,7 +1094,8 @@ void sep_auto(const char* cmd, char* args)
     }
     switch(socnum)
     {
-        // Case 2: We are on A10/A10X/T2. In this case, we want to pwn the SEP and patch SEPOS.
+        // Case 2: We are on A8/A10/A10X/T2. In this case, we want to pwn the SEP and patch SEPOS.
+        case 0x7000:
         case 0x8010:
         case 0x8011:
         case 0x8012:
@@ -1186,6 +1191,7 @@ void sep_setup() {
         mailboxregs64 = (volatile struct mailbox_registers64 *)(sep_reg_u + 0x8100);
         is_sep64 = 1;
     } else {
+        // Covers A8 (0x7000), A7, etc., using the standard 32-bit mailbox offset at 0x4000
         mailboxregs32 = (volatile struct mailbox_registers32 *)(sep_reg_u + 0x4000);
         is_sep64 = 0;
     }
