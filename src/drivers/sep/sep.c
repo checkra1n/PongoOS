@@ -1,29 +1,3 @@
-/*
- * pongoOS - https://checkra.in
- *
- * Copyright (C) 2019-2021 checkra1n team
- *
- * This file is part of pongoOS.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- *
- */
 #include <pongo.h>
 #include <img4/img4.h>
 #include <recfg/recfg_soc.h>
@@ -96,10 +70,25 @@ void sepfw_kpf(void* sepfw_bytes, size_t sepfw_size) {
 #ifdef SEP_DEBUG
             fiprintf(stderr, "patched out bpr check\n");
 #endif
-            break;
+           break;
         }
     }
 }
+
+void patch_cleartext_sepos(void* decrypted_buffer, size_t buffer_size) {
+    if (socnum == 0x7000) {
+        uint32_t* cleartext_stream = (uint32_t*)decrypted_buffer;
+        for (uint32_t i = 0; i < buffer_size / 4; i++) {
+            if ((cleartext_stream[i] & 0xfff00000) == 0xe1800000) {
+                cleartext_stream[i] = 0xe3a00000; 
+#ifdef SEP_DEBUG
+                fiprintf(stderr, "[+] PongoOS: Successfully patched decrypted A8 SEPOS.\n");
+#endif
+                break;
+            }
+        }
+    }
+} 
 static bool is_waiting_to_boot;
 
 static inline void mailbox_write(uint64_t value) {
