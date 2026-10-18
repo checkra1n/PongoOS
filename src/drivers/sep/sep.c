@@ -573,7 +573,7 @@ void reload_sepi(Img4 *img4) {
 
     memcpy(sepfw_bytes, payload.data, payload.length);
     aes_cbc(decrypted_kbag+0x10, decrypted_kbag, sepfw_bytes, payload.length);
-
+    patch_cleartext_sepos(sepfw_bytes, payload.length);
     //hexdump(sepfw_bytes, 0x40);
 
     if (sepfw_kpf_hook)
