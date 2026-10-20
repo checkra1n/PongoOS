@@ -10,17 +10,51 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Install toolchain
+        # The checkra1n team's own ld64/cctools-strip .deb packages
+        # (assets.checkra.in/debian -- still a live, maintained apt repo)
+        # are Debian-11-era builds that depend on libssl1.1 and
+        # libblocksruntime0, neither of which Ubuntu packages from 22.04
+        # onward, so they no longer install here. Build the same
+        # tpoechtrager/cctools-port + apple-libdispatch stack the
+        # checkra1n/ld64-build project itself is based on, from source,
+        # with LTO support enabled (this project links with -flto, which
+        # needs ld to understand LLVM bitcode via libLTO).
         run: |
-          echo 'deb https://assets.checkra.in/debian /' | sudo tee /etc/apt/sources.list.d/checkra1n.list
-          sudo apt-key adv --fetch-keys https://assets.checkra.in/debian/archive.key
+          set -e
           sudo apt-get update
-          sudo apt-get install -y ld64 cctools-strip
+          sudo apt-get install -y clang-14 llvm-14-dev cmake xxd
+
+          git clone --depth 1 https://github.com/tpoechtrager/apple-libdispatch.git /tmp/apple-libdispatch
+          cmake -S /tmp/apple-libdispatch -B /tmp/apple-libdispatch/build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DCMAKE_C_COMPILER=clang-14 -DCMAKE_CXX_COMPILER=clang++-14 \
+            -DCMAKE_INSTALL_PREFIX=/tmp/cctools-prefix
+          cmake --build /tmp/apple-libdispatch/build -j"$(nproc)"
+          cmake --install /tmp/apple-libdispatch/build
+
+          git clone --depth 1 https://github.com/tpoechtrager/cctools-port.git /tmp/cctools-port
+          cd /tmp/cctools-port/cctools
+          CC=clang-14 CXX=clang++-14 \
+          LDFLAGS="-L$(llvm-config-14 --libdir) -Wl,-rpath,$(llvm-config-14 --libdir)" \
+          ./configure --target=arm64-apple-darwin20 \
+            --with-libdispatch=/tmp/cctools-prefix \
+            --with-libblocksruntime=/tmp/cctools-prefix \
+            --with-llvm-config=llvm-config-14 \
+            --enable-lto-support
+          make -j"$(nproc)"
+
+          echo "/tmp/cctools-prefix/lib" | sudo tee /etc/ld.so.conf.d/cctools-prefix.conf
+          echo "$(llvm-config-14 --libdir)" | sudo tee -a /etc/ld.so.conf.d/cctools-prefix.conf
+          sudo ldconfig
+
+          echo "CCTOOLS_LD=/tmp/cctools-port/cctools/ld64/src/ld/ld" >> "$GITHUB_ENV"
+          echo "CCTOOLS_STRIP=/tmp/cctools-port/cctools/misc/strip" >> "$GITHUB_ENV"
       - name: Voodoo magic
         id: voodoo
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           key: ${{ github.event_name }}-${{ github.ref }}-${{ github.run_id }}
           restore-keys: |
@@ -30,7 +64,7 @@ jobs:
             **
       - name: Checkout repository
         if: steps.voodoo.outputs.cache-hit != 'true'
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: Update repository
@@ -40,9 +74,9 @@ jobs:
           git reset --hard origin/$(git branch --show-current)
           git submodule update --recursive --remote
       - name: Compile
-        run: EMBEDDED_CC='clang-10' EMBEDDED_AR='llvm-ar-10' EMBEDDED_RANLIB='llvm-ranlib-10' make all
+        run: EMBEDDED_CC='clang-14' EMBEDDED_AR='llvm-ar-14' EMBEDDED_RANLIB='llvm-ranlib-14' EMBEDDED_LDFLAGS="-fuse-ld=$CCTOOLS_LD" STRIP="$CCTOOLS_STRIP" make all
       - name: Archive
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: PongoOS
           path: |
