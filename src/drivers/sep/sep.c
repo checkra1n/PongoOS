@@ -76,6 +76,12 @@ void sepfw_kpf(void* sepfw_bytes, size_t sepfw_size) {
 }
 
 void patch_cleartext_sepos(void* decrypted_buffer, size_t buffer_size) {
+    // Defensive: every current caller passes a non-NULL buffer sized to at
+    // least buffer_size, but guard explicitly rather than faulting on
+    // cleartext_stream[0] if that ever stops being true.
+    if (!decrypted_buffer || buffer_size < sizeof(uint32_t)) {
+        return;
+    }
     if (socnum == 0x7000 || socnum == 0x7001) {
         uint32_t* cleartext_stream = (uint32_t*)decrypted_buffer;
         for (uint32_t i = 0; i < buffer_size / 4; i++) {
@@ -88,7 +94,7 @@ void patch_cleartext_sepos(void* decrypted_buffer, size_t buffer_size) {
             }
         }
     }
-} 
+}
 static bool is_waiting_to_boot;
 
 static inline void mailbox_write(uint64_t value) {
@@ -417,6 +423,12 @@ static void sep_pwned_boot_auto() {
     uintptr_t bpr = 0;
     switch(socnum)
     {
+        // NOTE (unverified hardware assumption): 0x2002d0030 was derived by
+        // extrapolating the per-SoC BPR address pattern below (t8010/t8011
+        // -> 0x2102d0030, t8015 -> 0x2352d0030) to t7000/t7001. It has not
+        // been confirmed against real A8/A8X hardware or SEPROM disassembly.
+        // A wrong address here means this check can silently fail to catch
+        // a real "BPR is set" condition, or read an unrelated register.
         case 0x7000:
         case 0x7001:
             bpr = 0x2002d0030;
@@ -538,6 +550,11 @@ void reload_sepi(Img4 *img4) {
     DERItem payload;
     if (Img4DecodeGetPayload(img4, &payload)) panic("no sepi payload");
 
+    // Checked arithmetic: DERDecodeItem() already bounds payload.length to
+    // the sepi buffer it was decoded from, so this is not reachable with a
+    // real firmware image today; kept as a guard against uint32_t
+    // wraparound in the page-alignment math below.
+    if (payload.length > UINT32_MAX - 0xfff) panic("reload_sepi: sepi payload too large (0x%x)", payload.length);
     uint32_t page_aligned_size = payload.length + 0xfff;
     page_aligned_size &= ~0xfff;
 
@@ -658,6 +675,9 @@ void seprom_fwload_race() {
 #ifdef SEP_DEBUG
     fiprintf(stderr, "image len %x -> %x\n", imglen, out.length);
 #endif
+    // Checked arithmetic: guard against uint32_t wraparound before sizing
+    // the contiguous allocation below.
+    if (out.length > UINT32_MAX - 0x4000) panic("seprom_fwload_race: reassembled img4 too large (0x%x)", out.length);
     uint32_t sep_image_buf_len = out.length + 0x4000;
     sep_image_buf = alloc_contig(sep_image_buf_len);
     void* sep_image = (void*)((((uint64_t) sep_image_buf) + 0xfff) & (~0xfff));
@@ -869,7 +889,13 @@ struct sep_command {
     void (*cb)(const char* cmd, char* args);
 };
 
-void sep_help();
+// Prototyped to match the definition below (an empty-parameter-list forward
+// declaration is a deprecated/non-conforming K&R-ism that newer compilers
+// (e.g. clang with -Wdeprecated-non-prototype) reject under this project's
+// -Werror); inherited from upstream, fixed here only to restore buildability
+// with current compilers. No behavior change: command_table[] already used
+// sep_help as a (const char*, char*) callback.
+void sep_help(const char* cmd, char* args);
 #define SEP_COMMAND(_name, _desc, _cb) {.name = _name, .desc = _desc, .cb = _cb}
 void sep_pwned_peek(const char* cmd, char* args) {
     if(!sep_is_pwned) {
@@ -941,7 +967,22 @@ void sep_pwned_boot(const char* cmd, char* args) {
 }
 
 void sep_aes_kbag(uint32_t* kbag_bytes_32, uint32_t * kbag_out, char mode) {
-    uint32_t aes_base = (socnum == 0x7000 || socnum == 0x7001) ? 0x200300000 : 0xcd300000;
+    // CONFIRMED DEFECT (fixed by refusing rather than guessing): this used
+    // to compute aes_base as 0x200300000 for A8/A8X (t7000/t7001), by
+    // analogy with the 0xcd300000 SEP-local AES-engine base used for A10/A11
+    // (t8010/t8011/t8012/t8015). 0x200300000 needs 36 bits and does not fit
+    // in the uint32_t "addr" that sep_blackbird_write()/sep_blackbird_read()
+    // take, so it silently truncated to 0x300000 and would have targeted an
+    // unverified, likely wrong, SEP-local address on real hardware; under
+    // this project's own -Werror build it is a hard -Wconstant-conversion
+    // error, so the fork as committed does not compile. There is no
+    // evidence here for the correct 32-bit SEP-local AES base on A8/A8X, so
+    // rather than invent one, this path now refuses the operation instead
+    // of silently touching a guessed address.
+    if (socnum == 0x7000 || socnum == 0x7001) {
+        panic("sep_aes_kbag: no verified SEP AES-engine base address for this SoC (0x%x)", socnum);
+    }
+    uint32_t aes_base = 0xcd300000;
     sep_blackbird_write(aes_base + 8, 0x20a - mode);
 
     uint32_t iv[4] = {0};
