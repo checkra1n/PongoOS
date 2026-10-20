@@ -41,7 +41,13 @@ extern uint64_t vatophys(uint64_t kvaddr);
 char usbloader_is_waiting_xfer;
 void usbloader_xfer_done_cb(void* data, uint32_t size, uint32_t transferred) {
     if (!usbloader_is_waiting_xfer) return;
-    cache_invalidate(loader_xfer_recv_data, loader_xfer_recv_count);
+    // Invalidate the range that was just DMA'd in, i.e. `transferred` bytes.
+    // Both callers that start a transfer zero loader_xfer_recv_count right
+    // before issuing it, and nothing updates it again until the line below,
+    // so using loader_xfer_recv_count here always invalidated 0 bytes --
+    // a no-op that could leave stale cache content visible to readers of
+    // loader_xfer_recv_data.
+    cache_invalidate(loader_xfer_recv_data, transferred);
     loader_xfer_recv_count = transferred;
     usbloader_is_waiting_xfer = 0;
 }
@@ -79,6 +85,10 @@ bool reallocate_loader_xfer_data(const void* data, uint32_t size) {
     if (size != 4) panic("reallocate_loader_xfer_data");
     
     uint32_t newsz = *(uint32_t*)data;
+    // Checked arithmetic: reject a host-supplied size close enough to
+    // UINT32_MAX that rounding up to the next 0x200 boundary below would
+    // wrap around to a small value and slip past the UPLOADSZ_MAX check.
+    if (newsz > UINT32_MAX - 0x1ff) return false;
     newsz += 0x1ff;
     newsz &= ~0x1ff;
     if (newsz > UPLOADSZ_MAX) return false;
